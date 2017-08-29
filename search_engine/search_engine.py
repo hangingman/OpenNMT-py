@@ -45,6 +45,7 @@ def retrieve_sentences(sentence, limit1=5, limit2=5):
                                  Not="\\-")
     qp.replace_plugin(op)
     q = qp.parse(sentence)
+    #import pdb; pdb.set_trace()
     results = ix.searcher(weighting=scoring.BM25F(B=0.75,
                                                   content_B=1.0,
                                                   K1=1.5)).search(q,
