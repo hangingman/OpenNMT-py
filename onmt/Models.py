@@ -231,6 +231,11 @@ class Decoder(nn.Module):
             input_size += opt.rnn_size
 
         super(Decoder, self).__init__()
+
+        # TODO MTM2017: should this be here
+        if opt.tm:
+            self.tm = True
+
         self.embeddings = Embeddings(opt.tgt_word_vec_size,
                                      opt, dicts, None)
 
@@ -356,6 +361,12 @@ class Decoder(nn.Module):
                 rnn_output, hidden = self.rnn(emb_t, hidden)
                 attn_output, attn = self.attn(rnn_output,
                                               context.transpose(0, 1))
+
+                # TODO MTM2017: use the self.tm and self.deep_fusion
+                # Compute q from c', z'
+                # Compute z tilda
+                # Compute zeta and update hidden state
+
                 if self.context_gate is not None:
                     output = self.context_gate(
                         emb_t, rnn_output, attn_output
@@ -377,6 +388,7 @@ class Decoder(nn.Module):
                     _, copy_attn = self.copy_attn(output,
                                                   context.transpose(0, 1))
                     attns["copy"] += [copy_attn]
+
             state = RNNDecoderState(hidden, output.unsqueeze(0),
                                     coverage.unsqueeze(0)
                                     if coverage is not None else None)
@@ -469,6 +481,54 @@ class NMTModel(nn.Module):
         out, dec_state, attns = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
                                              else dec_state)
+        if self.multigpu:
+            # Not yet supported on multi-gpu
+            dec_state = None
+            attns = None
+        return out, attns, dec_state
+
+
+class TM_NMTModel(NMTModel):
+    def __init__(self, encoder, decoder, search_engine, K=4, multigpu=False):
+        super(TM_NMTModel, self).__init__(encoder, decoder, multigpu=multigpu)
+        self.search_engine = search_engine
+        self.KNN_K = K
+
+    def forward(self, src, tgt, lengths, dec_state=None):
+        """
+        Args:
+            src, tgt, lengths
+            dec_state: A decoder state object
+
+        Returns:
+            outputs (FloatTensor): (len x batch x rnn_size) -- Decoder outputs.
+            attns (FloatTensor): Dictionary of (src_len x batch)
+            dec_hidden (FloatTensor): tuple (1 x batch x rnn_size)
+                                      Init hidden state
+        """
+        src = src
+        tgt = tgt[:-1]  # exclude last target from inputs
+        enc_hidden, context = self.encoder(src, lengths)
+        enc_state = self.init_decoder_state(context, enc_hidden)
+
+        k_pairs = self.search_engine.fss(src, self.K)
+
+        C = set()
+        for mem in k_pairs:
+            X = mem[0]
+            Y = mem[1]
+            # TODO MTM2017:
+            # 1. run encoder decoder
+            # 2. get the c' -> y', z'
+            pass
+
+        # TODO: should we change the decoder?
+        out, dec_state, attns = self.decoder(tgt, src, context,
+                                             enc_state if dec_state is None
+                                             else dec_state)
+
+
+
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None
