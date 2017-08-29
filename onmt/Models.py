@@ -232,10 +232,6 @@ class Decoder(nn.Module):
 
         super(Decoder, self).__init__()
 
-        # TODO MTM2017: should this be here
-        if opt.tm:
-            self.tm = True
-
         self.embeddings = Embeddings(opt.tgt_word_vec_size,
                                      opt, dicts, None)
 
@@ -281,7 +277,7 @@ class Decoder(nn.Module):
                 opt.rnn_size, attn_type=opt.global_attention)
             self._copy = True
 
-    def forward(self, input, src, context, state):
+    def forward(self, input, src, context, state, use_tms=False, deep_fusion=False):
         """
         Forward through the decoder.
 
@@ -315,7 +311,7 @@ class Decoder(nn.Module):
         outputs = []
 
         # Setup the different types of attention.
-        attns = {"std": []}
+        attns = {"std": [], "context": []}
         if self._copy:
             attns["copy"] = []
         if self._coverage:
@@ -376,6 +372,7 @@ class Decoder(nn.Module):
                     output = self.dropout(attn_output)
                 outputs += [output]
                 attns["std"] += [attn]
+                attns["context"] += [attn_output]
 
                 # COVERAGE
                 if self._coverage:
@@ -431,6 +428,7 @@ class Decoder(nn.Module):
                 outputs = self.dropout(attn_outputs)        # (t_len, batch, d)
             state = RNNDecoderState(hidden, outputs[-1].unsqueeze(0), None)
             attns["std"] = attn_scores
+
 
         return outputs, state, attns
 
@@ -513,21 +511,21 @@ class TM_NMTModel(NMTModel):
 
         k_pairs = self.search_engine.fss(src, self.K)
 
-        C = set()
-        for mem in k_pairs:
-            X = mem[0]
-            Y = mem[1]
-            # TODO MTM2017:
-            # 1. run encoder decoder
-            # 2. get the c' -> y', z'
-            pass
+        C = dict()
 
-        # TODO: should we change the decoder?
+        X_tms, Y_tms, lengths_tms = zip(*k_pairs)
+        Y_tms = Y_tms[:-1]
+        self.encoder(X_tms, lengths_tms)
+        enc_hidden_tms, context_tms = self.encoder(X_tms, lengths)
+        enc_state_tms = self.init_decoder_state(context_tms, enc_hidden_tms)
+        _, dec_state_tms, attns_tms = self.decoder(Y_tms, X_tms, context_tms, enc_state_tms)
+
+        context = attns_tms["context"]
+        # TODO: build dictionary
+
         out, dec_state, attns = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
-                                             else dec_state)
-
-
+                                             else dec_state, use_tms=True, deep_fusion=True)
 
         if self.multigpu:
             # Not yet supported on multi-gpu
