@@ -162,6 +162,31 @@ class ONMTDataset(torchtext.data.Dataset):
                             mask[j+1] = src_vocab.stoi[tgt[j]]
                         examples[i]["alignment"] = mask
                 assert i + 1 == len(examples), "Len src and tgt do not match"
+
+        tms_k = opt.k_tms
+        if self.type_ == "text" and opt.use_tms:
+            path_tms = src_path + '.tms'
+            try:
+                with codecs.open(path_tms, "r", "utf-8") as tm_file:
+                    for i, tm_line in enumerate(tm_file):
+
+                        tm_info = tm_line.split('\n')
+                        if len(tm_info) == 0:
+                            # TODO MTM2017 WIP : hack to avoid missing keys
+                            for j, src_tm in enumerate(tm_info[:tms_k]):
+                                examples[i]["tm_src_" + str(j)] = None
+                            for j, tgt_tm in enumerate(tm_info[tms_k:2 * tms_k]):
+                                examples[i]["tm_tgt_" + str(j)] = None
+                            continue
+
+                        for j, src_tm in enumerate(tm_info[:tms_k]):
+                            examples[i]["tm_src_" + str(j)] = src_tm
+
+                        for j, tgt_tm in enumerate(tm_info[tms_k:2*tms_k]):
+                            examples[i]["tm_tgt_" + str(j)] = tgt_tm
+            except:
+                pass
+
         keys = examples[0].keys()
         fields = [(k, fields[k]) for k in keys]
         examples = list([torchtext.data.Example.fromlist([ex[k] for k in keys],
@@ -236,7 +261,7 @@ class ONMTDataset(torchtext.data.Dataset):
         return feats
 
     @staticmethod
-    def get_fields(nFeatures=0):
+    def get_fields(nFeatures=0, tms_k=0):
         fields = {}
         fields["src"] = torchtext.data.Field(
             pad_token=PAD_WORD,
@@ -252,6 +277,14 @@ class ONMTDataset(torchtext.data.Dataset):
         fields["tgt"] = torchtext.data.Field(
             init_token=BOS_WORD, eos_token=EOS_WORD,
             pad_token=PAD_WORD)
+
+        for i in range(tms_k):
+            fields["tm_src_" + str(i)] = torchtext.data.Field(
+                    pad_token=PAD_WORD,
+                    include_lengths=True)
+            fields["tm_tgt_" + str(i)]= torchtext.data.Field(
+                    init_token=BOS_WORD, eos_token=EOS_WORD,
+                    pad_token=PAD_WORD)
 
         def make_src(data, _):
             src_size = max([t.size(0) for t in data])
@@ -293,6 +326,13 @@ class ONMTDataset(torchtext.data.Dataset):
             fields["src_feat_" + str(j)].build_vocab(train)
         fields["tgt"].build_vocab(train, max_size=opt.tgt_vocab_size,
                                   min_freq=opt.tgt_words_min_frequency)
+
+        if opt.use_tms:
+            for i in range(opt.k_tms):
+                fields["tms_src_" + str(i)].build_vocab(train, max_size=opt.src_vocab_size,
+                                                        min_freq=opt.src_words_min_frequency)
+                fields["tms_tgt_" + str(i)].build_vocab(train, max_size=opt.tgt_vocab_size,
+                                                        min_freq=opt.tgt_words_min_frequency)
 
         # Merge the input and output vocabularies.
         if opt.share_vocab:

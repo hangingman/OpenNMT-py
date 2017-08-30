@@ -42,6 +42,11 @@ parser.add_argument('-seed', type=int, default=3435,
 parser.add_argument('-report_every', type=int, default=100000,
                     help="Report status every this many sentences")
 
+parser.add_argument('-use_tms', required=False, type=bool, default=False,
+                    help="Use additional TMs")
+parser.add_argument('-k_tms', required=False, type=int, default=0,
+                    help="Number of tms")
+
 opts.preprocess_opts(parser)
 
 opt = parser.parse_args()
@@ -54,7 +59,7 @@ def main():
         src_line = src_file.readline().strip().split()
         _, _, nFeatures = onmt.IO.extractFeatures(src_line)
 
-    fields = onmt.IO.ONMTDataset.get_fields(nFeatures)
+    fields = onmt.IO.ONMTDataset.get_fields(nFeatures, opt.k_tms)
     print("Building Training...")
     train = onmt.IO.ONMTDataset(opt.train_src, opt.train_tgt, fields, opt)
     print("Building Vocab...")
