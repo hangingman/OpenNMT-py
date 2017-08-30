@@ -4,17 +4,21 @@ def create_tm_dict(src_file, tm_file):
     tm_dict = {}
     with open(src_file) as f_src, open(tm_file) as f_tm:
         for src, tms in zip(f_src, f_tm):
-            src = tuple(src.rstrip("\n"))
-            tms = tms.rstrip("\n").split("\t")
+            src = src.rstrip("\n")
+            tms = tms.rstrip("\n")
+            if tms == "\t\t":
+                tms = ""
+            else:
+                tms = tms.split("\t")
             n_tms = len(tms)//3
 
             tm_src = tms[:n_tms]
             tm_trg = tms[n_tms:2*n_tms]
             tm_score = tms[2*n_tms:3*n_tms]
 
-            tm_src = map(lambda x: x.split(" "), tm_src)
-            tm_trg = map(lambda x: x.split(" "), tm_trg)
-            tm_score = map(float, tm_score)
+            tm_src = list(map(lambda x: x.split(" "), tm_src))
+            tm_trg = list(map(lambda x: x.split(" "), tm_trg))
+            tm_score = list(map(float, tm_score))
 
             tm_dict[src] = (tm_src, tm_trg, tm_score)
 
