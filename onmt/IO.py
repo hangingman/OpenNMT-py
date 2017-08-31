@@ -170,12 +170,12 @@ class ONMTDataset(torchtext.data.Dataset):
                 with codecs.open(path_tms, "r", "utf-8") as tm_file:
                     for i, tm_line in enumerate(tm_file):
 
-                        tm_info = tm_line.split('\n')
-                        if len(tm_info) == 0:
+                        tm_info = tm_line.split('\t')
+                        if len(tm_info) < 3*tms_k:
                             # TODO MTM2017 WIP : hack to avoid missing keys
-                            for j, src_tm in enumerate(tm_info[:tms_k]):
+                            for j in range(tms_k):
                                 examples[i]["tm_src_" + str(j)] = None
-                            for j, tgt_tm in enumerate(tm_info[tms_k:2 * tms_k]):
+                            for j in range(tms_k):
                                 examples[i]["tm_tgt_" + str(j)] = None
                             continue
 
@@ -189,9 +189,11 @@ class ONMTDataset(torchtext.data.Dataset):
 
         keys = examples[0].keys()
         fields = [(k, fields[k]) for k in keys]
-        examples = list([torchtext.data.Example.fromlist([ex[k] for k in keys],
-                                                         fields)
-                         for ex in examples])
+        try:
+            examples = list([torchtext.data.Example.fromlist([ex[k] for k in keys],
+                                                            fields) for ex in examples])
+        except AttributeError as e:
+            pass
 
         def filter_pred(example):
             return 0 < len(example.src) <= opt.src_seq_length \
@@ -231,8 +233,11 @@ class ONMTDataset(torchtext.data.Dataset):
     @staticmethod
     def load_fields(vocab):
         vocab = dict(vocab)
+        tm_idx = 0
+        while 'tm_src_' + str(tm_idx):
+            tm_idx += 1
         fields = ONMTDataset.get_fields(
-            len(ONMTDataset.collect_features(vocab)))
+            len(ONMTDataset.collect_features(vocab)), k_tms=tm_idx)
         for k, v in vocab.items():
             # Hack. Can't pickle defaultdict :(
             v.stoi = defaultdict(lambda: 0, v.stoi)
@@ -329,9 +334,9 @@ class ONMTDataset(torchtext.data.Dataset):
 
         if opt.use_tms:
             for i in range(opt.k_tms):
-                fields["tms_src_" + str(i)].build_vocab(train, max_size=opt.src_vocab_size,
+                fields["tm_src_" + str(i)].build_vocab(train, max_size=opt.src_vocab_size,
                                                         min_freq=opt.src_words_min_frequency)
-                fields["tms_tgt_" + str(i)].build_vocab(train, max_size=opt.tgt_vocab_size,
+                fields["tm_tgt_" + str(i)].build_vocab(train, max_size=opt.tgt_vocab_size,
                                                         min_freq=opt.tgt_words_min_frequency)
 
         # Merge the input and output vocabularies.
