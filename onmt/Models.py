@@ -269,9 +269,11 @@ class Decoder(nn.Module):
         # TODO MTM2017
 
         self.attn_tms = None
+        self.zeta_gate = None
 
         # q "attention" function
         if opt.use_tms:
+            self.zeta_gate = TMMixer(opt.rnn_size)
             self.attn_tms = onmt.modules.GlobalAttention(
                 opt.rnn_size,
                 coverage=self._coverage,
@@ -372,7 +374,7 @@ class Decoder(nn.Module):
                 attn_output, attn = self.attn(rnn_output,
                                               context.transpose(0, 1))
 
-                if self.attn_tms is not None and use_tms:
+                if self.attn_tms is not None and self.zeta_gate is not None and use_tms:
                     # TODO MTM2017: use the self.tm and self.deep_fusion
                     # key is attn_output (context c)
                     # Compute q from c', z'
@@ -384,8 +386,15 @@ class Decoder(nn.Module):
                     # set of 4 batches tm_tgt_y[0], tm_tgt_y[1], tm_tgt_y[2], tm_tgt_y[3]
                     # and also tm_hidden_z[0], tm_hidden_z[1], tm_hidden_z[2], tm_hidden_z[3]
                     # and also tm_attention_c[0], tm_attention_c[1], tm_attention_c[2], tm_attention_c[3]
-                    
-                    pass
+                    C_att = torch.cat(tm_attention_c, 0)
+                    C_att_t = C_att.transpose(0, 1)
+                    Z_hidden = torch.cat(tm_hidden_z, 0)
+                    Z_hidden_t = Z_hidden.transpose(0, 1).transpose(1, 2)
+                    _, q_att = self.attn_tms(attn_output.unsqueeze(1), C_att_t.contiguous())
+                    q_att_t = q_att.transpose(0, 1)
+                    z_tilda = torch.bmm(Z_hidden_t, q_att_t)
+                    zeta = self.zeta_gate(attn_output, hidden[0].squeeze(), z_tilda.squeeze())
+                    print('zeta: ', zeta.size())
 
                 if self.context_gate is not None:
                     output = self.context_gate(
@@ -466,7 +475,8 @@ class TMMixer(nn.Module):
     def forward(self, c, z, z_tilde):
         inp = torch.cat([c, z, z_tilde], dim=1)  # TODO MTM2017: Check dim is right
 
-        return self.sigmoid(self.linear(inp))
+        lin = self.linear(inp)
+        return self.sigmoid(lin)
 
 class NMTModel(nn.Module):
     def __init__(self, encoder, decoder, multigpu=False):
@@ -551,9 +561,9 @@ class TM_NMTModel(NMTModel):
             # lengths_tm = tm_lengths[i]
             enc_hidden_tm, context_tm = self.encoder(src_tm)
             enc_state_tm = self.init_decoder_state(context_tm, enc_hidden_tm)
-            _, dec_state_tm, attns_tm = self.decoder(tgt_tm, src_tm, context_tm, enc_state_tm)
+            dec_hidden_tm, dec_state_tm, attns_tm = self.decoder(tgt_tm, src_tm, context_tm, enc_state_tm)
             attn_context_tm = attns_tm["context"]
-            dec_states_tms.append(dec_state_tm)
+            dec_states_tms.append(dec_hidden_tm)
             attn_contexts_tms.append(attn_context_tm)
 
         out, dec_state, attns = self.decoder(tgt, src, context,
