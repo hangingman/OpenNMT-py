@@ -68,6 +68,13 @@ def make_features(batch, fields):
     cat = [c.unsqueeze(2) for c in cat]
     return torch.cat(cat, 2)
 
+def make_tm_features(batch, fields, id_tms):
+    # TODO: This is bit hacky, add to batch somehow.
+
+    # TODO MTM2017: handle error if key does not exist
+    cat = [batch.__dict__["tm_src_" + str(id_tms)][0]]
+    cat = [c.unsqueeze(2) for c in cat]
+    return torch.cat(cat, 2)
 
 class OrderedIterator(torchtext.data.Iterator):
     def create_batches(self):
