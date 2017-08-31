@@ -169,6 +169,10 @@ def train_opts(parser):
     parser.add_argument('-exp', type=str, default="",
                         help="Name of the experiment for logging.")
 
+    parser.add_argument('-use_tms', type=bool, default=False,
+                        help="Use Translation Memories.")
+    parser.add_argument('-k_tms', type=int, default=0,
+                        help="Number of TMs to retrieve per sentence.")
 
 def preprocess_opts(parser):
     # Dictionary Options
