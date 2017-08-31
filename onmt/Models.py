@@ -277,7 +277,8 @@ class Decoder(nn.Module):
                 opt.rnn_size, attn_type=opt.global_attention)
             self._copy = True
 
-    def forward(self, input, src, context, state, use_tms=False, deep_fusion=False):
+    def forward(self, input, src, context, state,
+                use_tms=False, deep_fusion=False, tm_tgt_y=None, tm_hidden_z=None, tm_attention_c=None):
         """
         Forward through the decoder.
 
@@ -359,6 +360,7 @@ class Decoder(nn.Module):
                                               context.transpose(0, 1))
 
                 # TODO MTM2017: use the self.tm and self.deep_fusion
+                # key is attn_output (context c)
                 # Compute q from c', z'
                 # Compute z tilda
                 # Compute zeta and update hidden state
@@ -509,6 +511,7 @@ class TM_NMTModel(NMTModel):
         enc_state = self.init_decoder_state(context, enc_hidden)
 
         attn_contexts_tms = []
+        dec_states_tms = []
         for i in range(self.KNN_K):
             src_tm = tm_src[i]
             tgt_tm = tm_tgt[i][:-1]
@@ -517,12 +520,18 @@ class TM_NMTModel(NMTModel):
             enc_state_tm = self.init_decoder_state(context_tm, enc_hidden_tm)
             _, dec_state_tm, attns_tm = self.decoder(tgt_tm, src_tm, context_tm, enc_state_tm)
             attn_context_tm = attns_tm["context"]
+            dec_states_tms.append(dec_state_tm)
             attn_contexts_tms.append(attn_context_tm)
             # TODO: build dictionary c' -> z', y'
 
         out, dec_state, attns = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
-                                             else dec_state, use_tms=True, deep_fusion=True)
+                                             else dec_state,
+                                             use_tms=True,
+                                             deep_fusion=True,
+                                             tm_tgt_y=tm_tgt,
+                                             tm_hidden_z=dec_states_tms,
+                                             tm_attention_c=attn_contexts_tms)
 
         if self.multigpu:
             # Not yet supported on multi-gpu
