@@ -117,6 +117,17 @@ def trainModel(model, trainData, validData, fields, optim):
             trunc_size = opt.truncated_decoder if opt.truncated_decoder \
                 else target_size
 
+            tm_src = []
+            tm_tgt = []
+            tm_lengths = []
+            for tm_idx in range(opt.k_tms):
+                tsrc = onmt.IO.make_tm_features(batch, fields, tm_idx)
+                tlengths = batch.__dict__['tm_src_' + str(tm_idx)][1]
+                ttgt = batch.__dict__['tm_tgt_' + str(tm_idx)]
+                tm_src.append(tsrc)
+                tm_tgt.append(ttgt)
+                tm_lengths.append(tlengths)
+
             for j in range(0, target_size-1, trunc_size):
                 # (1) Create truncated target.
                 tgt_r = (j, j + trunc_size)
@@ -126,8 +137,12 @@ def trainModel(model, trainData, validData, fields, optim):
 
                 # Main training loop
                 model.zero_grad()
-                outputs, attn, dec_state = \
-                    model(src, tgt, src_lengths, dec_state)
+                if opt.use_tms:
+                    outputs, attn, dec_state = \
+                        model(src, tgt, src_lengths, tm_src, tm_tgt, tm_lengths, dec_state)
+                else:
+                    outputs, attn, dec_state = \
+                        model(src, tgt, src_lengths, dec_state)
 
                 # (2) F-prop/B-prob generator in shards for memory
                 # efficiency.
