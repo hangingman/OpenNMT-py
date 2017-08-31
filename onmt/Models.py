@@ -264,6 +264,19 @@ class Decoder(nn.Module):
 
         self.dropout = nn.Dropout(opt.dropout)
 
+
+
+        # TODO MTM2017
+
+        self.attn_tms = None
+
+        # q "attention" function
+        if opt.use_tms:
+            self.attn_tms = onmt.modules.GlobalAttention(
+                opt.rnn_size,
+                coverage=self._coverage,
+                attn_type='dot')
+
         # Std attention layer.
         self.attn = onmt.modules.GlobalAttention(
             opt.rnn_size,
@@ -359,18 +372,20 @@ class Decoder(nn.Module):
                 attn_output, attn = self.attn(rnn_output,
                                               context.transpose(0, 1))
 
-                # TODO MTM2017: use the self.tm and self.deep_fusion
-                # key is attn_output (context c)
-                # Compute q from c', z'
-                # Compute z tilda
-                # Compute zeta and update hidden state
-                # use tm_tgt_y, tm_hidden_z, tm_attention_c
-                # both are arrays of size K_KNN with the corresponding batched elements for each i in range(K)
-                # so for a batch of sources src, and a K=4 there is a
-                # set of 4 batches tm_tgt_y[0], tm_tgt_y[1], tm_tgt_y[2], tm_tgt_y[3]
-                # and also tm_hidden_z[0], tm_hidden_z[1], tm_hidden_z[2], tm_hidden_z[3]
-                # and also tm_attention_c[0], tm_attention_c[1], tm_attention_c[2], tm_attention_c[3]
-                
+
+                if self.attn_tms is not None:
+                    # TODO MTM2017: use the self.tm and self.deep_fusion
+                    # key is attn_output (context c)
+                    # Compute q from c', z'
+                    # Compute z tilda
+                    # Compute zeta and update hidden state
+                    # use tm_tgt_y, tm_hidden_z, tm_attention_c
+                    # both are arrays of size K_KNN with the corresponding batched elements for each i in range(K)
+                    # so for a batch of sources src, and a K=4 there is a
+                    # set of 4 batches tm_tgt_y[0], tm_tgt_y[1], tm_tgt_y[2], tm_tgt_y[3]
+                    # and also tm_hidden_z[0], tm_hidden_z[1], tm_hidden_z[2], tm_hidden_z[3]
+                    # and also tm_attention_c[0], tm_attention_c[1], tm_attention_c[2], tm_attention_c[3]
+                    pass
 
                 if self.context_gate is not None:
                     output = self.context_gate(
