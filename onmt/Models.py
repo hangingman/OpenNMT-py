@@ -389,12 +389,13 @@ class Decoder(nn.Module):
                     C_att = torch.cat(tm_attention_c, 0)
                     C_att_t = C_att.transpose(0, 1)
                     Z_hidden = torch.cat(tm_hidden_z, 0)
-                    Z_hidden_t = Z_hidden.transpose(0, 1).transpose(1, 2)
+                    Z_hidden_t = Z_hidden.transpose(0, 1)
                     _, q_att = self.attn_tms(attn_output.unsqueeze(1), C_att_t.contiguous())
                     q_att_t = q_att.transpose(0, 1)
-                    z_tilda = torch.bmm(Z_hidden_t, q_att_t)
+                    z_tilda = torch.bmm(q_att_t, Z_hidden_t)
                     zeta = self.zeta_gate(attn_output, hidden[0].squeeze(), z_tilda.squeeze())
-                    print('zeta: ', zeta.size())
+                    z_fusion = zeta * z_tilda.squeeze() + (1 - zeta) * hidden[0].squeeze()
+                    hidden = (z_fusion.unsqueeze(0),)
 
                 if self.context_gate is not None:
                     output = self.context_gate(
