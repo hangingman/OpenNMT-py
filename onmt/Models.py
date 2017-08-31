@@ -364,6 +364,13 @@ class Decoder(nn.Module):
                 # Compute q from c', z'
                 # Compute z tilda
                 # Compute zeta and update hidden state
+                # use tm_tgt_y, tm_hidden_z, tm_attention_c
+                # both are arrays of size K_KNN with the corresponding batched elements for each i in range(K)
+                # so for a batch of sources src, and a K=4 there is a
+                # set of 4 batches tm_tgt_y[0], tm_tgt_y[1], tm_tgt_y[2], tm_tgt_y[3]
+                # and also tm_hidden_z[0], tm_hidden_z[1], tm_hidden_z[2], tm_hidden_z[3]
+                # and also tm_attention_c[0], tm_attention_c[1], tm_attention_c[2], tm_attention_c[3]
+                
 
                 if self.context_gate is not None:
                     output = self.context_gate(
@@ -522,7 +529,6 @@ class TM_NMTModel(NMTModel):
             attn_context_tm = attns_tm["context"]
             dec_states_tms.append(dec_state_tm)
             attn_contexts_tms.append(attn_context_tm)
-            # TODO: build dictionary c' -> z', y'
 
         out, dec_state, attns = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
