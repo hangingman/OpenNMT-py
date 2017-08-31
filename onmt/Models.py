@@ -487,12 +487,11 @@ class NMTModel(nn.Module):
 
 
 class TM_NMTModel(NMTModel):
-    def __init__(self, encoder, decoder, search_engine, K=4, multigpu=False):
+    def __init__(self, encoder, decoder, K=4, multigpu=False):
         super(TM_NMTModel, self).__init__(encoder, decoder, multigpu=multigpu)
-        self.search_engine = search_engine
         self.KNN_K = K
 
-    def forward(self, src, tgt, lengths, dec_state=None):
+    def forward(self, src, tgt, lengths, tm_src, tm_tgt, tm_lengths, dec_state=None):
         """
         Args:
             src, tgt, lengths
@@ -509,19 +508,17 @@ class TM_NMTModel(NMTModel):
         enc_hidden, context = self.encoder(src, lengths)
         enc_state = self.init_decoder_state(context, enc_hidden)
 
-        k_pairs = self.search_engine.fss(src, self.K)
-
-        C = dict()
-
-        X_tms, Y_tms, lengths_tms = zip(*k_pairs)
-        Y_tms = Y_tms[:-1]
-        self.encoder(X_tms, lengths_tms)
-        enc_hidden_tms, context_tms = self.encoder(X_tms, lengths)
-        enc_state_tms = self.init_decoder_state(context_tms, enc_hidden_tms)
-        _, dec_state_tms, attns_tms = self.decoder(Y_tms, X_tms, context_tms, enc_state_tms)
-
-        context = attns_tms["context"]
-        # TODO: build dictionary
+        attn_contexts_tms = []
+        for i in range(self.KNN_K):
+            src_tm = tm_src[i]
+            tgt_tm = tm_tgt[i][:-1]
+            # lengths_tm = tm_lengths[i]
+            enc_hidden_tm, context_tm = self.encoder(src_tm)
+            enc_state_tm = self.init_decoder_state(context_tm, enc_hidden_tm)
+            _, dec_state_tm, attns_tm = self.decoder(tgt_tm, src_tm, context_tm, enc_state_tm)
+            attn_context_tm = attns_tm["context"]
+            attn_contexts_tms.append(attn_context_tm)
+            # TODO: build dictionary c' -> z', y'
 
         out, dec_state, attns = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
@@ -617,7 +614,10 @@ def make_base_model(opt, model_opt, fields, cuda, checkpoint=None):
 
     decoder = onmt.Models.Decoder(
         model_opt, fields["tgt"].vocab)
-    model = onmt.Models.NMTModel(encoder, decoder)
+    if opt.use_tms:
+        model = onmt.Models.TM_NMTModel(encoder, decoder, K=opt.k_tms)
+    else:
+        model = onmt.Models.NMTModel(encoder, decoder)
 
     if not model_opt.copy_attn:
         generator = nn.Sequential(
