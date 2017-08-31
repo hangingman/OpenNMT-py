@@ -372,8 +372,7 @@ class Decoder(nn.Module):
                 attn_output, attn = self.attn(rnn_output,
                                               context.transpose(0, 1))
 
-
-                if self.attn_tms is not None:
+                if self.attn_tms is not None and use_tms:
                     # TODO MTM2017: use the self.tm and self.deep_fusion
                     # key is attn_output (context c)
                     # Compute q from c', z'
@@ -385,6 +384,7 @@ class Decoder(nn.Module):
                     # set of 4 batches tm_tgt_y[0], tm_tgt_y[1], tm_tgt_y[2], tm_tgt_y[3]
                     # and also tm_hidden_z[0], tm_hidden_z[1], tm_hidden_z[2], tm_hidden_z[3]
                     # and also tm_attention_c[0], tm_attention_c[1], tm_attention_c[2], tm_attention_c[3]
+                    
                     pass
 
                 if self.context_gate is not None:

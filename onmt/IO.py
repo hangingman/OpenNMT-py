@@ -181,16 +181,30 @@ class ONMTDataset(torchtext.data.Dataset):
                         if len(tm_info) < 3*tms_k:
                             # TODO MTM2017 WIP : hack to avoid missing keys
                             for j in range(tms_k):
-                                examples[i]["tm_src_" + str(j)] = None
+                                examples[i]["tm_src_" + str(j)] = [PAD_WORD] * 2
+
                             for j in range(tms_k):
-                                examples[i]["tm_tgt_" + str(j)] = None
+                                examples[i]["tm_tgt_" + str(j)] = [PAD_WORD] * 2
                             continue
 
+                        max_sz_src = max(len(src_tm.split()) for src_tm in tm_info[:tms_k])
+                        max_sz_trg = max(len(tgt_tm.split()) for tgt_tm in tm_info[tms_k:2*tms_k])
                         for j, src_tm in enumerate(tm_info[:tms_k]):
-                            examples[i]["tm_src_" + str(j)] = src_tm
+                            src_tm = src_tm.split()
+                            padding = [PAD_WORD] * (max_sz_src - len(src_tm))
+                            src_tm, _, _ = extractFeatures(src_tm)
+                            src_tm_padded = src_tm
+                            src_tm_padded.extend(padding)
+                            examples[i]["tm_src_" + str(j)] = src_tm_padded
 
                         for j, tgt_tm in enumerate(tm_info[tms_k:2*tms_k]):
-                            examples[i]["tm_tgt_" + str(j)] = tgt_tm
+                            tgt_tm = tgt_tm.split()
+                            padding = [PAD_WORD] * (max_sz_trg - len(tgt_tm))
+                            tgt_tm, _, _ = extractFeatures(tgt_tm)
+                            tgt_tm, _, _ = extractFeatures(tgt_tm)
+                            tgt_tm_padded = tgt_tm
+                            tgt_tm_padded.extend(padding)
+                            examples[i]["tm_tgt_" + str(j)] = tgt_tm_padded
             except:
                 pass
 
