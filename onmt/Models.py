@@ -375,17 +375,6 @@ class Decoder(nn.Module):
                                               context.transpose(0, 1))
 
                 if self.attn_tms is not None and self.zeta_gate is not None and use_tms:
-                    # TODO MTM2017: use the self.tm and self.deep_fusion
-                    # key is attn_output (context c)
-                    # Compute q from c', z'
-                    # Compute z tilda
-                    # Compute zeta and update hidden state
-                    # use tm_tgt_y, tm_hidden_z, tm_attention_c
-                    # both are arrays of size K_KNN with the corresponding batched elements for each i in range(K)
-                    # so for a batch of sources src, and a K=4 there is a
-                    # set of 4 batches tm_tgt_y[0], tm_tgt_y[1], tm_tgt_y[2], tm_tgt_y[3]
-                    # and also tm_hidden_z[0], tm_hidden_z[1], tm_hidden_z[2], tm_hidden_z[3]
-                    # and also tm_attention_c[0], tm_attention_c[1], tm_attention_c[2], tm_attention_c[3]
                     C_att = torch.cat(tm_attention_c, 0)
                     C_att_t = C_att.transpose(0, 1)
                     Z_hidden = torch.cat(tm_hidden_z, 0)
