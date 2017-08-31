@@ -234,10 +234,10 @@ class ONMTDataset(torchtext.data.Dataset):
     def load_fields(vocab):
         vocab = dict(vocab)
         tm_idx = 0
-        while 'tm_src_' + str(tm_idx):
+        while ('tm_src_' + str(tm_idx)) in vocab:
             tm_idx += 1
         fields = ONMTDataset.get_fields(
-            len(ONMTDataset.collect_features(vocab)), k_tms=tm_idx)
+            len(ONMTDataset.collect_features(vocab)), tms_k=tm_idx)
         for k, v in vocab.items():
             # Hack. Can't pickle defaultdict :(
             v.stoi = defaultdict(lambda: 0, v.stoi)
