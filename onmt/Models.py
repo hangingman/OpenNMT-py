@@ -275,7 +275,7 @@ class Decoder(nn.Module):
             self.attn_tms = onmt.modules.GlobalAttention(
                 opt.rnn_size,
                 coverage=self._coverage,
-                attn_type='dot')
+                attn_type='general')
 
         # Std attention layer.
         self.attn = onmt.modules.GlobalAttention(
