@@ -456,6 +456,17 @@ class Decoder(nn.Module):
 
         return outputs, state, attns
 
+class TMMixer(nn.Module):
+    def __init__(self, rnn_size):
+        super(TMMixer, self).__init__()
+
+        self.linear = nn.Linear(3*rnn_size, 1)
+        self.sigmoid = nn.Sigmoid()
+    
+    def forward(self, c, z, z_tilde):
+        inp = torch.cat([c, z, z_tilde], dim=1)  # TODO MTM2017: Check dim is right
+
+        return self.sigmoid(self.linear(inp))
 
 class NMTModel(nn.Module):
     def __init__(self, encoder, decoder, multigpu=False):
