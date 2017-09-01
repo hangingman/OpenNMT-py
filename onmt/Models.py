@@ -617,8 +617,8 @@ class TM_NMTModel(NMTModel):
             attn_contexts_tms.append(attn_context_tm)
 
         k = src.size(1)
-        attn_contexts_tms = torch.split(attn_context_tm_cat, split_size=k , dim=1)
-        dec_states_tms = torch.split(dec_hidden_tm_cat, split_size=k, dim=1)
+        attn_contexts_tms = torch.split(attn_contexts_tms, split_size=k , dim=1)
+        dec_states_tms = torch.split(dec_states_tms, split_size=k, dim=1)
 
         out, dec_state, attns = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
