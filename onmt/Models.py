@@ -593,15 +593,28 @@ class TM_NMTModel(NMTModel):
         enc_hidden, context = self.encoder(src, lengths)
         enc_state = self.init_decoder_state(context, enc_hidden)
 
-        tm_src_cat = torch.cat(tm_src, 1)
-        tm_tgt_cat = torch.cat(tm_tgt, 1)
+        # tm_src_cat = torch.cat(tm_src, 1)
+        # tm_tgt_cat = torch.cat(tm_tgt, 1)
+        #
+        # tm_tgt_cat = tm_tgt_cat[:-1]
+        #
+        # enc_hidden_tm, context_tm = self.encoder(tm_src_cat)
+        # enc_state_tm = self.init_decoder_state(context_tm, enc_hidden_tm)
+        # dec_hidden_tm_cat, dec_state_tm, attns_tm_cat = self.decoder(tm_tgt_cat, tm_src_cat, context_tm, enc_state_tm)
+        # attn_context_tm_cat = attns_tm_cat["context"]
 
-        tm_tgt_cat = tm_tgt_cat[:-1]
-
-        enc_hidden_tm, context_tm = self.encoder(tm_src_cat)
-        enc_state_tm = self.init_decoder_state(context_tm, enc_hidden_tm)
-        dec_hidden_tm_cat, dec_state_tm, attns_tm_cat = self.decoder(tm_tgt_cat, tm_src_cat, context_tm, enc_state_tm)
-        attn_context_tm_cat = attns_tm_cat["context"]
+        attn_contexts_tms = []
+        dec_states_tms = []
+        for i in range(self.KNN_K):
+            src_tm = tm_src[i]
+            tgt_tm = tm_tgt[i][:-1]
+            # lengths_tm = tm_lengths[i]
+            enc_hidden_tm, context_tm = self.encoder(src_tm)
+            enc_state_tm = self.init_decoder_state(context_tm, enc_hidden_tm)
+            dec_hidden_tm, dec_state_tm, attns_tm = self.decoder(tgt_tm, src_tm, context_tm, enc_state_tm)
+            attn_context_tm = attns_tm["context"]
+            dec_states_tms.append(dec_hidden_tm)
+            attn_contexts_tms.append(attn_context_tm)
 
         k = src.size(1)
         attn_contexts_tms = torch.split(attn_context_tm_cat, split_size=k , dim=1)
