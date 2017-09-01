@@ -234,7 +234,7 @@ class ONMTDataset(torchtext.data.Dataset):
 
         # If opt should be None (we are translating), then make it none,
         # as we no longer need it
-        if opt and opt.is_translating:
+        if opt and hasattr(opt, 'is_translating') and opt.is_translating:
             opt = None
 
         keys = examples[0].keys()
