@@ -126,7 +126,7 @@ class ONMTDataset(torchtext.data.Dataset):
         # Hack to deal with the TMs (opt has to be None for some options,
         # but we need it for the TMs)
         old_opt = None
-        if opt and opt.is_translating:
+        if opt and hasattr(opt, 'is_translating') and opt.is_translating:
             old_opt = opt
             opt = None
         
