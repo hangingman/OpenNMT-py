@@ -18,6 +18,9 @@ data:
 	ln -s $(DIR)/JRC-Acquis.en-es.en.tcs.dev.bpe.shuf en.dev
 	ln -s $(DIR)/JRC-Acquis.en-es.en.tcs.test.bpe.shuf en.test
 
+
+# fasttext demo
+
 demo:
 	fastText/fasttext skipgram -input es.train -output model
 

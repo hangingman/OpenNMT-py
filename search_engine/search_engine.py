@@ -16,46 +16,46 @@ if not os.path.exists("indexdir"):
 else: ix = index.open_dir("indexdir")
 
 def add_sentences(file):
-    writer = ix.writer()
-    for line in open(file, encoding="utf-8"):
-        line = line.split("\t")
-        writer.update_document(original=line[0],
-                               content=line[0],
-                               translation=line[1])
-    writer.commit()
+	writer = ix.writer()
+	for line in open(file, encoding="utf-8"):
+		line = line.split("\t")
+		writer.update_document(original=line[0],
+							   content=line[0],
+							   translation=line[1])
+	writer.commit()
 
 def index_corpus(source_sentences, target_sentences, limit=-1):
-    #import pdb; pdb.set_trace()
-    writer = ix.writer()
-    data1 = open(source_sentences, encoding="utf-8").readlines()
-    data2 = open(target_sentences, encoding="utf-8").readlines()
-    for pos, s in enumerate(data1):
-        writer.update_document(original=s.lower(),
-                               content=s.lower(),
-                               translation=data2[pos].lower())
-        #print(pos)
-        if (pos != 0) and (pos % 10000 == 0): print(pos)
-        if (limit > 0 and pos == limit): break
-    writer.commit()
+	#import pdb; pdb.set_trace()
+	writer = ix.writer()
+	data1 = open(source_sentences, encoding="utf-8").readlines()
+	data2 = open(target_sentences, encoding="utf-8").readlines()
+	for pos, s in enumerate(data1):
+		writer.update_document(original=s.lower(),
+							   content=s.lower(),
+							   translation=data2[pos].lower())
+		#print(pos)
+		if (pos != 0) and (pos % 10000 == 0): print(pos)
+		if (limit > 0 and pos == limit): break
+	writer.commit()
 
 def retrieve_sentences(sentence, limit1=5, limit2=5):
-    searcher = ix.searcher()
-    qp = QueryParser("content", schema=schema, group=qparser.OrGroup)
-    op = qparser.OperatorsPlugin(And="&", Or="\\|", AndNot="&!", AndMaybe="&~",
-                                 Not="\\-")
-    qp.replace_plugin(op)
-    q = qp.parse(sentence)
-    #import pdb; pdb.set_trace()
-    results = ix.searcher(weighting=scoring.BM25F(B=0.75,
-                                                  content_B=1.0,
-                                                  K1=1.5)).search(q,
-                                                                  limit=limit1)
-    results = [(i["original"], i["translation"]) for i in results[0:limit1]]
-    #scores = [nltk.translate.bleu_score.sentence_bleu(
-    #    [sentence], h[0], weights = (0.5, 0.5)) for h in results]
-    #results = [(y, x[0], x[1]) for y, x in sorted(zip(scores,results),
-    #                                              reverse=True)]
-    #return results[0:limit2]
+	searcher = ix.searcher()
+	qp = QueryParser("content", schema=schema, group=qparser.OrGroup)
+	op = qparser.OperatorsPlugin(And="&", Or="\\|", AndNot="&!", AndMaybe="&~",
+								 Not="\\-")
+	qp.replace_plugin(op)
+	q = qp.parse(sentence)
+	#import pdb; pdb.set_trace()
+	results = ix.searcher(weighting=scoring.BM25F(B=0.75,
+												  content_B=1.0,
+												  K1=1.5)).search(q,
+																  limit=limit1)
+	results = [(i["original"], i["translation"]) for i in results[0:limit1]]
+	#scores = [nltk.translate.bleu_score.sentence_bleu(
+	#    [sentence], h[0], weights = (0.5, 0.5)) for h in results]
+	#results = [(y, x[0], x[1]) for y, x in sorted(zip(scores,results),
+	#                                              reverse=True)]
+	#return results[0:limit2]
 
 def main():
     '''Main function.'''
