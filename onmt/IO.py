@@ -11,6 +11,19 @@ BOS_WORD = '<s>'
 EOS_WORD = '</s>'
 
 
+def __getstate__(self):
+    return dict(self.__dict__, stoi=dict(self.stoi))
+
+
+def __setstate__(self, state):
+    self.__dict__.update(state)
+    self.stoi = defaultdict(lambda: 0, self.stoi)
+
+
+torchtext.vocab.Vocab.__getstate__ = __getstate__
+torchtext.vocab.Vocab.__setstate__ = __setstate__
+
+
 def extractFeatures(tokens):
     "Given a list of token separate out words and features (if any)."
     words = []
@@ -161,7 +174,7 @@ class ONMTDataset(torchtext.data.Dataset):
                     tgt, _, _ = extractFeatures(tgt_line)
                     examples[i]["tgt"] = tgt
 
-                    if opt.dynamic_dict:
+                    if opt is None or opt.dynamic_dict:
                         src_vocab = self.src_vocabs[i]
                         # Map target tokens to indices in the dynamic dict
                         mask = torch.LongTensor(len(tgt)+2).fill_(0)
@@ -285,6 +298,18 @@ class ONMTDataset(torchtext.data.Dataset):
             feats.append(key)
             j += 1
         return feats
+
+    @staticmethod
+    def collect_feature_dicts(fields):
+        feature_dicts = []
+        j = 0
+        while True:
+            key = "src_feat_" + str(j)
+            if key not in fields:
+                break
+            feature_dicts.append(fields[key].vocab)
+            j += 1
+        return feature_dicts
 
     @staticmethod
     def get_fields(nFeatures=0, tms_k=0):
