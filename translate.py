@@ -57,6 +57,12 @@ parser.add_argument('-dynamic_dict', action='store_true',
 parser.add_argument('-share_vocab', action='store_true',
                     help="Share source and target vocabulary")
 
+# TM Options
+parser.add_argument('-use_tms', type=bool, default=False,
+                    help="Use Translation Memories.")
+parser.add_argument('-k_tms', type=int, default=0,
+                    help="Number of TMs to retrieve per sentence.")
+
 
 def reportScore(name, scoreTotal, wordsTotal):
     print("%s AVG SCORE: %.4f, %s PPL: %.4f" % (
@@ -81,7 +87,12 @@ def main():
     if opt.dump_beam != "":
         import json
         translator.initBeamAccum()
-    data = onmt.IO.ONMTDataset(opt.src, opt.tgt, translator.fields, None)
+    
+    if opt.use_tms:
+        opt.is_translating = True
+        data = onmt.IO.ONMTDataset(opt.src, opt.tgt, translator.fields, opt)
+    else:
+        data = onmt.IO.ONMTDataset(opt.src, opt.tgt, translator.fields, None)
 
     testData = onmt.IO.OrderedIterator(
         dataset=data, device=opt.gpu,
