@@ -1,4 +1,14 @@
-import fasttext
+# Author: Dominik Macháček (Github @Gldkslfmsd)
+
+# This is an attempt to implement search engine which gets a sentence and
+# retrieves similar sentences from corpus.
+# It uses word vectors from fastText-py, aggregates them and finds the
+# nearest.
+# This is not finished, I found another implementation doing exactly the
+# same...
+
+
+import fasttext # https://github.com/salestock/fastText.py
 import numpy as np
 import pickle
 
@@ -22,7 +32,7 @@ class VectorSearchEngine:
 	def load_model(self):
 		skipgram = fasttext.load_model(self.MODEL_PATH + ".bin")
 		self.skipgram = skipgram
-		self.sent_vectors = pickle.load(open(self.SENT_VEC, "rb"))
+		self.sent_vectors, self.sent_text = pickle.load(open(self.SENT_VEC, "rb"))
 
 	def save_sentences_as_vectors(self, file):
 		self.sent_vectors = []
@@ -30,7 +40,8 @@ class VectorSearchEngine:
 			sent_v = self.get_sent_vec(sent.split())
 			self.sent_vectors.append(sent_v)
 		self.sent_vectors = np.array(self.sent_vectors)
-		pickle.dump(self.sent_vectors, open(self.SENT_VEC, "wb"))
+		self.sent_text = open(file).readlines()
+		pickle.dump((self.sent_vectors, self.sent_text), open(self.SENT_VEC, "wb"))
 
 
 	def get_word_vec(self, word):
@@ -49,7 +60,10 @@ class VectorSearchEngine:
 	def search(self, sentence, limit1=5, limit2=5):
 		"""sentence: list of strings"""
 		v = self.get_sent_vec(sentence)
-#		for s in 
+		sim = [(self.sent_text[i],np.dot(v, s)) for i,s in enumerate(self.sent_vectors)]
+		sim = sorted(sim, key=lambda x: -x[1])
+		return sim[:limit1]
+		
 		
 
 
@@ -57,8 +71,10 @@ class VectorSearchEngine:
 if __name__ == "__main__":
 	import sys
 	se = VectorSearchEngine()
-	#se.create_model(sys.argv[1])
-	se.load_model()
+	se.create_model(sys.argv[1])
+#	se.load_model()
 	
 	t = ["what", "the" ]
-	se.search(t)
+	s = se.search(t)
+	for l in s:
+		print(l)
