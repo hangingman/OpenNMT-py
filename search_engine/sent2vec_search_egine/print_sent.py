@@ -1,4 +1,3 @@
-# TODO: finish it
 # this should take list of indeces (delimited by blank lines) and file, retrieves lines with given
 # indeces
 
