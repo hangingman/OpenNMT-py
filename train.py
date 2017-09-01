@@ -67,7 +67,23 @@ def eval(model, criterion, data, fields):
     for batch in validData:
         _, src_lengths = batch.src
         src = onmt.IO.make_features(batch, fields)
-        outputs, attn, _ = model(src, batch.tgt, src_lengths)
+
+        tm_src = []
+        tm_tgt = []
+        tm_lengths = []
+        for tm_idx in range(opt.k_tms):
+            tsrc = onmt.IO.make_tm_features(batch, fields, tm_idx)
+            tlengths = batch.__dict__['tm_src_' + str(tm_idx)][1]
+            ttgt = batch.__dict__['tm_tgt_' + str(tm_idx)]
+            tm_src.append(tsrc)
+            tm_tgt.append(ttgt)
+            tm_lengths.append(tlengths)
+
+        if opt.use_tms:
+            outputs, attn, _ = \
+                model(src, batch.tgt, src_lengths, tm_src, tm_tgt, tm_lengths)
+        else:
+            outputs, attn, _ = model(src, batch.tgt, src_lengths)
         gen_state = loss.makeLossBatch(outputs, batch, attn,
                                        (0, batch.tgt.size(0)))
         _, batch_stats = loss.computeLoss(batch=batch, **gen_state)
