@@ -1,7 +1,7 @@
 from __future__ import division
 
 import os
-
+import gc
 import onmt
 import onmt.Models
 import onmt.modules
@@ -78,6 +78,8 @@ def eval(model, criterion, data, fields):
 
 
 def trainModel(model, trainData, validData, fields, optim):
+    torch.backends.cudnn.enabled = False
+
     model.train()
 
     pad_id = fields['tgt'].vocab.stoi[onmt.IO.PAD_WORD]
@@ -165,6 +167,8 @@ def trainModel(model, trainData, validData, fields, optim):
                 # If truncated, don't backprop fully.
                 if dec_state is not None:
                     dec_state.detach()
+
+                gc.collect()
 
             if i % opt.report_every == -1 % opt.report_every:
                 report_stats.output(epoch, i+1, len(train),

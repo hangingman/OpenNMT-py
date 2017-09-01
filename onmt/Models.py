@@ -573,7 +573,6 @@ class NMTModel(nn.Module):
 
 class TM_NMTModel(NMTModel):
     def __init__(self, encoder, decoder, K=4, multigpu=False):
-        torch.backends.cudnn.enabled = False
         super(TM_NMTModel, self).__init__(encoder, decoder, multigpu=multigpu)
         self.KNN_K = K
 
