@@ -36,4 +36,4 @@ clean:
 	rm -rf $(DATA)
 
 demo-run:
-	./run_search_eng.sh ~/vec_models/wiki.cs.bin pejsekakocicka.txt 5 rev.pejsek.txt < pejsekakocicka.txt
+	./run_search_eng.sh ~/vec_models/wiki.cs.bin pejsekakocicka.txt 5 rev.pejsek.txt  pejsekakocicka.txt
