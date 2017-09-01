@@ -122,6 +122,14 @@ class ONMTDataset(torchtext.data.Dataset):
         examples = []
         src_words = []
         self.src_vocabs = []
+
+        # Hack to deal with the TMs (opt has to be None for some options,
+        # but we need it for the TMs)
+        old_opt = None
+        if opt and opt.is_translating:
+            old_opt = opt
+            opt = None
+        
         with codecs.open(src_path, "r", "utf-8") as src_file:
             for i, src_line in enumerate(src_file):
                 src_line = src_line.split()
@@ -182,7 +190,10 @@ class ONMTDataset(torchtext.data.Dataset):
                             mask[j+1] = src_vocab.stoi[tgt[j]]
                         examples[i]["alignment"] = mask
                 assert i + 1 == len(examples), "Len src and tgt do not match"
-
+        
+        # Hack to deal with the TM's
+        if old_opt:
+            opt = old_opt
         tms_k = opt.k_tms
         if self.type_ == "text" and opt.use_tms:
             path_tms = src_path + '.tms'
@@ -220,6 +231,11 @@ class ONMTDataset(torchtext.data.Dataset):
                             examples[i]["tm_tgt_" + str(j)] = tgt_tm_padded
             except:
                 pass
+
+        # If opt should be None (we are translating), then make it none,
+        # as we no longer need it
+        if opt and opt.is_translating:
+            opt = None
 
         keys = examples[0].keys()
         fields = [(k, fields[k]) for k in keys]
