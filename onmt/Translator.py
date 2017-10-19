@@ -54,7 +54,7 @@ class Translator(object):
             self.fert_dict = evaluation.get_fert_dict(model_opt.guided_fertility, "../dynet-att/en-de/iwslt2014/prep/bpe.train.de-en.de", self.src_dict)
         else:
             self.fert_dict = None
-
+       
         model.load_state_dict(checkpoint['model'])
         generator.load_state_dict(checkpoint['generator'])
 

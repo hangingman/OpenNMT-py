@@ -41,7 +41,8 @@ def constrained_softmax(z, u):
     ind = np.argsort(-e_z / u)
     s = 0.
     for i in ind:
-        assert Z != 0.0, "Invalid: Z==0"
+        # Temporary fix for underflow in Z
+        if round(Z, 12) == 0.0: Z = 0.000001
         val = e_z[i] * (1-s) / Z
         if val > u[i]:
             val = u[i]
@@ -171,8 +172,8 @@ class ConstrainedSparsemaxFunction(Function):
     def forward(self, input1, input2):
         z = input1.cpu().numpy()
         u = input2.cpu().numpy()
-        print("z:", z)
-        print("u:", u)
+        #print("z:", z)
+        #print("u:", u)
         probs = np.zeros_like(z)
         regions = np.zeros_like(z)
         for i in xrange(z.shape[0]):
@@ -202,10 +203,9 @@ class ConstrainedSparsemaxFunction(Function):
                                                         [1, r1.shape[1]]))
         np_grad_input2 = r2 * (np_grad_output - np.tile(avg[:,None],
                                                         [1, r2.shape[1]]))
-        print("grad_output:", np_grad_output)
-        print("grad1:", np_grad_input1)
-        print("grad2:", np_grad_input2)
-        pdb.set_trace()
+        #print("grad_output:", np_grad_output)
+        #print("grad1:", np_grad_input1)
+        #print("grad2:", np_grad_input2)
         ind = np.nonzero(np.sum(r1, 1) == 0)[0]
         for i in ind:
             np_grad_input1[i, :] = 0.
@@ -218,6 +218,7 @@ class ConstrainedSparsemaxFunction(Function):
            grad_input1  = grad_input1.cuda()
            grad_input2  = grad_input2.cuda()
         return grad_input1, grad_input2
+
 
 class ConstrainedSparsemax(Module):
     def forward(self, input1, input2):

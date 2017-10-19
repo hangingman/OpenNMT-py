@@ -1,4 +1,5 @@
-from __future__ import print_function, division
+# -*- coding: utf-8 -*-
+from __future__ import print_function, unicode_literals, division
 
 import sys
 reload(sys)
@@ -100,6 +101,8 @@ def saer_score(ref_align, hyp_align):
  
 def plot_heatmap(model_name, att_weights, idx, srcSent, tgtSent):
 
+    matplotlib.rc('font', **{'sans-serif' : 'Arial',
+                           'family' : 'sans-serif'})
     plt.figure(figsize=(20, 18), dpi=80)
     att_weights = np.transpose(att_weights[0][0].cpu().numpy())
     #print("Att_weights:", att_weights.shape)

@@ -10,6 +10,7 @@ import math
 import codecs
 import os
 import evaluation
+import pickle
 
 parser = argparse.ArgumentParser(description='translate.py')
 onmt.Markdown.add_md_help_argument(parser)
@@ -41,8 +42,8 @@ parser.add_argument('-replace_unk', action="store_true",
 # parser.add_argument('-phrase_table',
 #                     help="""Path to source-target dictionary to replace UNK
 #                     tokens. See README.md for the format of this file.""")
-#parser.add_argument('-guided_fertility', type=str, default=None,
-#                    help="""Get fertility values from external aligner, specify alignment file""")
+parser.add_argument('-guided_fertility', type=str, default=None,
+                    help="""Get fertility values from external aligner, specify alignment file""")
 
 parser.add_argument('-verbose', action="store_true",
                     help='Print scores and predictions for each sentence')
@@ -87,6 +88,8 @@ def main():
     predScoreTotal, predWordsTotal, goldScoreTotal, goldWordsTotal = 0, 0, 0, 0
 
     srcBatch, tgtBatch = [], []
+ 
+    attn_matrices = []   
 
     count = 0
 
@@ -113,7 +116,7 @@ def main():
 
         predBatch, predScore, goldScore, attn, src \
             = translator.translate(srcBatch, tgtBatch)
-        
+        attn_matrices.append(attn)
         # Store attention heatmaps
         if opt.heatmap:
             evaluation.plot_heatmap(opt.model, attn, k, srcBatch[0], predBatch[0][0])
@@ -163,7 +166,7 @@ def main():
                                                      attn[b][0][i][j]))
 
         srcBatch, tgtBatch = [], []
-
+    #pickle.dump(attn_matrices, open('attn_matrices_fert5_sink.out', 'wb'))
     reportScore('PRED', predScoreTotal, predWordsTotal)
     if tgtF:
         reportScore('GOLD', goldScoreTotal, goldWordsTotal)

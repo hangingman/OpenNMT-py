@@ -184,8 +184,9 @@ class Encoder(nn.Module):
               fertility_vals = F.relu(self.fertility_linear_2(fertility_vals))
               fertility_vals = 1 + torch.exp(self.fertility_out(fertility_vals))
               fertility_vals = fertility_vals.view(n_batch, s_len)
-            #elif self.guided_fertility:
-            #  fertility_vals = evaluations.get_fertility()
+              #fertility_vals = fertility_vals / torch.sum(fertility_vals, 1).repeat(1, s_len) * s_len
+            elif self.guided_fertility:
+              fertility_vals = evaluations.get_fertility()
             else:
               fertility_vals = None
             return hidden_t, outputs, fertility_vals
