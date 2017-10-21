@@ -116,7 +116,7 @@ def main():
 
         predBatch, predScore, goldScore, attn, src \
             = translator.translate(srcBatch, tgtBatch)
-        attn_matrices.append(attn)
+        #attn_matrices.append(attn)
         # Store attention heatmaps
         if opt.heatmap:
             evaluation.plot_heatmap(opt.model, attn, k, srcBatch[0], predBatch[0][0])
