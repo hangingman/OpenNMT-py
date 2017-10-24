@@ -69,6 +69,7 @@ if __name__ == "__main__":
     print
     print
 
+
     #sf = ConstrainedSoftmaxFunction()
     sf = ConstrainedSparsemaxFunction()
     z = Variable(torch.randn(batch_size, n).double().cuda(), requires_grad=True)
@@ -82,6 +83,16 @@ if __name__ == "__main__":
     #             requires_grad=True)
     #p = ConstrainedSoftmax()(z, u)
     import pdb; pdb.set_trace()
+
+    #############
+    # z_sample = np.load("z_sample")[None, :]
+    # u_sample = np.load("u_sample")[None, :]
+    # batch_size = z_sample.shape[0]
+    # n = z_sample.shape[1]
+    # z = Variable(torch.from_numpy(z_sample).double().cuda(), requires_grad=True)
+    # u = Variable(torch.from_numpy(u_sample).double().cuda(), requires_grad=True)
+    #############
+
     p = ConstrainedSparsemax()(z, u)
     print("p:", p)
     print("u:", u)

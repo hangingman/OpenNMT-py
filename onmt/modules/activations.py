@@ -36,7 +36,7 @@ def constrained_softmax(z, u):
     z -= np.max(z)
     e_z = np.exp(z)
     Z = e_z.sum()
-    # if Z==0: 
+    # if Z==0:
     #   return p, active, s
     ind = np.argsort(-e_z / u)
     s = 0.

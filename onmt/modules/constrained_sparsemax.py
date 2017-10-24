@@ -70,7 +70,7 @@ def solve_quadratic_problem(a, b, c, d):
         x[ind] = a[ind]
         regions[ind] = 0 # By convention.
         dd = d - c[ind].dot(x[ind])
-        ind = np.nonzero(a > b)[0]
+        ind = np.nonzero(a < b)[0]
         if len(ind):
             x[ind], tau, regions[ind] = \
                 solve_quadratic_problem(a[ind], b[ind], c[ind], dd)
