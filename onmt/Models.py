@@ -253,7 +253,7 @@ class Decoder(nn.Module):
                 opt.rnn_size, attn_type=opt.attention_type)
             self._copy = True
 
-    def forward(self, input, src, context, state, fertility_vals=None, fert_dict=None, upper_bounds=None):
+    def forward(self, input, src, context, state, fertility_vals=None, fert_dict=None, upper_bounds=None, test=False):
         """
         Forward through the decoder.
 
@@ -345,8 +345,12 @@ class Decoder(nn.Module):
                 # Initialize upper bounds for the current batch
  
                 if upper_bounds is None:
-                    tgt_lengths = [torch.nonzero(input[:,i].data).size(0) for i in range(n_batch_)]
-                    tgt_lengths = torch.Tensor(tgt_lengths).cuda()
+                    if not test:
+                    	tgt_lengths = [torch.nonzero(input[:,i].data).size(0) for i in range(n_batch_)]
+                    	tgt_lengths = torch.Tensor(tgt_lengths).cuda()
+		    else:
+                        # Maybe the ratio of tgt_len and src_len from training set would be a better estimate
+			tgt_lengths = torch.ones(n_batch_).cuda()
                     if self.predict_fertility:
                       #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
                       comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()

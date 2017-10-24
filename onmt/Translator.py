@@ -182,7 +182,8 @@ class Translator(object):
                                                          context, decStates,
                                                          fertility_vals=fertility_vals,
                                                          fert_dict=self.fert_dict,
-                                                         upper_bounds=upper_bounds)
+                                                         upper_bounds=upper_bounds,
+							 test=True)
 
             decOut = decOut.squeeze(0)
             # decOut: (beam*batch) x numWords
