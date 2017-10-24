@@ -26,7 +26,7 @@ def project_onto_simplex(a, radius=1.0):
     return x, tau, .5*np.dot(x-a, x-a)
 
 def constrained_softmax(z, u):
-    assert round(np.sum(u), 5) >= 1.0, "Invalid: sum(u) < 1"
+    assert round(np.sum(u), 5) >= 1.0, pdb.set_trace()
     p = np.zeros_like(z)
     active = np.ones_like(z)
     nz = np.nonzero(u)[0]
