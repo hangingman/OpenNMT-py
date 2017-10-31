@@ -26,6 +26,8 @@ def double_constrained_sparsemax(z, l, u):
     '''
     #assert round(np.sum(u), 3) >= 1.0 , "Invalid : sum(u) < 1.0"
     #assert round(np.sum(u), 3) >= 1.0 , pdb.set_trace()
+    assert (u>=0).all(), "Invalid: u[i]<0 for some i"
+
     dtype = z.dtype
     z = z.astype('float64')
     l = l.astype('float64')

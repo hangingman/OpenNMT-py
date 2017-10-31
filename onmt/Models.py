@@ -334,6 +334,46 @@ class Decoder(nn.Module):
             # upper_bounds = Variable(torch.ones(attn.size()).cuda())
             # Standard RNN decoder.
             for i, emb_t in enumerate(emb.split(1)):
+
+                # Initialize upper bounds for the current batch
+ 
+                if upper_bounds is None:
+                    #if not test:
+                    # 	tgt_lengths = [torch.nonzero(input[:,i].data).size(0) for i in range(n_batch_)]
+                    # 	tgt_lengths = torch.Tensor(tgt_lengths).cuda()
+		    #else:
+                    #    # Maybe the ratio of tgt_len and src_len from training set would be a better estimate
+	            #	 tgt_lengths = torch.ones(n_batch_).cuda()
+                    if self.predict_fertility:
+                      #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
+                      #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
+                      #print("fertility_vals:", fertility_vals.data)
+                      #max_word_coverage = Variable(torch.max(fertility_vals.data, comp_tensor))
+                      max_word_coverage = fertility_vals
+                    elif self.guided_fertility:
+                      #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
+                      #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
+                      fertility_vals = evaluation.getBatchFertilities(fert_dict, src)
+                      max_word_coverage = fertility_vals
+                      #max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
+                    else:
+                      #max_word_coverage = max(
+                      #    self.fertility, float(emb.size(0)) / context.size(0))
+                      max_word_coverage = self.fertility
+                      #max_word_coverage = Variable(torch.max(torch.FloatTensor([self.fertility]).repeat(n_batch_).cuda(), 
+		      #				     tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_))
+                 #    upper_bounds = -attn + max_word_coverage
+                 #else:
+                 #    upper_bounds -= attn
+                    upper_bounds = max_word_coverage
+ 
+                # Use <SINK> token for absorbing remaining attention weight
+                
+                upper_bounds[:,-1] = 100*torch.ones(upper_bounds.size(0))
+                #if (upper_bounds.size(0) > torch.sum(torch.sum(upper_bounds, 1)).cpu().data.numpy())[0]:
+                #    print("inv sum:", torch.sum(upper_bounds, 1))
+                #    print("att:", attn)
+
                 emb_t = emb_t.squeeze(0)
                 if self.input_feed:
                     emb_t = torch.cat([emb_t, output], 1)
@@ -342,41 +382,10 @@ class Decoder(nn.Module):
                 attn_output, attn = self.attn(rnn_output,
                                               context.transpose(0, 1),
                                               upper_bounds=upper_bounds)
-                # Initialize upper bounds for the current batch
- 
-                if upper_bounds is None:
-                    if not test:
-                    	tgt_lengths = [torch.nonzero(input[:,i].data).size(0) for i in range(n_batch_)]
-                    	tgt_lengths = torch.Tensor(tgt_lengths).cuda()
-		    else:
-                        # Maybe the ratio of tgt_len and src_len from training set would be a better estimate
-			tgt_lengths = torch.ones(n_batch_).cuda()
-                    if self.predict_fertility:
-                      #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
-                      comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
-                      #print("fertility_vals:", fertility_vals.data)
-                      max_word_coverage = Variable(torch.max(fertility_vals.data, comp_tensor))
-                    elif self.guided_fertility:
-                      #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
-                      comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
-                      fertility_vals = evaluation.getBatchFertilities(fert_dict, src)
-                      max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
-                    else:
-                      #max_word_coverage = max(
-                      #    self.fertility, float(emb.size(0)) / context.size(0))
-                      max_word_coverage = Variable(torch.max(torch.FloatTensor([self.fertility]).repeat(n_batch_).cuda(), 
-							     tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_))
-                    upper_bounds = -attn + max_word_coverage
-                else:
-                    upper_bounds -= attn
 
-                # Use <SINK> token for absorbing remaining attention weight
-                
-                upper_bounds[:,-1] = 100*torch.ones(upper_bounds.size(0))
-                #if (upper_bounds.size(0) > torch.sum(torch.sum(upper_bounds, 1)).cpu().data.numpy())[0]:
-                #    print("inv sum:", torch.sum(upper_bounds, 1))
-                #    print("att:", attn)
+                upper_bounds -= attn
 
+                  
                 if self.context_gate is not None:
                     output = self.context_gate(
                         emb_t, rnn_output, attn_output
