@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 from onmt.modules.Util import BottleLinear
 from onmt.modules import aeq
 from onmt.modules.activations import Softmax, Sparsemax, ConstrainedSoftmax, \
     ConstrainedSparsemax
 import pdb
+import numpy as np
 
 class GlobalAttention(nn.Module):
     """
@@ -37,7 +39,7 @@ class GlobalAttention(nn.Module):
 
     """
     def __init__(self, dim, coverage=False, attn_type="dotprod",
-                 attn_transform="softmax"):
+                 attn_transform="softmax", c_attn=0.0):
         super(GlobalAttention, self).__init__()
 
         self.dim = dim
@@ -52,7 +54,8 @@ class GlobalAttention(nn.Module):
             self.linear_context = BottleLinear(dim, dim, bias=False)
             self.linear_query = nn.Linear(dim, dim, bias=False)
             self.v = BottleLinear(dim, 1, bias=False)
-
+            # Modify initialization of self.v to have high variance
+            # self.v.weight.data.normal_(0, 1000)
         if attn_transform == 'softmax':
             self.sm = nn.Softmax()
         elif attn_transform == 'sparsemax':
@@ -67,6 +70,7 @@ class GlobalAttention(nn.Module):
         
         self.tanh = nn.Tanh()
         self.mask = None
+        self.c_attn = c_attn
 
         if coverage:
             self.linear_cover = nn.Linear(1, dim, bias=False)
@@ -101,7 +105,6 @@ class GlobalAttention(nn.Module):
             context += self.linear_cover(coverage.view(-1).unsqueeze(1)) \
                            .view_as(context)
             context = self.tanh(context)
-
         # Alignment/Attention Function
         if self.attn_type == "dotprod":
             # batch x dim x 1
@@ -118,7 +121,16 @@ class GlobalAttention(nn.Module):
             # batch x sourceL x dim
             wquh = self.tanh(wquh)
             # batch x sourceL
+            #print("self.v: ", self.v.weight)
             attn = self.v(wquh.contiguous()).squeeze()
+ 
+        # EXPERIMENTAL
+        
+        if upper_bounds is not None and 'constrained' in self.attn_transform and self.c_attn!=0.0:
+            indices = torch.arange(0,upper_bounds.size(1)-1).cuda().long()
+            uu = torch.index_select(upper_bounds.data, 1, indices) 
+            attn = attn + self.c_attn * Variable(torch.cat((uu, torch.zeros(upper_bounds.size(0)).cuda()), 1))
+
 
         if self.mask is not None:
             attn.data.masked_fill_(self.mask, -float('inf'))
@@ -126,6 +138,7 @@ class GlobalAttention(nn.Module):
             if upper_bounds is None:
                 attn = nn.Softmax()(attn)
             else:
+        	# assert round(np.sum(upper_bounds.cpu().data.numpy()), 5) >= 1.0, pdb.set_trace() 
                 attn = self.sm(attn, upper_bounds)
         elif self.attn_transform == 'constrained_sparsemax':
             if upper_bounds is None:
@@ -138,13 +151,12 @@ class GlobalAttention(nn.Module):
             #    attn = self.sm(attn)
             #else:
             #    attn = self.sm(attn - upper_bounds)
-
+        
         # Compute context weighted by attention.
         # batch x 1 x sourceL
         attn3 = attn.view(attn.size(0), 1, attn.size(1))
         # batch x dim
         weightedContext = torch.bmm(attn3, context).squeeze(1)
-
         # Concatenate the input to context (Luong only)
         if self.attn_type == "dotprod":
             weightedContext = torch.cat((weightedContext, input), 1)

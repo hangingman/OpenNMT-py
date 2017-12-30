@@ -15,6 +15,7 @@ def NMTCriterion(vocabSize, opt):
     weight = torch.ones(vocabSize)
     weight[onmt.Constants.PAD] = 0
     crit = nn.NLLLoss(weight, size_average=False)
+    #crit = nn.NLLLoss(size_average=False, ignore_index=onmt.Constants.PAD)
     if opt.gpus:
         crit.cuda()
     return crit
@@ -186,7 +187,13 @@ class MemoryEfficientLoss:
                 #zero_mat = Variable(torch.Tensor([0]).repeat(upper_bounds.size(0), upper_bounds.size(1)).cuda())
                 #loss_t += self.lambda_exhaust * self.mse(upper_bounds, zero_mat).sum()
                 #loss_t += self.lambda_exhaust * s["upper_bounds_t"].sum()/(s["upper_bounds_t"].size(0)*s["upper_bounds_t"].size(1))
-                loss_t += self.lambda_exhaust * s["upper_bounds_t"].sum()/s["upper_bounds_t"].size(1)
+                
+                u_last_timestep = s["upper_bounds_t"][s["upper_bounds_t"].size(0)-1]  
+                # Remove sink token
+                indices = torch.arange(0,s["upper_bounds_t"].size(2)-1).long().cuda()
+                u_t = torch.index_select(u_last_timestep.data,1,indices)
+                
+                loss_t += self.lambda_exhaust * u_t.sum()
                 # loss_t += self.lambda_exhaust * -1 * torch.pow(attns, 2).sum()
             stats.update(self.score(loss_t, scores_t, s["targ_t"]))
             if not self.eval:

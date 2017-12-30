@@ -10,6 +10,7 @@ import torch.nn as nn
 from torch import cuda
 import evaluation
 import pdb
+import torch.nn.init as init
 
 parser = argparse.ArgumentParser(description='train.py')
 onmt.Markdown.add_md_help_argument(parser)
@@ -83,6 +84,9 @@ parser.add_argument('-attn_transform', type=str, default='softmax',
                     choices=['softmax', 'constrained_softmax','sparsemax',
                              'constrained_sparsemax'],
                     help="""The attention transform to use""")
+
+parser.add_argument('-c_attn', type=float, default=0.0,
+                    help="""c factor for increasing a by u""")
 parser.add_argument('-fertility', type=float, default=2.0,
                     help="""Constant fertility value for each word in the source""")
 parser.add_argument('-predict_fertility', action="store_true",
@@ -129,11 +133,12 @@ parser.add_argument('-truncated_decoder', type=int, default=0,
                     help="""Truncated bptt.""")
 
 # learning rate
-parser.add_argument('-learning_rate', type=float, default=1,
+parser.add_argument('-learning_rate', type=float, default=1.0,
                     help="""Starting learning rate. If adagrad/adadelta/adam is
                     used, then this is the global learning rate. Recommended
                     settings: sgd = 1, adagrad = 0.1,
                     adadelta = 1, adam = 0.001""")
+parser.add_argument('-momentum', type=float, default=0)
 parser.add_argument('-learning_rate_decay', type=float, default=0.5,
                     help="""If update_learning_rate, decay learning rate by
                     this much if (i) perplexity does not decrease on the
@@ -424,6 +429,10 @@ def main():
             print('Intializing params')
             for p in model.parameters():
                 p.data.uniform_(-opt.param_init, opt.param_init)
+                # if p.data.dim()>1:
+                	# init.xavier_uniform(p.data)
+        # else:
+        #     init.constant(p.data, 0.0)
 
         encoder.embeddings.load_pretrained_vectors(opt.pre_word_vecs_enc)
         decoder.embeddings.load_pretrained_vectors(opt.pre_word_vecs_dec)
