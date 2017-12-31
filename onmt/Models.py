@@ -241,7 +241,8 @@ class Decoder(nn.Module):
             opt.rnn_size,
             coverage=self._coverage,
             attn_type=opt.attention_type,
-            attn_transform=opt.attn_transform
+            attn_transform=opt.attn_transform,
+            c_attn=opt.c_attn
         )
         self.fertility = opt.fertility        
         self.predict_fertility = opt.predict_fertility
@@ -359,7 +360,7 @@ class Decoder(nn.Module):
                     else:
                       #max_word_coverage = max(
                       #    self.fertility, float(emb.size(0)) / context.size(0))
-                      max_word_coverage = self.fertility
+                      max_word_coverage = Variable(torch.Tensor([self.fertility]).repeat(n_batch_, s_len_)).cuda()
                       #max_word_coverage = Variable(torch.max(torch.FloatTensor([self.fertility]).repeat(n_batch_).cuda(), 
 		      #				     tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_))
                  #    upper_bounds = -attn + max_word_coverage
@@ -383,9 +384,14 @@ class Decoder(nn.Module):
                                               context.transpose(0, 1),
                                               upper_bounds=upper_bounds)
 
-                upper_bounds -= attn
+                k_attn = 1
+                # upper_bounds -= attn
+                upper_bounds = Variable(torch.max((upper_bounds - k_attn * attn).data, torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
+                # if np.any(upper_bounds.cpu().data.numpy()<1):
+                #     print("upper bounds less than 1.0")
+                # print("attn: ", attn)
+                # print("upper_bounds: ", upper_bounds)
 
-                  
                 if self.context_gate is not None:
                     output = self.context_gate(
                         emb_t, rnn_output, attn_output
