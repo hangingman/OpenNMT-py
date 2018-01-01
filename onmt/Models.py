@@ -337,14 +337,14 @@ class Decoder(nn.Module):
             for i, emb_t in enumerate(emb.split(1)):
 
                 # Initialize upper bounds for the current batch
- 
+
                 if upper_bounds is None:
                     #if not test:
                     # 	tgt_lengths = [torch.nonzero(input[:,i].data).size(0) for i in range(n_batch_)]
                     # 	tgt_lengths = torch.Tensor(tgt_lengths).cuda()
-		    #else:
+                    #else:
                     #    # Maybe the ratio of tgt_len and src_len from training set would be a better estimate
-	            #	 tgt_lengths = torch.ones(n_batch_).cuda()
+                    #	 tgt_lengths = torch.ones(n_batch_).cuda()
                     if self.predict_fertility:
                       #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
                       #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
@@ -362,15 +362,15 @@ class Decoder(nn.Module):
                       #    self.fertility, float(emb.size(0)) / context.size(0))
                       max_word_coverage = Variable(torch.Tensor([self.fertility]).repeat(n_batch_, s_len_)).cuda()
                       #max_word_coverage = Variable(torch.max(torch.FloatTensor([self.fertility]).repeat(n_batch_).cuda(), 
-		      #				     tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_))
+                      #				     tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_))
                  #    upper_bounds = -attn + max_word_coverage
                  #else:
                  #    upper_bounds -= attn
                     upper_bounds = max_word_coverage
- 
+
                 # Use <SINK> token for absorbing remaining attention weight
-                
-                upper_bounds[:,-1] = 100*torch.ones(upper_bounds.size(0))
+
+                upper_bounds[:,-1] = Variable(100.*torch.ones(upper_bounds.size(0)))
                 #if (upper_bounds.size(0) > torch.sum(torch.sum(upper_bounds, 1)).cpu().data.numpy())[0]:
                 #    print("inv sum:", torch.sum(upper_bounds, 1))
                 #    print("att:", attn)
@@ -386,7 +386,9 @@ class Decoder(nn.Module):
 
                 k_attn = 1
                 # upper_bounds -= attn
-                upper_bounds = Variable(torch.max((upper_bounds - k_attn * attn).data, torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
+                # NOTE: this below may be dangerous, several conversions between variables and tensors that may break backprop.
+                #upper_bounds = Variable(torch.max((upper_bounds - k_attn * attn).data, torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
+                upper_bounds = torch.max(upper_bounds - k_attn * attn, Variable(torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
                 # if np.any(upper_bounds.cpu().data.numpy()<1):
                 #     print("upper bounds less than 1.0")
                 # print("attn: ", attn)
