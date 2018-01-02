@@ -151,6 +151,7 @@ class ConstrainedSoftmaxFunction(Function):
         active, s = self.saved_intermediate
         probs = output
         m = ((1. - active) * probs * grad_output).sum(1) / (1. - s)
+        m = m.squeeze(-1) # This is needed for back-compatibility with pytorch 0.1.x.
         # If all are active, then sum(u) = 1, s = 1, p = u, so we need to do
         # the following to avoid nans.
         ind = active.sum(1) == active.size(1)

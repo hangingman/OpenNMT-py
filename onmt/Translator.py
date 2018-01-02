@@ -182,9 +182,10 @@ class Translator(object):
                                                          context, decStates,
                                                          fertility_vals=fertility_vals,
                                                          fert_dict=self.fert_dict,
-                                                         upper_bounds=upper_bounds,
-							 test=True)
+                                                         upper_bounds=decStates.attn_upper_bounds,
+                                                         test=True)
 
+            #import pdb; pdb.set_trace()
             decOut = decOut.squeeze(0)
             # decOut: (beam*batch) x numWords
             attn["std"] = attn["std"].view(beamSize, batchSize, -1) \
@@ -260,7 +261,8 @@ class Translator(object):
                     [[self.tgt_dict.getLabel(id)
                       for id in t.tolist()]
                      for t in beam[b].nextYs][1:])
-
+        #import pdb; pdb.set_trace()
+        print allAttn[0][0].sum(0)
         return allHyp, allScores, allAttn, goldScores
 
     def translate(self, srcBatch, goldBatch):
