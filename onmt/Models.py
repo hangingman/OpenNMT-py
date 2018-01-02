@@ -391,11 +391,9 @@ class Decoder(nn.Module):
                 #    for k in range(attn_probs.shape[0]):
                 #        print('\t'.join(str(val) for val in list(attn_probs[k, :])))
 
-                k_attn = 1
-                # upper_bounds -= attn
-                # NOTE: this below may be dangerous, several conversions between variables and tensors that may break backprop.
-                #upper_bounds = Variable(torch.max((upper_bounds - k_attn * attn).data, torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
-                upper_bounds = torch.max(upper_bounds - k_attn * attn, Variable(torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
+                upper_bounds -= attn
+                #k_attn = 1
+                #upper_bounds = torch.max(upper_bounds - k_attn * attn, Variable(torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
                 # if np.any(upper_bounds.cpu().data.numpy()<1):
                 #     print("upper bounds less than 1.0")
                 # print("attn: ", attn)
