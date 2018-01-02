@@ -48,6 +48,8 @@ parser.add_argument('-attn_transform', type=str, default=None,
                     choices=['softmax', 'constrained_softmax','sparsemax',
                              'constrained_sparsemax'],
                     help="""The attention transform to use (None means the one stored in the model.""")
+parser.add_argument('-fertility', type=float, default=None,
+                    help="""Constant fertility value for each word in the source (None means the one stored in the model.""")
 
 parser.add_argument('-verbose', action="store_true",
                     help='Print scores and predictions for each sentence')

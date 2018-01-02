@@ -33,6 +33,8 @@ class Translator(object):
 
         if opt.attn_transform is not None:
             model_opt.attn_transform = opt.attn_transform
+        if opt.fertility is not None:
+            model_opt.fertility = opt.fertility
 
         print(model_opt)
         import pdb; pdb.set_trace()
