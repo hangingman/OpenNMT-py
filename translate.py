@@ -42,14 +42,16 @@ parser.add_argument('-replace_unk', action="store_true",
 # parser.add_argument('-phrase_table',
 #                     help="""Path to source-target dictionary to replace UNK
 #                     tokens. See README.md for the format of this file.""")
-parser.add_argument('-guided_fertility', type=str, default=None,
-                    help="""Get fertility values from external aligner, specify alignment file""")
 parser.add_argument('-attn_transform', type=str, default=None,
                     choices=['softmax', 'constrained_softmax','sparsemax',
                              'constrained_sparsemax'],
                     help="""The attention transform to use (None means the one stored in the model.""")
 parser.add_argument('-fertility', type=float, default=None,
                     help="""Constant fertility value for each word in the source (None means the one stored in the model.""")
+parser.add_argument('-guided_fertility', type=str, default=None,
+                    help="""Get fertility values from external aligner, specify alignment file (None means the one stored in the model.""")
+parser.add_argument('-guided_fertility_source_file', type=str, default=None,
+                    help="""Get fertility values from external aligner, specify source file (None means the one stored in the model.""")
 
 parser.add_argument('-verbose', action="store_true",
                     help='Print scores and predictions for each sentence')

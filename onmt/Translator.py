@@ -27,7 +27,7 @@ class Translator(object):
 
         self.copy_attn = model_opt.copy_attn \
             if "copy_attn" in model_opt else "std"
-        
+
         self.predict_fertility = model_opt.predict_fertility \
             if "predict_fertility" in model_opt else False
 
@@ -35,6 +35,10 @@ class Translator(object):
             model_opt.attn_transform = opt.attn_transform
         if opt.fertility is not None:
             model_opt.fertility = opt.fertility
+        if opt.guided_fertility is not None:
+            model_opt.guided_fertility = opt.guided_fertility
+        if opt.guided_fertility_source_file is not None:
+            model_opt.guided_fertility_source_file = opt.guided_fertility_source_file
 
         print(model_opt)
         import pdb; pdb.set_trace()
@@ -54,13 +58,15 @@ class Translator(object):
         elif self.copy_attn:
             generator = onmt.modules.CopyGenerator(model_opt, self.src_dict,
                                                    self.tgt_dict)
-        
-        if model_opt.guided_fertility!=None: 
+
+        if model_opt.guided_fertility!=None:
             print('Getting fertilities from external alignments..')
-            self.fert_dict = evaluation.get_fert_dict(model_opt.guided_fertility, "iwslt2014-de-en/bpe.train.de-en.sink.de", self.src_dict)
+            self.fert_dict = evaluation.get_fert_dict(model_opt.guided_fertility,
+                                                      model_opt.guided_fertility_source_file,
+                                                      self.src_dict)
         else:
             self.fert_dict = None
-       
+
         model.load_state_dict(checkpoint['model'])
         generator.load_state_dict(checkpoint['generator'])
 

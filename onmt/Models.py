@@ -187,7 +187,7 @@ class Encoder(nn.Module):
               fertility_vals = fertility_vals.view(n_batch, s_len)
               #fertility_vals = fertility_vals / torch.sum(fertility_vals, 1).repeat(1, s_len) * s_len
             elif self.guided_fertility:
-              fertility_vals = evaluations.get_fertility()
+              fertility_vals = None #evaluation.get_fertility()
             else:
               fertility_vals = None
             return hidden_t, outputs, fertility_vals
@@ -245,7 +245,7 @@ class Decoder(nn.Module):
             attn_transform=opt.attn_transform,
             c_attn=opt.c_attn
         )
-        self.fertility = opt.fertility        
+        self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
         self.guided_fertility = opt.guided_fertility
         # Separate Copy Attention.
@@ -355,7 +355,8 @@ class Decoder(nn.Module):
                     elif self.guided_fertility:
                       #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
                       #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
-                      fertility_vals = evaluation.getBatchFertilities(fert_dict, src)
+                      #import pdb; pdb.set_trace()
+                      fertility_vals = Variable(evaluation.getBatchFertilities(fert_dict, src).transpose(1, 0).contiguous())
                       max_word_coverage = fertility_vals
                       #max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
                     else:
@@ -371,6 +372,7 @@ class Decoder(nn.Module):
 
                 # Use <SINK> token for absorbing remaining attention weight
 
+                #import pdb; pdb.set_trace()
                 upper_bounds[:,-1] = Variable(100.*torch.ones(upper_bounds.size(0)))
                 #if (upper_bounds.size(0) > torch.sum(torch.sum(upper_bounds, 1)).cpu().data.numpy())[0]:
                 #    print("inv sum:", torch.sum(upper_bounds, 1))

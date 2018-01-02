@@ -93,6 +93,8 @@ parser.add_argument('-predict_fertility', action="store_true",
                     help="""Predict fertility value for each word in the source""")
 parser.add_argument('-guided_fertility', type=str, default=None,
                     help="""Get fertility values from external aligner, specify alignment file""")
+parser.add_argument('-guided_fertility_source_file', type=str, default=None,
+                    help="""Get fertility values from external aligner, specify source file""")
 # Optimization options
 parser.add_argument('-encoder_type', default='text',
                     help="Type of encoder to use. Options are [text|img].")
@@ -449,10 +451,12 @@ def main():
         print(optim)
 
     optim.set_parameters(model.parameters())
-    
-    if opt.guided_fertility: 
-      print('Getting fertilities from external alignments..')     
-      fert_dict = evaluation.get_fert_dict(opt.guided_fertility, "../data/de-en-large/stripped.bpe.train.de-en-l.tok.low.de", dicts["src"])
+
+    if opt.guided_fertility:
+      print('Getting fertilities from external alignments..')
+      fert_dict = evaluation.get_fert_dict(opt.guided_fertility,
+                                           opt.guided_fertility_source_file,
+                                           dicts["src"])
     else:
       fert_dict = None
 
