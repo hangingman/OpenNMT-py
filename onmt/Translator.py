@@ -30,8 +30,12 @@ class Translator(object):
         
         self.predict_fertility = model_opt.predict_fertility \
             if "predict_fertility" in model_opt else False
-        
+
+        if opt.attn_transform is not None:
+            model_opt.attn_transform = opt.attn_transform
+
         print(model_opt)
+        import pdb; pdb.set_trace()
         if self._type == "text":
             encoder = onmt.Models.Encoder(model_opt, self.src_dict,
                                           self.src_feature_dicts)

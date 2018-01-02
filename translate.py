@@ -44,6 +44,10 @@ parser.add_argument('-replace_unk', action="store_true",
 #                     tokens. See README.md for the format of this file.""")
 parser.add_argument('-guided_fertility', type=str, default=None,
                     help="""Get fertility values from external aligner, specify alignment file""")
+parser.add_argument('-attn_transform', type=str, default=None,
+                    choices=['softmax', 'constrained_softmax','sparsemax',
+                             'constrained_sparsemax'],
+                    help="""The attention transform to use (None means the one stored in the model.""")
 
 parser.add_argument('-verbose', action="store_true",
                     help='Print scores and predictions for each sentence')
