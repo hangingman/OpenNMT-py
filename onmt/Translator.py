@@ -51,7 +51,7 @@ class Translator(object):
         
         if model_opt.guided_fertility!=None: 
             print('Getting fertilities from external alignments..')
-            self.fert_dict = evaluation.get_fert_dict(model_opt.guided_fertility, "../dynet-att/en-de/iwslt2014/prep/bpe.train.de-en.de", self.src_dict)
+            self.fert_dict = evaluation.get_fert_dict(model_opt.guided_fertility, "iwslt2014-de-en/bpe.train.de-en.sink.de", self.src_dict)
         else:
             self.fert_dict = None
        
