@@ -385,8 +385,8 @@ class Decoder(nn.Module):
                                               upper_bounds=upper_bounds)
 
                 k_attn = 1
-                # upper_bounds -= attn
-                upper_bounds = Variable(torch.max((upper_bounds - k_attn * attn).data, torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
+                upper_bounds -= attn
+                # upper_bounds = Variable(torch.max((upper_bounds - k_attn * attn).data, torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
                 # if np.any(upper_bounds.cpu().data.numpy()<1):
                 #     print("upper bounds less than 1.0")
                 # print("attn: ", attn)
