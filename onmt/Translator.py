@@ -262,10 +262,11 @@ class Translator(object):
                       for id in t.tolist()]
                      for t in beam[b].nextYs][1:])
         #import pdb; pdb.set_trace()
-        cum_attn = allAttn[0][0].sum(0).squeeze(0).cpu().numpy()
-        fert = fertility_vals.data[0, :].cpu().numpy()
-        for f, c in zip(cum_attn, fert):
-            print('%f (%f)' % (f, c))
+        if fertility_vals is not None:
+            cum_attn = allAttn[0][0].sum(0).squeeze(0).cpu().numpy()
+            fert = fertility_vals.data[0, :].cpu().numpy()
+            for f, c in zip(cum_attn, fert):
+                print('%f (%f)' % (f, c))
         #print allAttn[0][0].sum(0)
         return allHyp, allScores, allAttn, goldScores
 
