@@ -126,7 +126,7 @@ class Encoder(nn.Module):
                  bidirectional=opt.brnn)
         
         self.predict_fertility = opt.predict_fertility
- 
+
         if self.predict_fertility:
           self.fertility_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, 2 * self.hidden_size * self.num_directions)
           self.fertility_linear_2 = nn.Linear(2 * self.hidden_size * self.num_directions, 2 * self.hidden_size * self.num_directions)
@@ -170,6 +170,7 @@ class Encoder(nn.Module):
             return Variable(emb.data), out.transpose(0, 1).contiguous()
 
         else:
+            #import pdb; pdb.set_trace()
             # Standard RNN encoder.
             packed_emb = emb
             if lengths is not None:
@@ -337,14 +338,14 @@ class Decoder(nn.Module):
             for i, emb_t in enumerate(emb.split(1)):
 
                 # Initialize upper bounds for the current batch
- 
+
                 if upper_bounds is None:
                     #if not test:
                     # 	tgt_lengths = [torch.nonzero(input[:,i].data).size(0) for i in range(n_batch_)]
                     # 	tgt_lengths = torch.Tensor(tgt_lengths).cuda()
-		    #else:
+                    #else:
                     #    # Maybe the ratio of tgt_len and src_len from training set would be a better estimate
-	            #	 tgt_lengths = torch.ones(n_batch_).cuda()
+                    #	 tgt_lengths = torch.ones(n_batch_).cuda()
                     if self.predict_fertility:
                       #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
                       #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
@@ -362,15 +363,15 @@ class Decoder(nn.Module):
                       #    self.fertility, float(emb.size(0)) / context.size(0))
                       max_word_coverage = Variable(torch.Tensor([self.fertility]).repeat(n_batch_, s_len_)).cuda()
                       #max_word_coverage = Variable(torch.max(torch.FloatTensor([self.fertility]).repeat(n_batch_).cuda(), 
-		      #				     tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_))
+                      #				     tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_))
                  #    upper_bounds = -attn + max_word_coverage
                  #else:
                  #    upper_bounds -= attn
                     upper_bounds = max_word_coverage
- 
+
                 # Use <SINK> token for absorbing remaining attention weight
-                
-                upper_bounds[:,-1] = 100*torch.ones(upper_bounds.size(0))
+
+                upper_bounds[:,-1] = Variable(100.*torch.ones(upper_bounds.size(0)))
                 #if (upper_bounds.size(0) > torch.sum(torch.sum(upper_bounds, 1)).cpu().data.numpy())[0]:
                 #    print("inv sum:", torch.sum(upper_bounds, 1))
                 #    print("att:", attn)
@@ -383,10 +384,18 @@ class Decoder(nn.Module):
                 attn_output, attn = self.attn(rnn_output,
                                               context.transpose(0, 1),
                                               upper_bounds=upper_bounds)
+                #import pdb; pdb.set_trace()
+                #print_attention = True
+                #if print_attention:
+                #    attn_probs = attn.data.cpu().numpy()
+                #    for k in range(attn_probs.shape[0]):
+                #        print('\t'.join(str(val) for val in list(attn_probs[k, :])))
 
                 k_attn = 1
-                upper_bounds -= attn
-                # upper_bounds = Variable(torch.max((upper_bounds - k_attn * attn).data, torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
+                # upper_bounds -= attn
+                # NOTE: this below may be dangerous, several conversions between variables and tensors that may break backprop.
+                #upper_bounds = Variable(torch.max((upper_bounds - k_attn * attn).data, torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
+                upper_bounds = torch.max(upper_bounds - k_attn * attn, Variable(torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
                 # if np.any(upper_bounds.cpu().data.numpy()<1):
                 #     print("upper bounds less than 1.0")
                 # print("attn: ", attn)
@@ -413,11 +422,12 @@ class Decoder(nn.Module):
                                                   context.transpose(0, 1))
                     attns["copy"] += [copy_attn]
                 if self.exhaustion_loss:
-                    attns["upper_bounds"] += [upper_bounds]       
-         
+                    attns["upper_bounds"] += [upper_bounds]
+
             state = RNNDecoderState(hidden, output.unsqueeze(0),
                                     coverage.unsqueeze(0)
-                                    if coverage is not None else None)
+                                    if coverage is not None else None,
+                                    upper_bounds)
             outputs = torch.stack(outputs)
             for k in attns:
                 attns[k] = torch.stack(attns[k])
@@ -496,9 +506,9 @@ class DecoderState(object):
             sentStates.data.copy_(
                 sentStates.data.index_select(1, positions))
 
-
 class RNNDecoderState(DecoderState):
-    def __init__(self, rnnstate, input_feed=None, coverage=None):
+    def __init__(self, rnnstate, input_feed=None, coverage=None,
+                 attn_upper_bounds=None):
         # all objects are X x batch x dim
         # or X x (beam * sent) for beam search
         if not isinstance(rnnstate, tuple):
@@ -507,6 +517,7 @@ class RNNDecoderState(DecoderState):
             self.hidden = rnnstate
         self.input_feed = input_feed
         self.coverage = coverage
+        self.attn_upper_bounds = attn_upper_bounds
         self.all = self.hidden + (self.input_feed,)
 
     def init_input_feed(self, context, rnn_size):
@@ -523,6 +534,18 @@ class RNNDecoderState(DecoderState):
         self.input_feed = vars[-1]
         self.all = self.hidden + (self.input_feed,)
 
+    def beamUpdate_(self, idx, positions, beamSize):
+        # I'm overriding this method to handle the upper bounds in the beam
+        # updates. May be simpler to add this as part of self.all and not
+        # do the overriding.
+        #import pdb; pdb.set_trace()
+        DecoderState.beamUpdate_(self, idx, positions, beamSize)
+        if self.attn_upper_bounds is not None:
+            e = self.attn_upper_bounds
+            br, d = e.size()
+            sentStates = e.view(beamSize, br // beamSize, d)[:, idx]
+            sentStates.data.copy_(
+                sentStates.data.index_select(0, positions))
 
 class TransformerDecoderState(DecoderState):
     def __init__(self, input=None):
