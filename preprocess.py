@@ -278,7 +278,7 @@ def main():
                 sent.append(dicts['src'].idxToLabel[elem])
             sents.append(" ".join(sent)+"\n")
 
-        with open("stripped.bpe.train.de-en-l.tok.low.de",'w') as f:
+        with open("stripped" + opt.train_src,'w') as f:
             f.writelines(sents)
 
         sents = []
@@ -289,7 +289,7 @@ def main():
                 sent.append(dicts['tgt'].idxToLabel[elem])
             sents.append(" ".join(sent)+"\n")
 
-        with open("stripped.bpe.train.de-en-l.tok.low.en",'w') as f:
+        with open("stripped" + opt.train_tgt,'w') as f:
             f.writelines(sents)
 
     print('Preparing validation ...')

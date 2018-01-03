@@ -105,6 +105,7 @@ class MemoryEfficientLoss:
                  copy_loss=False,
                  coverage_loss=False,
                  exhaustion_loss=False,
+		 fertility_loss=False,
                  eval=False):
         """
         Args:
@@ -118,9 +119,11 @@ class MemoryEfficientLoss:
         self.max_batches = opt.max_generator_batches
         self.copy_loss = copy_loss
         self.lambda_coverage = opt.lambda_coverage
+        self.lambda_fertility = opt.lambda_fertility
         self.coverage_loss = coverage_loss
         self.exhaustion_loss = exhaustion_loss
         self.lambda_exhaust = opt.lambda_exhaust
+        self.fertility_loss = fertility_loss
         self.mse = torch.nn.MSELoss()
 
     def score(self, loss_t, scores_t, targ_t):
@@ -195,6 +198,11 @@ class MemoryEfficientLoss:
                 
                 loss_t += self.lambda_exhaust * u_t.sum()
                 # loss_t += self.lambda_exhaust * -1 * torch.pow(attns, 2).sum()
+
+	    if self.fertility_loss:
+		loss_t += self.lambda_fertility * self.compute_std_loss(s["true_fertility_vals"], 
+									s["predicted_fertility_vals"])
+
             stats.update(self.score(loss_t, scores_t, s["targ_t"]))
             if not self.eval:
                 loss_t.div(batch.batchSize).backward()
