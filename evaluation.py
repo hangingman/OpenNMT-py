@@ -117,13 +117,19 @@ def plot_heatmap(model_name, att_weights, idx, srcSent, tgtSent):
     plt.close()
 
 
-def get_fertility(filename, trainData, src_vocab):
+def get_fertility(filename, train_filename, src_vocab):
 
     # list of lists for all sents in training set
     fertility = []
+
+    with open(train_filename) as f:
+      sents = f.readlines()
+      sents = [line.strip().split() for line in sents]
+      sents = [src_vocab.convertToIdx(line, '.') for line in sents]
+
     with open(filename) as f:
         for i, line in enumerate(f):
-            fertility_i = [1] * len(src_sents[i])
+            fertility_i = [1] * len(sents[i])
             alignments = line.split(" ")
             for al in alignments:
                 idxs = al.split("-")

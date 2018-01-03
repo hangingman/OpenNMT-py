@@ -127,6 +127,8 @@ class Encoder(nn.Module):
 
         self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
+        #opt.supervised_fertility = False
+	self.supervised_fertility = opt.supervised_fertility
 
         self.use_sigmoid_fertility = False # True
         if self.predict_fertility:
@@ -136,7 +138,10 @@ class Encoder(nn.Module):
               self.fertility_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, 2 * self.hidden_size * self.num_directions)
               self.fertility_linear_2 = nn.Linear(2 * self.hidden_size * self.num_directions, 2 * self.hidden_size * self.num_directions)
               self.fertility_out = nn.Linear(2 * self.hidden_size * self.num_directions, 1, bias=False)
-
+        elif self.supervised_fertility:
+	  self.sup_linear = nn.Linear(self.hidden_size * self.num_directions, self.hidden_size)
+	  self.sup_linear_2 = nn.Linear(self.hidden_size, 1, bias=False)
+	
         self.guided_fertility = opt.guided_fertility
 
     def forward(self, input, lengths=None, hidden=None):
@@ -196,6 +201,10 @@ class Encoder(nn.Module):
               #fertility_vals = fertility_vals / torch.sum(fertility_vals, 1).repeat(1, s_len) * s_len
             elif self.guided_fertility:
               fertility_vals = None #evaluation.get_fertility()
+	    elif self.supervised_fertility:
+	      fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+	      fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
+	      fertility_vals = 1 + torch.exp(fertility_vals)
             else:
               fertility_vals = None
             return hidden_t, outputs, fertility_vals
@@ -217,6 +226,7 @@ class Decoder(nn.Module):
         self.decoder_layer = opt.decoder_layer
         self._coverage = opt.coverage_attn
         self.exhaustion_loss = opt.exhaustion_loss
+	self.fertility_loss = True if opt.supervised_fertility else False
         self.hidden_size = opt.rnn_size
         self.input_feed = opt.input_feed
         input_size = opt.word_vec_size
@@ -256,6 +266,7 @@ class Decoder(nn.Module):
         self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
         self.guided_fertility = opt.guided_fertility
+        self.supervised_fertility = opt.supervised_fertility
         # Separate Copy Attention.
         self._copy = False
         if opt.copy_attn:
@@ -263,7 +274,7 @@ class Decoder(nn.Module):
                 opt.rnn_size, attn_type=opt.attention_type)
             self._copy = True
 
-    def forward(self, input, src, context, state, fertility_vals=None, fert_dict=None, upper_bounds=None, test=False):
+    def forward(self, input, src, context, state, fertility_vals=None, fert_dict=None, fert_sents=None, upper_bounds=None, test=False):
         """
         Forward through the decoder.
 
@@ -303,6 +314,9 @@ class Decoder(nn.Module):
             attns["coverage"] = []
         if self.exhaustion_loss:
             attns["upper_bounds"] = []
+	if self.fertility_loss:
+	    attns["predicted_fertility_vals"] = []
+	    attns["true_fertility_vals"] = []
         if self.decoder_layer == "transformer":
             # Tranformer Decoder.
             assert isinstance(state, TransformerDecoderState)
@@ -367,6 +381,14 @@ class Decoder(nn.Module):
                       fertility_vals = Variable(evaluation.getBatchFertilities(fert_dict, src).transpose(1, 0).contiguous())
                       max_word_coverage = fertility_vals
                       #max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
+		    elif self.supervised_fertility:
+		      # k should be index of first sentence in batch
+		      predicted_fertility_vals = fertility_vals
+		      true_fertility_vals = fert_sents[k: k+n_batch_]
+		      if test:
+		        max_word_coverage = predicted_fertility_vals
+		      else:
+			max_word_coverage = true_fertility_vals
                     else:
                       #max_word_coverage = max(
                       #    self.fertility, float(emb.size(0)) / context.size(0))
@@ -431,7 +453,9 @@ class Decoder(nn.Module):
                     attns["copy"] += [copy_attn]
                 if self.exhaustion_loss:
                     attns["upper_bounds"] += [upper_bounds]
-
+	    if self.supervised_fertility:	
+		attns["true_fertility_vals"] += [true_fertility_vals]
+		attns["predicted_fertility_vals"] += [predicted_fertility_vals]
             state = RNNDecoderState(hidden, output.unsqueeze(0),
                                     coverage.unsqueeze(0)
                                     if coverage is not None else None,
@@ -469,7 +493,7 @@ class NMTModel(nn.Module):
         dec.init_input_feed(context, self.decoder.hidden_size)
         return dec
 
-    def forward(self, src, tgt, lengths, dec_state=None, fert_dict=None):
+    def forward(self, src, tgt, lengths, dec_state=None, fert_dict=None, fert_sents=None):
         """
         Args:
             src, tgt, lengths
@@ -489,7 +513,7 @@ class NMTModel(nn.Module):
         out, dec_state, attns, upper_bounds = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
                                              else dec_state, fertility_vals, 
-                                             fert_dict)
+                                             fert_dict, fertility_sents)
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None

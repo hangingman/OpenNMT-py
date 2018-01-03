@@ -66,6 +66,8 @@ parser.add_argument('-lambda_exhaust', type=float, default=0.5,
                     help='Lambda value for exhaustion.')
 parser.add_argument('-lambda_coverage', type=float, default=1,
                     help='Lambda value for coverage.')
+parser.add_argument('-lambda_fertility', type=float, default=0.4,
+                    help='Lambda value for supervised fertility.')
 
 parser.add_argument('-encoder_layer', type=str, default='rnn',
                     help="""Type of encoder layer to use.
@@ -95,6 +97,9 @@ parser.add_argument('-guided_fertility', type=str, default=None,
                     help="""Get fertility values from external aligner, specify alignment file""")
 parser.add_argument('-guided_fertility_source_file', type=str, default=None,
                     help="""Get fertility values from external aligner, specify source file""")
+parser.add_argument('-supervised_fertility', type=str, default=None,
+                    help="""Get fertility values from external aligner, specify alignment file""")
+
 # Optimization options
 parser.add_argument('-encoder_type', default='text',
                     help="Type of encoder to use. Options are [text|img].")
@@ -226,7 +231,7 @@ def eval(model, criterion, data, fert_dict):
     return stats
 
 
-def trainModel(model, trainData, validData, dataset, optim, fert_dict):
+def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sents):
     print(model)
     model.train()
 
@@ -246,7 +251,6 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict):
                                                  exhaustion_loss=opt.exhaustion_loss)
         # Shuffle mini batch order.
         batchOrder = torch.randperm(len(trainData))
-
         total_stats = onmt.Loss.Statistics()
         report_stats = onmt.Loss.Statistics()
        
@@ -254,21 +258,20 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict):
             batchIdx = batchOrder[i] if epoch > opt.curriculum else i
             batch = trainData[batchIdx]
             target_size = batch.tgt.size(0)
-
             dec_state = None
             trunc_size = opt.truncated_decoder if opt.truncated_decoder \
                 else target_size
 
             for j in range(0, target_size-1, trunc_size):
                 trunc_batch = batch.truncate(j, j + trunc_size)
-
                 # Main training loop
                 model.zero_grad()
                 outputs, attn, dec_state, upper_bounds = model(trunc_batch.src,
                                                  trunc_batch.tgt,
                                                  trunc_batch.lengths,
                                                  dec_state,
-                                                 fert_dict)
+                                                 fert_dict, 
+						 fert_sents)
                 batch_stats, inputs, grads \
                     = mem_loss.loss(trunc_batch, outputs, attn)
 
@@ -460,13 +463,21 @@ def main():
     else:
       fert_dict = None
 
+    if opt.supervised_fertility:
+      print("Retrieving fertilities for all training sentences...")
+      fert_sents = evaluation.get_fertility(opt.supervised_fertility,
+						 opt.supervised_fertility_source_file,
+					         dicts["src"])
+    else:
+      fert_sents = None
+
     if opt.train_from or opt.train_from_state_dict:
         optim.optimizer.load_state_dict(
             checkpoint['optim'].optimizer.state_dict())
 
     nParams = sum([p.nelement() for p in model.parameters()])
     print('* number of parameters: %d' % nParams)
-    trainModel(model, trainData, validData, dataset, optim, fert_dict)
+    trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sents)
 
 if __name__ == "__main__":
     main()
