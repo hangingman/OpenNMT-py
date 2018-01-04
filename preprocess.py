@@ -7,6 +7,7 @@ import argparse
 import torch
 import codecs
 import pdb
+import sys
 
 parser = argparse.ArgumentParser(description='preprocess.py')
 onmt.Markdown.add_md_help_argument(parser)
@@ -278,7 +279,7 @@ def main():
                 sent.append(dicts['src'].idxToLabel[elem])
             sents.append(" ".join(sent)+"\n")
 
-        with open("stripped" + opt.train_src,'w') as f:
+        with open("preprocessed." + opt.train_src,'w') as f:
             f.writelines(sents)
 
         sents = []
@@ -289,9 +290,10 @@ def main():
                 sent.append(dicts['tgt'].idxToLabel[elem])
             sents.append(" ".join(sent)+"\n")
 
-        with open("stripped" + opt.train_tgt,'w') as f:
+        with open("preprocessed." + opt.train_tgt,'w') as f:
             f.writelines(sents)
 
+        sys.exit(0)
     print('Preparing validation ...')
     valid = {}
     valid['src'], valid['tgt'], \

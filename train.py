@@ -98,7 +98,9 @@ parser.add_argument('-guided_fertility', type=str, default=None,
 parser.add_argument('-guided_fertility_source_file', type=str, default=None,
                     help="""Get fertility values from external aligner, specify source file""")
 parser.add_argument('-supervised_fertility', type=str, default=None,
-                    help="""Get fertility values from external aligner, specify alignment file""")
+                    help="""Get fertility values from external aligner, specify alignment file for preprocessed corpus""")
+parser.add_argument('-supervised_fertility_source_file', type=str, default=None,
+                    help="""Get fertility values from external aligner, specify preprocessed source file""")
 
 # Optimization options
 parser.add_argument('-encoder_type', default='text',
@@ -261,6 +263,9 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
             dec_state = None
             trunc_size = opt.truncated_decoder if opt.truncated_decoder \
                 else target_size
+	    cur_fert_batch = fert_sents[batchIdx: batchIdx + opt.batch_size]
+	    cur_fert_sents =[cur_fert_batch[y] for y in batch.indices] 
+	    pdb.set_trace()             
 
             for j in range(0, target_size-1, trunc_size):
                 trunc_batch = batch.truncate(j, j + trunc_size)
@@ -271,7 +276,7 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
                                                  trunc_batch.lengths,
                                                  dec_state,
                                                  fert_dict, 
-						 fert_sents)
+						 cur_fert_sents)
                 batch_stats, inputs, grads \
                     = mem_loss.loss(trunc_batch, outputs, attn)
 
@@ -466,8 +471,8 @@ def main():
     if opt.supervised_fertility:
       print("Retrieving fertilities for all training sentences...")
       fert_sents = evaluation.get_fertility(opt.supervised_fertility,
-						 opt.supervised_fertility_source_file,
-					         dicts["src"])
+					    opt.supervised_fertility_source_file,	
+					    dicts["src"])
     else:
       fert_sents = None
 

@@ -126,7 +126,10 @@ class Encoder(nn.Module):
                  bidirectional=opt.brnn)
         
         self.predict_fertility = opt.predict_fertility
-	self.supervised_fertility = opt.supervised_fertility
+	if 'supervised_fertility' in opt:
+		self.supervised_fertility = opt.supervised_fertility
+	else:
+       		self.supervised_fertility = False
 
         if self.predict_fertility:
           self.fertility_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, 2 * self.hidden_size * self.num_directions)
@@ -196,6 +199,7 @@ class Encoder(nn.Module):
 	      fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
 	      fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
 	      fertility_vals = 1 + torch.exp(fertility_vals)
+	      fertility_vals = fertility_vals.view(n_batch, s_len)
             else:
               fertility_vals = None
             return hidden_t, outputs, fertility_vals
@@ -217,7 +221,10 @@ class Decoder(nn.Module):
         self.decoder_layer = opt.decoder_layer
         self._coverage = opt.coverage_attn
         self.exhaustion_loss = opt.exhaustion_loss
-	self.fertility_loss = True if opt.supervised_fertility else False
+	if 'supervised_fertility' in opt:
+		self.fertility_loss = True
+	else:
+		self.fertility_loss = False
         self.hidden_size = opt.rnn_size
         self.input_feed = opt.input_feed
         input_size = opt.word_vec_size
@@ -247,17 +254,24 @@ class Decoder(nn.Module):
 
         self.dropout = nn.Dropout(opt.dropout)
         # Std attention layer.
+	if 'c_attn' not in opt:
+		c_attn = 0.0
+	else:
+		c_attn = opt.c_attn
         self.attn = onmt.modules.GlobalAttention(
             opt.rnn_size,
             coverage=self._coverage,
             attn_type=opt.attention_type,
             attn_transform=opt.attn_transform,
-            c_attn=opt.c_attn
+            c_attn=c_attn
         )
         self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
         self.guided_fertility = opt.guided_fertility
-        self.supervised_fertility = opt.supervised_fertility
+	if 'supervised_fertility' in opt:
+        	self.supervised_fertility = opt.supervised_fertility
+	else:
+		self.supervised_fertility = False
         # Separate Copy Attention.
         self._copy = False
         if opt.copy_attn:
@@ -373,13 +387,14 @@ class Decoder(nn.Module):
                       max_word_coverage = fertility_vals
                       #max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
 		    elif self.supervised_fertility:
-		      # k should be index of first sentence in batch
 		      predicted_fertility_vals = fertility_vals
-		      true_fertility_vals = fert_sents[k: k+n_batch_]
+		      fert_sents = Variable(torch.stack([torch.FloatTensor(elem) for elem in true_fertility_vals])).cuda()
+		      true_fertility_vals = fert_sents
 		      if test:
 		        max_word_coverage = predicted_fertility_vals
 		      else:
 			max_word_coverage = true_fertility_vals
+		      pdb.set_trace()
                     else:
                       #max_word_coverage = max(
                       #    self.fertility, float(emb.size(0)) / context.size(0))
@@ -504,7 +519,7 @@ class NMTModel(nn.Module):
         out, dec_state, attns, upper_bounds = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
                                              else dec_state, fertility_vals, 
-                                             fert_dict, fertility_sents)
+                                             fert_dict, fert_sents)
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None

@@ -137,7 +137,7 @@ def get_fertility(filename, train_filename, src_vocab):
                 b = int(idxs[1])
 
 
-                fertility_i[a+1] += 1
+                fertility_i[a] += 1
             #fertility_i = [elem for elem in fertility_i]
             #fertility_i[0] = fertility_i[-1] = 1
             fertility.append(fertility_i)

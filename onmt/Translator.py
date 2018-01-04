@@ -41,7 +41,7 @@ class Translator(object):
             model_opt.guided_fertility_source_file = opt.guided_fertility_source_file
 
         print(model_opt)
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         if self._type == "text":
             encoder = onmt.Models.Encoder(model_opt, self.src_dict,
                                           self.src_feature_dicts)
