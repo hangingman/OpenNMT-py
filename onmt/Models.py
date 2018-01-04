@@ -470,7 +470,7 @@ class Decoder(nn.Module):
                 if self.exhaustion_loss:
                     attns["upper_bounds"] += [upper_bounds]
 	    if self.supervised_fertility:
-                if not test: 
+                if not test:
                     attns["true_fertility_vals"] += [true_fertility_vals]
                 attns["predicted_fertility_vals"] += [predicted_fertility_vals]
             state = RNNDecoderState(hidden, output.unsqueeze(0),

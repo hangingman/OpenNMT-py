@@ -279,7 +279,7 @@ def main():
                 sent.append(dicts['src'].idxToLabel[elem])
             sents.append(" ".join(sent)+"\n")
 
-        with open("preprocessed." + opt.train_src,'w') as f:
+        with open(opt.train_src + '.preprocessed', 'w') as f:
             f.writelines(sents)
 
         sents = []
@@ -290,7 +290,7 @@ def main():
                 sent.append(dicts['tgt'].idxToLabel[elem])
             sents.append(" ".join(sent)+"\n")
 
-        with open("preprocessed." + opt.train_tgt,'w') as f:
+        with open(opt.train_tgt + '.preprocessed', 'w') as f:
             f.writelines(sents)
 
         sys.exit(0)
