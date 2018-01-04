@@ -362,6 +362,8 @@ class Decoder(nn.Module):
             coverage = state.coverage.squeeze(0) \
                 if state.coverage is not None else None
 
+            #import pdb; pdb.set_trace()
+
             # NOTE: something goes wrong when I try to define a "upper_bounds"
             # variable here -- memory blows up. Apparently the presence of such
             # variable prevents the computation graph to be deleted after
@@ -395,14 +397,12 @@ class Decoder(nn.Module):
                       fertility_vals = Variable(evaluation.getBatchFertilities(fert_dict, src).transpose(1, 0).contiguous())
                       max_word_coverage = fertility_vals
                       #max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
-		    elif self.supervised_fertility:
-		      predicted_fertility_vals = fertility_vals
-                     
-		      if test:
-		        max_word_coverage = predicted_fertility_vals
-		      else:
-			fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
-                        fert_tensor_list = [evaluation.pad(elem, predicted_fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
+                    elif self.supervised_fertility:
+                      if test:
+                        max_word_coverage = fertility_vals.clone()
+                      else:
+                        fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
+                        fert_tensor_list = [evaluation.pad(elem, fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
                         true_fertility_vals = Variable(torch.stack(fert_tensor_list).cuda(), requires_grad=False)
                         max_word_coverage = true_fertility_vals.clone()
                     else:
@@ -469,10 +469,10 @@ class Decoder(nn.Module):
                     attns["copy"] += [copy_attn]
                 if self.exhaustion_loss:
                     attns["upper_bounds"] += [upper_bounds]
-	    if self.supervised_fertility:
+            if self.supervised_fertility:
                 if not test:
                     attns["true_fertility_vals"] += [true_fertility_vals]
-                attns["predicted_fertility_vals"] += [predicted_fertility_vals]
+                attns["predicted_fertility_vals"] += [fertility_vals]
             state = RNNDecoderState(hidden, output.unsqueeze(0),
                                     coverage.unsqueeze(0)
                                     if coverage is not None else None,

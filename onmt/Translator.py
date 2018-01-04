@@ -48,7 +48,7 @@ class Translator(object):
         elif self._type == "img":
             encoder = onmt.modules.ImageEncoder(model_opt)
 
-        decoder = onmt.Models.Decoder(model_opt, self.tgt_dict, test=True)
+        decoder = onmt.Models.Decoder(model_opt, self.tgt_dict)
         model = onmt.Models.NMTModel(encoder, decoder)
 
         if not self.copy_attn or self.copy_attn == "std":
@@ -158,7 +158,8 @@ class Translator(object):
                                                  context, decStates, 
                                                  fertility_vals,
                                                  fert_dict=self.fert_dict,
-                                                 upper_bounds=upper_bounds)
+                                                            upper_bounds=upper_bounds,
+                                                            test=True)
 
             for dec_t, tgt_t in zip(decOut, batch.tgt[1:].data):
                 gen_t = self.model.generator.forward(dec_t)

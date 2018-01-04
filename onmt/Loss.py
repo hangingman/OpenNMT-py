@@ -202,8 +202,8 @@ class MemoryEfficientLoss:
                 loss_t += self.lambda_exhaust * u_t.sum()
                 # loss_t += self.lambda_exhaust * -1 * torch.pow(attns, 2).sum()
 
-	    if self.fertility_loss and "predicted_fertility_vals_t" in s:
-		loss_t += self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
+            if self.fertility_loss and "predicted_fertility_vals_t" in s:
+                loss_t += self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
 
             stats.update(self.score(loss_t, scores_t, s["targ_t"]))
             if not self.eval:
