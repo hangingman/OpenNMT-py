@@ -226,7 +226,7 @@ def eval(model, criterion, data, fert_dict):
                                          eval=True, copy_loss=opt.copy_attn)
     for i in range(len(data)):
         batch = data[i]
-        outputs, attn, dec_hidden, _ = model(batch.src, batch.tgt, batch.lengths, fert_dict=fert_dict)
+        outputs, attn, dec_hidden, _ = model(batch.src, batch.tgt, batch.lengths, fert_dict=fert_dict, test=True)
         batch_stats, _, _ = loss.loss(batch, outputs, attn)
         stats.update(batch_stats)
     model.train()
@@ -247,10 +247,12 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
         if opt.extra_shuffle and epoch > opt.curriculum:
             trainData.shuffle()
 
+        fertility_loss=True if "supervised_fertility" in opt else False
         mem_loss = onmt.Loss.MemoryEfficientLoss(opt, model.generator,
                                                  criterion,
                                                  copy_loss=opt.copy_attn,
-                                                 exhaustion_loss=opt.exhaustion_loss)
+                                                 exhaustion_loss=opt.exhaustion_loss,
+                                                 fertility_loss=fertility_loss)
         # Shuffle mini batch order.
         batchOrder = torch.randperm(len(trainData))
         total_stats = onmt.Loss.Statistics()

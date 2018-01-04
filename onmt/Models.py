@@ -230,9 +230,9 @@ class Decoder(nn.Module):
         self._coverage = opt.coverage_attn
         self.exhaustion_loss = opt.exhaustion_loss
 	if 'supervised_fertility' in opt:
-		self.fertility_loss = True
+            self.fertility_loss = True
 	else:
-		self.fertility_loss = False
+	    self.fertility_loss = False
         self.hidden_size = opt.rnn_size
         self.input_feed = opt.input_feed
         input_size = opt.word_vec_size
@@ -329,7 +329,8 @@ class Decoder(nn.Module):
             attns["upper_bounds"] = []
 	if self.fertility_loss:
 	    attns["predicted_fertility_vals"] = []
-	    attns["true_fertility_vals"] = []
+	    if not test:
+                attns["true_fertility_vals"] = []
         if self.decoder_layer == "transformer":
             # Tranformer Decoder.
             assert isinstance(state, TransformerDecoderState)
@@ -402,8 +403,8 @@ class Decoder(nn.Module):
 		      else:
 			fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
                         fert_tensor_list = [evaluation.pad(elem, predicted_fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
-                        true_fertility_vals = torch.stack(fert_tensor_list).cuda()
-                        max_word_coverage = true_fertility_vals
+                        true_fertility_vals = Variable(torch.stack(fert_tensor_list).cuda(), requires_grad=False)
+                        max_word_coverage = true_fertility_vals.clone()
                     else:
                       #max_word_coverage = max(
                       #    self.fertility, float(emb.size(0)) / context.size(0))
@@ -469,7 +470,7 @@ class Decoder(nn.Module):
                 if self.exhaustion_loss:
                     attns["upper_bounds"] += [upper_bounds]
 	    if self.supervised_fertility:
-                if test: 
+                if not test: 
                     attns["true_fertility_vals"] += [true_fertility_vals]
                 attns["predicted_fertility_vals"] += [predicted_fertility_vals]
             state = RNNDecoderState(hidden, output.unsqueeze(0),

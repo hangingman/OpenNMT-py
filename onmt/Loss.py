@@ -169,9 +169,11 @@ class MemoryEfficientLoss:
             original["align_t"] = batch.alignment[1:]
         if self.exhaustion_loss:
             original["upper_bounds_t"] = attns["upper_bounds"]
+        if self.fertility_loss:
+            original["true_fertility_vals_t"] = attns["true_fertility_vals"]
+            original["predicted_fertility_vals_t"] = attns["predicted_fertility_vals"]
 
         shards, dummies = shardVariables(original, self.max_batches, self.eval)
-
         def bottle(v):
             return v.view(-1, v.size(2))
         for s in shards:
@@ -200,9 +202,8 @@ class MemoryEfficientLoss:
                 loss_t += self.lambda_exhaust * u_t.sum()
                 # loss_t += self.lambda_exhaust * -1 * torch.pow(attns, 2).sum()
 
-	    if self.fertility_loss:
-		loss_t += self.lambda_fertility * self.compute_std_loss(s["true_fertility_vals"], 
-									s["predicted_fertility_vals"])
+	    if self.fertility_loss and "predicted_fertility_vals_t" in s:
+		loss_t += self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
 
             stats.update(self.score(loss_t, scores_t, s["targ_t"]))
             if not self.eval:
