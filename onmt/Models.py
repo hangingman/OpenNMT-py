@@ -396,14 +396,14 @@ class Decoder(nn.Module):
                       #max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
 		    elif self.supervised_fertility:
 		      predicted_fertility_vals = fertility_vals
-                      fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
-                      fert_tensor_list = [evaluation.pad(elem, predicted_fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
-                      true_fertility_vals = torch.stack(fert_tensor_list).cuda()
                      
 		      if test:
 		        max_word_coverage = predicted_fertility_vals
 		      else:
-			max_word_coverage = true_fertility_vals
+			fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
+                        fert_tensor_list = [evaluation.pad(elem, predicted_fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
+                        true_fertility_vals = torch.stack(fert_tensor_list).cuda()
+                        max_word_coverage = true_fertility_vals
                     else:
                       #max_word_coverage = max(
                       #    self.fertility, float(emb.size(0)) / context.size(0))
@@ -468,8 +468,9 @@ class Decoder(nn.Module):
                     attns["copy"] += [copy_attn]
                 if self.exhaustion_loss:
                     attns["upper_bounds"] += [upper_bounds]
-	    if self.supervised_fertility: 
-                attns["true_fertility_vals"] += [true_fertility_vals]
+	    if self.supervised_fertility:
+                if test: 
+                    attns["true_fertility_vals"] += [true_fertility_vals]
                 attns["predicted_fertility_vals"] += [predicted_fertility_vals]
             state = RNNDecoderState(hidden, output.unsqueeze(0),
                                     coverage.unsqueeze(0)
