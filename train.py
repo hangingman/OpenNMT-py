@@ -263,9 +263,8 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
             dec_state = None
             trunc_size = opt.truncated_decoder if opt.truncated_decoder \
                 else target_size
-	    cur_fert_batch = fert_sents[batchIdx: batchIdx + opt.batch_size]
+	    cur_fert_batch = fert_sents[batchIdx*opt.batch_size: (batchIdx+1)*opt.batch_size]
 	    cur_fert_sents =[cur_fert_batch[y] for y in batch.indices] 
-	    pdb.set_trace()             
 
             for j in range(0, target_size-1, trunc_size):
                 trunc_batch = batch.truncate(j, j + trunc_size)

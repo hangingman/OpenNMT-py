@@ -128,9 +128,9 @@ class Encoder(nn.Module):
         self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
 	if 'supervised_fertility' in opt:
-		self.supervised_fertility = opt.supervised_fertility
+	    self.supervised_fertility = opt.supervised_fertility
 	else:
-       		self.supervised_fertility = False
+            self.supervised_fertility = False
 
         self.use_sigmoid_fertility = False # True
         if self.predict_fertility:
@@ -263,9 +263,9 @@ class Decoder(nn.Module):
         self.dropout = nn.Dropout(opt.dropout)
         # Std attention layer.
 	if 'c_attn' not in opt:
-		c_attn = 0.0
+	    c_attn = 0.0
 	else:
-		c_attn = opt.c_attn
+	    c_attn = opt.c_attn
         self.attn = onmt.modules.GlobalAttention(
             opt.rnn_size,
             coverage=self._coverage,
@@ -277,9 +277,9 @@ class Decoder(nn.Module):
         self.predict_fertility = opt.predict_fertility
         self.guided_fertility = opt.guided_fertility
 	if 'supervised_fertility' in opt:
-        	self.supervised_fertility = opt.supervised_fertility
+            self.supervised_fertility = opt.supervised_fertility
 	else:
-		self.supervised_fertility = False
+	    self.supervised_fertility = False
         # Separate Copy Attention.
         self._copy = False
         if opt.copy_attn:
@@ -396,13 +396,14 @@ class Decoder(nn.Module):
                       #max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
 		    elif self.supervised_fertility:
 		      predicted_fertility_vals = fertility_vals
-		      fert_sents = Variable(torch.stack([torch.FloatTensor(elem) for elem in true_fertility_vals])).cuda()
-		      true_fertility_vals = fert_sents
+                      fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
+                      fert_tensor_list = [evaluation.pad(elem, predicted_fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
+                      true_fertility_vals = torch.stack(fert_tensor_list).cuda()
+                     
 		      if test:
 		        max_word_coverage = predicted_fertility_vals
 		      else:
 			max_word_coverage = true_fertility_vals
-		      pdb.set_trace()
                     else:
                       #max_word_coverage = max(
                       #    self.fertility, float(emb.size(0)) / context.size(0))
@@ -467,9 +468,9 @@ class Decoder(nn.Module):
                     attns["copy"] += [copy_attn]
                 if self.exhaustion_loss:
                     attns["upper_bounds"] += [upper_bounds]
-	    if self.supervised_fertility:	
-		attns["true_fertility_vals"] += [true_fertility_vals]
-		attns["predicted_fertility_vals"] += [predicted_fertility_vals]
+	    if self.supervised_fertility: 
+                attns["true_fertility_vals"] += [true_fertility_vals]
+                attns["predicted_fertility_vals"] += [predicted_fertility_vals]
             state = RNNDecoderState(hidden, output.unsqueeze(0),
                                     coverage.unsqueeze(0)
                                     if coverage is not None else None,

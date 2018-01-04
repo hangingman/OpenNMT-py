@@ -48,7 +48,7 @@ class Translator(object):
         elif self._type == "img":
             encoder = onmt.modules.ImageEncoder(model_opt)
 
-        decoder = onmt.Models.Decoder(model_opt, self.tgt_dict)
+        decoder = onmt.Models.Decoder(model_opt, self.tgt_dict, test=True)
         model = onmt.Models.NMTModel(encoder, decoder)
 
         if not self.copy_attn or self.copy_attn == "std":
