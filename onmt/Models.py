@@ -510,7 +510,7 @@ class NMTModel(nn.Module):
         dec.init_input_feed(context, self.decoder.hidden_size)
         return dec
 
-    def forward(self, src, tgt, lengths, dec_state=None, fert_dict=None, fert_sents=None):
+    def forward(self, src, tgt, lengths, dec_state=None, fert_dict=None, fert_sents=None, test=False):
         """
         Args:
             src, tgt, lengths
@@ -530,7 +530,7 @@ class NMTModel(nn.Module):
         out, dec_state, attns, upper_bounds = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
                                              else dec_state, fertility_vals, 
-                                             fert_dict, fert_sents)
+                                             fert_dict, fert_sents, test=test)
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None
