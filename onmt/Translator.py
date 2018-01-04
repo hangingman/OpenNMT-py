@@ -277,8 +277,8 @@ class Translator(object):
         if fertility_vals is not None:
             cum_attn = allAttn[0][0].sum(0).squeeze(0).cpu().numpy()
             fert = fertility_vals.data[0, :].cpu().numpy()
-            for f, c in zip(cum_attn, fert):
-                print('%f (%f)' % (f, c))
+            for c, f in zip(cum_attn, fert):
+                print('%f (%f)' % (c, f))
         #print allAttn[0][0].sum(0)
         return allHyp, allScores, allAttn, goldScores
 

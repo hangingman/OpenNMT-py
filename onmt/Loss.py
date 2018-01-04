@@ -190,12 +190,13 @@ class MemoryEfficientLoss:
                 #zero_mat = Variable(torch.Tensor([0]).repeat(upper_bounds.size(0), upper_bounds.size(1)).cuda())
                 #loss_t += self.lambda_exhaust * self.mse(upper_bounds, zero_mat).sum()
                 #loss_t += self.lambda_exhaust * s["upper_bounds_t"].sum()/(s["upper_bounds_t"].size(0)*s["upper_bounds_t"].size(1))
-                
+                #import pdb; pdb.set_trace()
                 u_last_timestep = s["upper_bounds_t"][s["upper_bounds_t"].size(0)-1]  
                 # Remove sink token
                 indices = torch.arange(0,s["upper_bounds_t"].size(2)-1).long().cuda()
-                u_t = torch.index_select(u_last_timestep.data,1,indices)
-                
+                #u_t = torch.index_select(u_last_timestep.data,1,indices)
+                u_t = torch.index_select(u_last_timestep,1,Variable(indices))
+
                 loss_t += self.lambda_exhaust * u_t.sum()
                 # loss_t += self.lambda_exhaust * -1 * torch.pow(attns, 2).sum()
 

@@ -124,17 +124,22 @@ class Encoder(nn.Module):
                  num_layers=opt.layers,
                  dropout=opt.dropout,
                  bidirectional=opt.brnn)
-        
+
+        self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
 	if 'supervised_fertility' in opt:
 		self.supervised_fertility = opt.supervised_fertility
 	else:
        		self.supervised_fertility = False
 
+        self.use_sigmoid_fertility = False # True
         if self.predict_fertility:
-          self.fertility_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, 2 * self.hidden_size * self.num_directions)
-          self.fertility_linear_2 = nn.Linear(2 * self.hidden_size * self.num_directions, 2 * self.hidden_size * self.num_directions)
-          self.fertility_out = nn.Linear(2 * self.hidden_size * self.num_directions, 1, bias=False)
+          if self.use_sigmoid_fertility:
+              self.fertility_out = nn.Linear(self.hidden_size * self.num_directions + input_size, 1)
+          else:
+              self.fertility_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, 2 * self.hidden_size * self.num_directions)
+              self.fertility_linear_2 = nn.Linear(2 * self.hidden_size * self.num_directions, 2 * self.hidden_size * self.num_directions)
+              self.fertility_out = nn.Linear(2 * self.hidden_size * self.num_directions, 1, bias=False)
         elif self.supervised_fertility:
 	  self.sup_linear = nn.Linear(self.hidden_size * self.num_directions, self.hidden_size)
 	  self.sup_linear_2 = nn.Linear(self.hidden_size, 1, bias=False)
@@ -188,9 +193,12 @@ class Encoder(nn.Module):
             if lengths:
                 outputs = unpack(outputs)[0]
             if self.predict_fertility:
-              fertility_vals = F.relu(self.fertility_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
-              fertility_vals = F.relu(self.fertility_linear_2(fertility_vals))
-              fertility_vals = 1 + torch.exp(self.fertility_out(fertility_vals))
+              if self.use_sigmoid_fertility:
+                fertility_vals = self.fertility * F.sigmoid(self.fertility_out(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
+              else:
+                fertility_vals = F.relu(self.fertility_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
+                fertility_vals = F.relu(self.fertility_linear_2(fertility_vals))
+                fertility_vals = 1 + torch.exp(self.fertility_out(fertility_vals))
               fertility_vals = fertility_vals.view(n_batch, s_len)
               #fertility_vals = fertility_vals / torch.sum(fertility_vals, 1).repeat(1, s_len) * s_len
             elif self.guided_fertility:
@@ -378,7 +386,7 @@ class Decoder(nn.Module):
                       #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
                       #print("fertility_vals:", fertility_vals.data)
                       #max_word_coverage = Variable(torch.max(fertility_vals.data, comp_tensor))
-                      max_word_coverage = fertility_vals
+                      max_word_coverage = fertility_vals.clone()
                     elif self.guided_fertility:
                       #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
                       #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
