@@ -198,7 +198,6 @@ class Translator(object):
                                                          upper_bounds=decStates.attn_upper_bounds,
                                                          test=True)
 
-            #import pdb; pdb.set_trace()
             decOut = decOut.squeeze(0)
             # decOut: (beam*batch) x numWords
             attn["std"] = attn["std"].view(beamSize, batchSize, -1) \

@@ -132,7 +132,7 @@ class Encoder(nn.Module):
 	else:
             self.supervised_fertility = False
 
-        self.use_sigmoid_fertility = False # True
+        self.use_sigmoid_fertility = True # False
         if self.predict_fertility:
           if self.use_sigmoid_fertility:
               self.fertility_out = nn.Linear(self.hidden_size * self.num_directions + input_size, 1)
@@ -282,10 +282,10 @@ class Decoder(nn.Module):
         self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
         self.guided_fertility = opt.guided_fertility
-	if 'supervised_fertility' in opt:
+        if 'supervised_fertility' in opt:
             self.supervised_fertility = opt.supervised_fertility
-	else:
-	    self.supervised_fertility = False
+        else:
+            self.supervised_fertility = False
         # Separate Copy Attention.
         self._copy = False
         if opt.copy_attn:
@@ -293,7 +293,9 @@ class Decoder(nn.Module):
                 opt.rnn_size, attn_type=opt.attention_type)
             self._copy = True
 
-    def forward(self, input, src, context, state, fertility_vals=None, fert_dict=None, fert_sents=None, upper_bounds=None, test=False):
+    def forward(self, input, src, context, state,
+                fertility_vals=None, fert_dict=None, fert_sents=None,
+                upper_bounds=None, test=False):
         """
         Forward through the decoder.
 
@@ -333,9 +335,9 @@ class Decoder(nn.Module):
             attns["coverage"] = []
         if self.exhaustion_loss:
             attns["upper_bounds"] = []
-	if self.fertility_loss:
-	    attns["predicted_fertility_vals"] = []
-	    if not test:
+        if self.fertility_loss:
+            attns["predicted_fertility_vals"] = []
+            if not test:
                 attns["true_fertility_vals"] = []
         if self.decoder_layer == "transformer":
             # Tranformer Decoder.
@@ -368,16 +370,6 @@ class Decoder(nn.Module):
             coverage = state.coverage.squeeze(0) \
                 if state.coverage is not None else None
 
-            #import pdb; pdb.set_trace()
-
-            # NOTE: something goes wrong when I try to define a "upper_bounds"
-            # variable here -- memory blows up. Apparently the presence of such
-            # variable prevents the computation graph to be deleted after
-            # processing each batch. I need to investigate this further.
-            # A workaround for now is to do one round of softmax (without
-            # upper bound constraints) followed by several rounds of constrained
-            # softmax.
-            # upper_bounds = Variable(torch.ones(attn.size()).cuda())
             # Standard RNN decoder.
             for i, emb_t in enumerate(emb.split(1)):
 
