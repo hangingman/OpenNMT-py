@@ -204,9 +204,15 @@ class Encoder(nn.Module):
             elif self.guided_fertility:
               fertility_vals = None #evaluation.get_fertility()
 	    elif self.supervised_fertility:
-	      fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
-	      fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
-	      fertility_vals = 1 + torch.exp(fertility_vals)
+              if self.use_sigmoid_fertility:
+                fertility_vals = F.tanh(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+	        fertility_vals = self.sup_linear_2(fertility_vals)
+                fertility_vals = self.fertility * F.sigmoid(fertility_vals)
+                #print fertility_vals
+              else:
+	        fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+	        fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
+	        fertility_vals = 1 + torch.exp(fertility_vals)
 	      fertility_vals = fertility_vals.view(n_batch, s_len)
             else:
               fertility_vals = None
