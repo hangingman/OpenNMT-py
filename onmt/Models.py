@@ -127,10 +127,10 @@ class Encoder(nn.Module):
 
         self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
+        self.supervised_fertility = False
 	if 'supervised_fertility' in opt:
-	    self.supervised_fertility = opt.supervised_fertility
-	else:
-            self.supervised_fertility = False
+            if opt.supervised_fertility:
+	        self.supervised_fertility = opt.supervised_fertility
 
         self.use_sigmoid_fertility = False # True
         if self.predict_fertility:
@@ -229,10 +229,10 @@ class Decoder(nn.Module):
         self.decoder_layer = opt.decoder_layer
         self._coverage = opt.coverage_attn
         self.exhaustion_loss = opt.exhaustion_loss
-	if 'supervised_fertility' in opt:
-            self.fertility_loss = True
-	else:
-	    self.fertility_loss = False
+        self.supervised_fertility = False
+     	if 'supervised_fertility' in opt:
+            if opt.supervised_fertility:
+                self.supervised_fertility=opt.supervised_fertility
         self.hidden_size = opt.rnn_size
         self.input_feed = opt.input_feed
         input_size = opt.word_vec_size
@@ -276,10 +276,7 @@ class Decoder(nn.Module):
         self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
         self.guided_fertility = opt.guided_fertility
-	if 'supervised_fertility' in opt:
-            self.supervised_fertility = opt.supervised_fertility
-	else:
-	    self.supervised_fertility = False
+
         # Separate Copy Attention.
         self._copy = False
         if opt.copy_attn:
@@ -327,7 +324,7 @@ class Decoder(nn.Module):
             attns["coverage"] = []
         if self.exhaustion_loss:
             attns["upper_bounds"] = []
-	if self.fertility_loss:
+	if self.supervised_fertility:
 	    attns["predicted_fertility_vals"] = []
 	    if not test:
                 attns["true_fertility_vals"] = []

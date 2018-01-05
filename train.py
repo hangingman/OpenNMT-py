@@ -246,8 +246,7 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
     def trainEpoch(epoch):
         if opt.extra_shuffle and epoch > opt.curriculum:
             trainData.shuffle()
-
-        fertility_loss=True if "supervised_fertility" in opt else False
+        fertility_loss=True if opt.supervised_fertility else False
         mem_loss = onmt.Loss.MemoryEfficientLoss(opt, model.generator,
                                                  criterion,
                                                  copy_loss=opt.copy_attn,
@@ -265,8 +264,11 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
             dec_state = None
             trunc_size = opt.truncated_decoder if opt.truncated_decoder \
                 else target_size
-	    cur_fert_batch = fert_sents[batchIdx*opt.batch_size: (batchIdx+1)*opt.batch_size]
-	    cur_fert_sents =[cur_fert_batch[y] for y in batch.indices] 
+            if fertility_loss:
+	       cur_fert_batch = fert_sents[batchIdx*opt.batch_size: (batchIdx+1)*opt.batch_size]
+	       cur_fert_sents = [cur_fert_batch[y] for y in batch.indices] 
+            else:
+               cur_fert_sents = None
 
             for j in range(0, target_size-1, trunc_size):
                 trunc_batch = batch.truncate(j, j + trunc_size)
