@@ -132,7 +132,7 @@ class Encoder(nn.Module):
             if opt.supervised_fertility:
 	        self.supervised_fertility = opt.supervised_fertility
 
-        self.use_sigmoid_fertility = False # True
+        self.use_sigmoid_fertility = True # False
         if self.predict_fertility:
           if self.use_sigmoid_fertility:
               self.fertility_out = nn.Linear(self.hidden_size * self.num_directions + input_size, 1)
@@ -204,9 +204,15 @@ class Encoder(nn.Module):
             elif self.guided_fertility:
               fertility_vals = None #evaluation.get_fertility()
 	    elif self.supervised_fertility:
-	      fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
-	      fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
-	      fertility_vals = 1 + torch.exp(fertility_vals)
+              if self.use_sigmoid_fertility:
+                fertility_vals = F.tanh(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+	        fertility_vals = self.sup_linear_2(fertility_vals)
+                fertility_vals = self.fertility * F.sigmoid(fertility_vals)
+                #print fertility_vals
+              else:
+	        fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+	        fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
+	        fertility_vals = 1 + torch.exp(fertility_vals)
 	      fertility_vals = fertility_vals.view(n_batch, s_len)
             else:
               fertility_vals = None
@@ -276,7 +282,6 @@ class Decoder(nn.Module):
         self.fertility = opt.fertility
         self.predict_fertility = opt.predict_fertility
         self.guided_fertility = opt.guided_fertility
-
         # Separate Copy Attention.
         self._copy = False
         if opt.copy_attn:
@@ -284,7 +289,9 @@ class Decoder(nn.Module):
                 opt.rnn_size, attn_type=opt.attention_type)
             self._copy = True
 
-    def forward(self, input, src, context, state, fertility_vals=None, fert_dict=None, fert_sents=None, upper_bounds=None, test=False):
+    def forward(self, input, src, context, state,
+                fertility_vals=None, fert_dict=None, fert_sents=None,
+                upper_bounds=None, test=False):
         """
         Forward through the decoder.
 
@@ -359,16 +366,6 @@ class Decoder(nn.Module):
             coverage = state.coverage.squeeze(0) \
                 if state.coverage is not None else None
 
-            #import pdb; pdb.set_trace()
-
-            # NOTE: something goes wrong when I try to define a "upper_bounds"
-            # variable here -- memory blows up. Apparently the presence of such
-            # variable prevents the computation graph to be deleted after
-            # processing each batch. I need to investigate this further.
-            # A workaround for now is to do one round of softmax (without
-            # upper bound constraints) followed by several rounds of constrained
-            # softmax.
-            # upper_bounds = Variable(torch.ones(attn.size()).cuda())
             # Standard RNN decoder.
             for i, emb_t in enumerate(emb.split(1)):
 

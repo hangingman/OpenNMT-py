@@ -56,8 +56,9 @@ class Statistics:
     """
     Training loss function statistics.
     """
-    def __init__(self, loss=0, n_words=0, n_correct=0):
+    def __init__(self, loss=0, reg=0, n_words=0, n_correct=0):
         self.loss = loss
+        self.reg = reg
         self.n_words = n_words
         self.n_correct = n_correct
         self.n_src_words = 0
@@ -65,6 +66,7 @@ class Statistics:
 
     def update(self, stat):
         self.loss += stat.loss
+        self.reg += stat.reg
         self.n_words += stat.n_words
         self.n_correct += stat.n_correct
 
@@ -79,11 +81,14 @@ class Statistics:
 
     def output(self, epoch, batch, n_batches, start):
         t = self.elapsed_time()
-        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f;" +
+        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; " +
+               "loss: %6.2f; reg: %6.2f; "
                "%3.0f src tok/s; %3.0f tgt tok/s; %6.0f s elapsed") %
               (epoch, batch,  n_batches,
                self.accuracy(),
                self.ppl(),
+               self.loss,
+               self.reg,
                self.n_src_words / (t + 1e-5),
                self.n_words / (t + 1e-5),
                time.time() - start))
@@ -126,14 +131,18 @@ class MemoryEfficientLoss:
         self.fertility_loss = fertility_loss
         self.mse = torch.nn.MSELoss()
 
-    def score(self, loss_t, scores_t, targ_t):
+    def score(self, loss_t, reg_t, scores_t, targ_t):
         pred_t = scores_t.data.max(1)[1]
         non_padding = targ_t.ne(onmt.Constants.PAD).data
         num_correct_t = pred_t.eq(targ_t.data) \
                               .masked_select(non_padding) \
                               .sum()
-        return Statistics(loss_t.data[0], non_padding.sum(),
-                          num_correct_t)
+        if reg_t is not None:
+            return Statistics(loss_t.data[0], reg_t.data[0], non_padding.sum(),
+                              num_correct_t)
+        else:
+            return Statistics(loss_t.data[0], 0, non_padding.sum(),
+                              num_correct_t)
 
     def compute_std_loss(self, out_t, targ_t):
         scores_t = self.generator(out_t)
@@ -202,10 +211,15 @@ class MemoryEfficientLoss:
                 loss_t += self.lambda_exhaust * u_t.sum()
                 # loss_t += self.lambda_exhaust * -1 * torch.pow(attns, 2).sum()
 
+            #import pdb; pdb.set_trace()
+            
             if self.fertility_loss and "predicted_fertility_vals_t" in s:
-                loss_t += self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
+                reg_t = self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
+                loss_t += reg_t
+            else:
+                reg_t = None
 
-            stats.update(self.score(loss_t, scores_t, s["targ_t"]))
+            stats.update(self.score(loss_t, reg_t, scores_t, s["targ_t"]))
             if not self.eval:
                 loss_t.div(batch.batchSize).backward()
 
