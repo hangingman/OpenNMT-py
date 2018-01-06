@@ -184,19 +184,24 @@ class Translator(object):
                                    .repeat(beamSize, 1, 1)
 
         #  (3b) The main loop
-        upper_bounds = None
+        #upper_bounds = None
+        max_word_coverage = self.model.decoder.compute_max_word_coverage(
+            batch_src,
+            fertility_vals=fertility_vals,
+            fert_dict=self.fert_dict,
+            fert_sents=None,
+            test=True)
         for i in range(self.opt.max_sent_length):
             # (a) Run RNN decoder forward one step.
             mask(padMask)
             input = torch.stack([b.getCurrentState() for b in beam])\
                          .t().contiguous().view(1, -1)
             input = Variable(input, volatile=True)
-            decOut, decStates, attn, upper_bounds = self.model.decoder(input, batch_src,
-                                                         context, decStates,
-                                                         fertility_vals=fertility_vals,
-                                                         fert_dict=self.fert_dict,
-                                                         upper_bounds=decStates.attn_upper_bounds,
-                                                         test=True)
+            decOut, decStates, attn = self.model.decoder(
+                input, batch_src,
+                context, decStates,
+                max_word_coverage=max_word_coverage,
+                test=True)
 
             decOut = decOut.squeeze(0)
             # decOut: (beam*batch) x numWords

@@ -293,7 +293,7 @@ def main():
         with open(opt.train_tgt + '.preprocessed', 'w') as f:
             f.writelines(sents)
 
-        sys.exit(0)
+        #sys.exit(0)
     print('Preparing validation ...')
     valid = {}
     valid['src'], valid['tgt'], \

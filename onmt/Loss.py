@@ -35,6 +35,7 @@ def shardVariables(variables, batches, eval):
                                   volatile=eval)
         else:
             dummies[k] = variables[k]
+        #import pdb; pdb.set_trace()
         splits = torch.split(dummies[k], batches)
         for i, v in enumerate(splits):
             shards[i][k] = v

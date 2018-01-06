@@ -141,7 +141,7 @@ class Encoder(nn.Module):
               self.fertility_linear_2 = nn.Linear(2 * self.hidden_size * self.num_directions, 2 * self.hidden_size * self.num_directions)
               self.fertility_out = nn.Linear(2 * self.hidden_size * self.num_directions, 1, bias=False)
         elif self.supervised_fertility:
-	  self.sup_linear = nn.Linear(self.hidden_size * self.num_directions, self.hidden_size)
+	  self.sup_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, self.hidden_size)
 	  self.sup_linear_2 = nn.Linear(self.hidden_size, 1, bias=False)
 	
         self.guided_fertility = opt.guided_fertility
@@ -205,9 +205,11 @@ class Encoder(nn.Module):
               fertility_vals = None #evaluation.get_fertility()
 	    elif self.supervised_fertility:
               if self.use_sigmoid_fertility:
-                fertility_vals = F.tanh(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+                #fertility_vals = F.tanh(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+                fertility_vals = F.tanh(self.sup_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
 	        fertility_vals = self.sup_linear_2(fertility_vals)
-                fertility_vals = self.fertility * F.sigmoid(fertility_vals)
+                #fertility_vals = self.fertility * F.sigmoid(fertility_vals)
+                fertility_vals = torch.exp(fertility_vals)
                 #print fertility_vals
               else:
 	        fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
@@ -223,7 +225,6 @@ class Decoder(nn.Module):
     """
     Decoder + Attention recurrent neural network.
     """
-
 
     def __init__(self, opt, dicts):
         """
@@ -293,9 +294,47 @@ class Decoder(nn.Module):
                 opt.rnn_size, attn_type=opt.attention_type)
             self._copy = True
 
+    def compute_max_word_coverage(self, src,
+                                  fertility_vals=None,
+                                  fert_dict=None,
+                                  fert_sents=None,
+                                  test=False):
+        """
+        Forward through the decoder.
+
+        Args:
+            input (LongTensor):  (len x batch) -- Input tokens
+            src (LongTensor)
+            context:  (src_len x batch x rnn_size)  -- Memory bank
+            state: an object initializing the decoder.
+
+        Returns:
+            outputs: (len x batch x rnn_size)
+            final_states: an object of the same form as above
+            attns: Dictionary of (src_len x batch)
+        """
+        s_len, n_batch, _ = src.size()
+        if self.predict_fertility:
+            max_word_coverage = fertility_vals.clone()
+        elif self.guided_fertility:
+            fertility_vals = Variable(evaluation.getBatchFertilities(fert_dict, src).transpose(1, 0).contiguous())
+            max_word_coverage = fertility_vals
+        elif self.supervised_fertility:
+            if test:
+                max_word_coverage = fertility_vals.clone()
+            else:
+                fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
+                fert_tensor_list = [evaluation.pad(elem, fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
+                true_fertility_vals = Variable(torch.stack(fert_tensor_list).cuda(), requires_grad=False)
+                max_word_coverage = true_fertility_vals.clone()
+        else:
+            max_word_coverage = Variable(torch.Tensor([self.fertility]).repeat(n_batch, s_len)).cuda()
+        return max_word_coverage
+
+
     def forward(self, input, src, context, state,
-                fertility_vals=None, fert_dict=None, fert_sents=None,
-                upper_bounds=None, test=False):
+                max_word_coverage=None,
+                test=False):
         """
         Forward through the decoder.
 
@@ -335,10 +374,6 @@ class Decoder(nn.Module):
             attns["coverage"] = []
         if self.exhaustion_loss:
             attns["upper_bounds"] = []
-        if self.fertility_loss:
-            attns["predicted_fertility_vals"] = []
-            if not test:
-                attns["true_fertility_vals"] = []
         if self.decoder_layer == "transformer":
             # Tranformer Decoder.
             assert isinstance(state, TransformerDecoderState)
@@ -362,6 +397,7 @@ class Decoder(nn.Module):
             assert isinstance(state, RNNDecoderState)
             output = state.input_feed.squeeze(0)
             hidden = state.hidden
+            cumulative_attention = state.cumulative_attention
             # CHECKS
             n_batch_, _ = output.size()
             aeq(n_batch, n_batch_)
@@ -372,78 +408,34 @@ class Decoder(nn.Module):
 
             # Standard RNN decoder.
             for i, emb_t in enumerate(emb.split(1)):
-
-                # Initialize upper bounds for the current batch
-
-                if upper_bounds is None:
-                    #if not test:
-                    # 	tgt_lengths = [torch.nonzero(input[:,i].data).size(0) for i in range(n_batch_)]
-                    # 	tgt_lengths = torch.Tensor(tgt_lengths).cuda()
-                    #else:
-                    #    # Maybe the ratio of tgt_len and src_len from training set would be a better estimate
-                    #	 tgt_lengths = torch.ones(n_batch_).cuda()
-                    if self.predict_fertility:
-                      #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
-                      #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
-                      #print("fertility_vals:", fertility_vals.data)
-                      #max_word_coverage = Variable(torch.max(fertility_vals.data, comp_tensor))
-                      max_word_coverage = fertility_vals.clone()
-                    elif self.guided_fertility:
-                      #comp_tensor = torch.Tensor([float(emb.size(0)) / context.size(0)]).repeat(n_batch_, s_len_).cuda()
-                      #comp_tensor = (tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_).cuda()
-                      #import pdb; pdb.set_trace()
-                      fertility_vals = Variable(evaluation.getBatchFertilities(fert_dict, src).transpose(1, 0).contiguous())
-                      max_word_coverage = fertility_vals
-                      #max_word_coverage = Variable(torch.max(fertility_vals, comp_tensor))
-                    elif self.supervised_fertility:
-                      if test:
-                        max_word_coverage = fertility_vals.clone()
-                      else:
-                        fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
-                        fert_tensor_list = [evaluation.pad(elem, fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
-                        true_fertility_vals = Variable(torch.stack(fert_tensor_list).cuda(), requires_grad=False)
-                        max_word_coverage = true_fertility_vals.clone()
-                    else:
-                      #max_word_coverage = max(
-                      #    self.fertility, float(emb.size(0)) / context.size(0))
-                      max_word_coverage = Variable(torch.Tensor([self.fertility]).repeat(n_batch_, s_len_)).cuda()
-                      #max_word_coverage = Variable(torch.max(torch.FloatTensor([self.fertility]).repeat(n_batch_).cuda(), 
-                      #				     tgt_lengths/s_len_).unsqueeze(1).repeat(1, s_len_))
-                 #    upper_bounds = -attn + max_word_coverage
-                 #else:
-                 #    upper_bounds -= attn
-                    upper_bounds = max_word_coverage
-
-                # Use <SINK> token for absorbing remaining attention weight
-
-                #import pdb; pdb.set_trace()
-                upper_bounds[:,-1] = Variable(100.*torch.ones(upper_bounds.size(0)))
-                #if (upper_bounds.size(0) > torch.sum(torch.sum(upper_bounds, 1)).cpu().data.numpy())[0]:
-                #    print("inv sum:", torch.sum(upper_bounds, 1))
-                #    print("att:", attn)
+                # Initialize cumulative attention for the current batch.
+                if cumulative_attention is None:
+                    cumulative_attention = Variable(
+                        torch.Tensor([0]).repeat(n_batch_, s_len_).cuda())
 
                 emb_t = emb_t.squeeze(0)
                 if self.input_feed:
                     emb_t = torch.cat([emb_t, output], 1)
 
+                if max_word_coverage is not None:
+                    upper_bounds = max_word_coverage - cumulative_attention
+                    # Use <SINK> token for absorbing remaining attention weight.
+                    upper_bounds[:, -1] = Variable(
+                        torch.ones(upper_bounds.size(0)))
+                    # Make sure we're >= 0.
+                    upper_bounds = torch.max(upper_bounds,
+                                             Variable(torch.zeros(
+                                                 upper_bounds.size(0),
+                                                 upper_bounds.size(1)).cuda()))
+                else:
+                    upper_bounds = None
+
                 rnn_output, hidden = self.rnn(emb_t, hidden)
                 attn_output, attn = self.attn(rnn_output,
                                               context.transpose(0, 1),
                                               upper_bounds=upper_bounds)
-                #import pdb; pdb.set_trace()
-                #print_attention = True
-                #if print_attention:
-                #    attn_probs = attn.data.cpu().numpy()
-                #    for k in range(attn_probs.shape[0]):
-                #        print('\t'.join(str(val) for val in list(attn_probs[k, :])))
 
-                upper_bounds -= attn
-                #k_attn = 1
-                #upper_bounds = torch.max(upper_bounds - k_attn * attn, Variable(torch.zeros(upper_bounds.size(0), upper_bounds.size(1)).cuda()))
-                # if np.any(upper_bounds.cpu().data.numpy()<1):
-                #     print("upper bounds less than 1.0")
-                # print("attn: ", attn)
-                # print("upper_bounds: ", upper_bounds)
+                cumulative_attention += attn
 
                 if self.context_gate is not None:
                     output = self.context_gate(
@@ -467,18 +459,18 @@ class Decoder(nn.Module):
                     attns["copy"] += [copy_attn]
                 if self.exhaustion_loss:
                     attns["upper_bounds"] += [upper_bounds]
-            if self.supervised_fertility:
-                if not test:
-                    attns["true_fertility_vals"] += [true_fertility_vals]
-                attns["predicted_fertility_vals"] += [fertility_vals]
+            #if self.supervised_fertility:
+            #    if not test:
+            #        attns["true_fertility_vals"] += [max_word_coverage]
+            #    attns["predicted_fertility_vals"] += [fertility_vals]
             state = RNNDecoderState(hidden, output.unsqueeze(0),
                                     coverage.unsqueeze(0)
                                     if coverage is not None else None,
-                                    upper_bounds)
+                                    cumulative_attention)
             outputs = torch.stack(outputs)
             for k in attns:
                 attns[k] = torch.stack(attns[k])
-        return outputs, state, attns, upper_bounds
+        return outputs, state, attns
 
 
 class NMTModel(nn.Module):
@@ -525,15 +517,22 @@ class NMTModel(nn.Module):
         #print("src:", src)
         enc_hidden, context, fertility_vals = self.encoder(src, lengths)
         enc_state = self.init_decoder_state(context, enc_hidden)
-        out, dec_state, attns, upper_bounds = self.decoder(tgt, src, context,
+        max_word_coverage = self.decoder.compute_max_word_coverage(
+            src, fertility_vals, fert_dict, fert_sents, test=test)
+        out, dec_state, attns = self.decoder(tgt, src, context,
                                              enc_state if dec_state is None
-                                             else dec_state, fertility_vals, 
-                                             fert_dict, fert_sents, test=test)
+                                             else dec_state,
+                                             max_word_coverage,
+                                             #fertility_vals,
+                                             test=test)
+        if fertility_vals is not None:
+            attns["predicted_fertility_vals"] = torch.stack([fertility_vals])
+        attns["true_fertility_vals"] = torch.stack([max_word_coverage])
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None
             attns = None
-        return out, attns, dec_state, upper_bounds
+        return out, attns, dec_state
 
 
 class DecoderState(object):
@@ -555,7 +554,7 @@ class DecoderState(object):
 
 class RNNDecoderState(DecoderState):
     def __init__(self, rnnstate, input_feed=None, coverage=None,
-                 attn_upper_bounds=None):
+                 cumulative_attention=None):
         # all objects are X x batch x dim
         # or X x (beam * sent) for beam search
         if not isinstance(rnnstate, tuple):
@@ -564,7 +563,7 @@ class RNNDecoderState(DecoderState):
             self.hidden = rnnstate
         self.input_feed = input_feed
         self.coverage = coverage
-        self.attn_upper_bounds = attn_upper_bounds
+        self.cumulative_attention = cumulative_attention
         self.all = self.hidden + (self.input_feed,)
 
     def init_input_feed(self, context, rnn_size):
@@ -587,8 +586,8 @@ class RNNDecoderState(DecoderState):
         # do the overriding.
         #import pdb; pdb.set_trace()
         DecoderState.beamUpdate_(self, idx, positions, beamSize)
-        if self.attn_upper_bounds is not None:
-            e = self.attn_upper_bounds
+        if self.cumulative_attention is not None:
+            e = self.cumulative_attention
             br, d = e.size()
             sentStates = e.view(beamSize, br // beamSize, d)[:, idx]
             sentStates.data.copy_(

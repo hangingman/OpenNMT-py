@@ -226,7 +226,7 @@ def eval(model, criterion, data, fert_dict):
                                          eval=True, copy_loss=opt.copy_attn)
     for i in range(len(data)):
         batch = data[i]
-        outputs, attn, dec_hidden, _ = model(batch.src, batch.tgt, batch.lengths, fert_dict=fert_dict, test=True)
+        outputs, attn, dec_hidden = model(batch.src, batch.tgt, batch.lengths, fert_dict=fert_dict, test=True)
         batch_stats, _, _ = loss.loss(batch, outputs, attn)
         stats.update(batch_stats)
     model.train()
@@ -247,7 +247,7 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
         if opt.extra_shuffle and epoch > opt.curriculum:
             trainData.shuffle()
 
-        fertility_loss=True if "supervised_fertility" in opt else False
+        fertility_loss = True if opt.supervised_fertility else False
         mem_loss = onmt.Loss.MemoryEfficientLoss(opt, model.generator,
                                                  criterion,
                                                  copy_loss=opt.copy_attn,
@@ -257,7 +257,7 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
         batchOrder = torch.randperm(len(trainData))
         total_stats = onmt.Loss.Statistics()
         report_stats = onmt.Loss.Statistics()
-       
+
         for i in range(len(trainData)):
             batchIdx = batchOrder[i] if epoch > opt.curriculum else i
             batch = trainData[batchIdx]
@@ -265,19 +265,22 @@ def trainModel(model, trainData, validData, dataset, optim, fert_dict, fert_sent
             dec_state = None
             trunc_size = opt.truncated_decoder if opt.truncated_decoder \
                 else target_size
-	    cur_fert_batch = fert_sents[batchIdx*opt.batch_size: (batchIdx+1)*opt.batch_size]
-	    cur_fert_sents =[cur_fert_batch[y] for y in batch.indices] 
+            if fertility_loss:
+                cur_fert_batch = fert_sents[batchIdx*opt.batch_size: (batchIdx+1)*opt.batch_size]
+                cur_fert_sents = [cur_fert_batch[y] for y in batch.indices]
+            else:
+                cur_fert_sents = None
 
             for j in range(0, target_size-1, trunc_size):
                 trunc_batch = batch.truncate(j, j + trunc_size)
                 # Main training loop
                 model.zero_grad()
-                outputs, attn, dec_state, upper_bounds = model(trunc_batch.src,
+                outputs, attn, dec_state = model(trunc_batch.src,
                                                  trunc_batch.tgt,
                                                  trunc_batch.lengths,
                                                  dec_state,
-                                                 fert_dict, 
-						 cur_fert_sents)
+                                                 fert_dict,
+                                                 cur_fert_sents)
                 batch_stats, inputs, grads \
                     = mem_loss.loss(trunc_batch, outputs, attn)
 
