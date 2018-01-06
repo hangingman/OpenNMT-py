@@ -18,10 +18,11 @@ import onmt
 
 
 class Beam(object):
-    def __init__(self, size, cuda=False):
+    def __init__(self, size, n_best=1, cuda=False,
+                 global_scorer=None):
 
         self.size = size
-        self.done = False
+        self.eos_top = False
 
         self.tt = torch.cuda if cuda else torch
 
@@ -38,6 +39,14 @@ class Beam(object):
 
         # The attentions (matrix) for each time.
         self.attn = []
+
+        # Time and k pair for finished.
+        self.finished = []
+        self.n_best = n_best
+
+        # Information for global scoring.
+        self.global_scorer = global_scorer
+        self.global_state = {}
 
     def getCurrentState(self):
         "Get the outputs for the current timestep."
@@ -80,22 +89,42 @@ class Beam(object):
         self.nextYs.append(bestScoresId - prevK * numWords)
         self.attn.append(attnOut.index_select(0, prevK))
 
-        # End condition is when top-of-beam is EOS.
+        if self.global_scorer is not None:
+            self.global_scorer.update_global_state(self)
+
+        for i in range(self.nextYs[-1].size(0)):
+            if self.nextYs[-1][i] == onmt.Constants.EOS:
+                s = self.scores[i]
+                if self.global_scorer is not None:
+                    global_scores = self.global_scorer.score(self, self.scores)
+                    s = global_scores[i]
+                self.finished.append((s, len(self.nextYs) - 1, i))
+
+        # End condition is when top-of-beam is EOS and no global score.
         if self.nextYs[-1][0] == onmt.Constants.EOS:
-            self.done = True
-            self.allScores.append(self.scores)
+            self.eos_top = True
+            #self.allScores.append(self.scores)
 
-        return self.done
+    def done(self):
+        return self.eos_top and len(self.finished) >= self.n_best
 
-    def sortBest(self):
-        return torch.sort(self.scores, 0, True)
+    def sortFinished(self, minimum=None):
+        if minimum is not None:
+            i = 0
+            # Add from beam until we have minimum outputs.
+            while len(self.finished) < minimum:
+                s = self.scores[i]
+                if self.global_scorer is not None:
+                    global_scores = self.global_scorer.score(self, self.scores)
+                    s = global_scores[i]
+                self.finished.append((s, len(self.nextYs) - 1, i))
 
-    def getBest(self):
-        "Get the score of the best in the beam."
-        scores, ids = self.sortBest()
-        return scores[1], ids[1]
+        self.finished.sort(key=lambda a: -a[0])
+        scores = [sc for sc, _, _ in self.finished]
+        ks = [(t, k) for _, t, k in self.finished]
+        return scores, ks
 
-    def getHyp(self, k):
+    def getHyp(self, timestep, k):
         """
         Walk back to construct the full hypothesis.
 
@@ -109,9 +138,38 @@ class Beam(object):
             2. The attention at each time step.
         """
         hyp, attn = [], []
-        for j in range(len(self.prevKs) - 1, -1, -1):
+        for j in range(len(self.prevKs[:timestep]) - 1, -1, -1):
             hyp.append(self.nextYs[j+1][k])
             attn.append(self.attn[j][k])
             k = self.prevKs[j][k]
 
         return hyp[::-1], torch.stack(attn[::-1])
+
+
+class GNMTGlobalScorer(object):
+    """
+    NMT re-ranking score from
+    "Google's Neural Machine Translation System" :cite:`wu2016google`
+    Args:
+       alpha (float): length parameter
+       beta (float):  coverage parameter
+    """
+    def __init__(self, alpha, beta):
+        self.alpha = alpha
+        self.beta = beta
+
+    def score(self, beam, logprobs):
+        "Additional term add to log probability"
+        cov = beam.global_state["coverage"]
+        pen = self.beta * torch.min(cov, cov.clone().fill_(1.0)).log().sum(1)
+        l_term = (((5 + len(beam.nextYs)) ** self.alpha) /
+                  ((5 + 1) ** self.alpha))
+        return (logprobs / l_term) + pen
+
+    def update_global_state(self, beam):
+        "Keeps the coverage vector as sum of attens"
+        if len(beam.prevKs) == 1:
+            beam.global_state["coverage"] = beam.attn[-1]
+        else:
+            beam.global_state["coverage"] = beam.global_state["coverage"] \
+                .index_select(0, beam.prevKs[-1]).add(beam.attn[-1])

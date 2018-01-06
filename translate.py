@@ -32,6 +32,13 @@ parser.add_argument('-batch_size', type=int, default=1,
                     help='Batch size')
 parser.add_argument('-max_sent_length', type=int, default=100,
                     help='Maximum sentence length.')
+# Alpha and Beta values for Google Length + Coverage penalty
+# Described here: https://arxiv.org/pdf/1609.08144.pdf, Section 7
+parser.add_argument('-alpha', type=float, default=0.,
+                    help="""Google NMT length penalty parameter
+                    (higher = longer generation)""")
+parser.add_argument('-beta', type=float, default=-0.,
+                   help="""Coverage penalty parameter""")
 parser.add_argument('-replace_unk', action="store_true",
                     help="""Replace the generated UNK tokens with the source
                     token that had highest attention weight. If phrase_table

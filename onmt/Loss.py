@@ -213,8 +213,12 @@ class MemoryEfficientLoss:
                 # loss_t += self.lambda_exhaust * -1 * torch.pow(attns, 2).sum()
 
             #import pdb; pdb.set_trace()
-            
             if self.fertility_loss and "predicted_fertility_vals_t" in s:
+                #floss = nn.NLLLoss(size_average=False)
+                ##fscores = self.generator(out_t)
+                #reg_t = self.lambda_fertility * floss(fscores, s["true_fertility_vals_t"][0])
+                #loss_t += reg_t
+
                 reg_t = self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
                 loss_t += reg_t
             else:

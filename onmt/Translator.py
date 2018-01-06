@@ -132,7 +132,7 @@ class Translator(object):
         encStates, context, fertility_vals = self.model.encoder(batch.src)
         encStates = self.model.init_decoder_state(context, encStates)
         if fertility_vals is not None:
-            fertility_vals = fertility_vals.repeat(beamSize*batchSize, 1)       
+            fertility_vals = fertility_vals.repeat(beamSize*batchSize, 1)
 
         decoder = self.model.decoder
         attentionLayer = decoder.attn
@@ -154,12 +154,12 @@ class Translator(object):
         if batch.tgt is not None:
             decStates = encStates
             mask(padMask)
-            decOut, decStates, attn, upper_bounds = decoder(batch.tgt[:-1],
-                                                 context, decStates, 
-                                                 fertility_vals,
-                                                 fert_dict=self.fert_dict,
-                                                            upper_bounds=upper_bounds,
-                                                            test=True)
+            decOut, decStates, attn, upper_bounds = decoder(
+                batch.tgt[:-1],
+                batch_src,
+                context, decStates,
+                max_word_coverage=max_word_coverage,
+                test=True)
 
             for dec_t, tgt_t in zip(decOut, batch.tgt[1:].data):
                 gen_t = self.model.generator.forward(dec_t)
@@ -175,7 +175,9 @@ class Translator(object):
         batch_src = Variable(batch.src.data.repeat(1, beamSize, 1))
         decStates = encStates
         decStates.repeatBeam_(beamSize)
-        beam = [onmt.Beam(beamSize, self.opt.cuda)
+        n_best = self.opt.n_best
+        global_scorer = onmt.GNMTGlobalScorer(self.opt.alpha, self.opt.beta)
+        beam = [onmt.Beam(beamSize, n_best, self.opt.cuda, global_scorer=global_scorer)
                 for _ in range(batchSize)]
         if useMasking:
             padMask = batch.src.data[:, :, 0].eq(
@@ -237,9 +239,9 @@ class Translator(object):
             # (c) Advance each beam.
             active = []
             for b in range(batchSize):
-                is_done = beam[b].advance(word_scores.data[b],
-                                          attn["std"].data[b])
-                if not is_done:
+                beam[b].advance(word_scores.data[b],
+                                attn["std"].data[b])
+                if not beam[b].done():
                     active += [b]
                 decStates.beamUpdate_(b, beam[b].getCurrentOrigin(),
                                       beamSize)
@@ -248,15 +250,14 @@ class Translator(object):
 
         #  (4) package everything up
         allHyp, allScores, allAttn = [], [], []
-        n_best = self.opt.n_best
 
         for b in range(batchSize):
-            scores, ks = beam[b].sortBest()
+            scores, ks = beam[b].sortFinished(minimum=n_best)
 
             allScores += [scores[:n_best]]
             hyps, attn = [], []
-            for k in ks[:n_best]:
-                hyp, att = beam[b].getHyp(k)
+            for (times, k) in ks[:n_best]:
+                hyp, att = beam[b].getHyp(times, k)
                 hyps.append(hyp)
                 attn.append(att)
             allHyp += [hyps]
@@ -278,7 +279,6 @@ class Translator(object):
                     [[self.tgt_dict.getLabel(id)
                       for id in t.tolist()]
                      for t in beam[b].nextYs][1:])
-        #import pdb; pdb.set_trace()
         if fertility_vals is not None:
             cum_attn = allAttn[0][0].sum(0).squeeze(0).cpu().numpy()
             fert = fertility_vals.data[0, :].cpu().numpy()
