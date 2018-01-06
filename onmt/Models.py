@@ -208,8 +208,8 @@ class Encoder(nn.Module):
                 #fertility_vals = F.tanh(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
                 fertility_vals = F.tanh(self.sup_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
 	        fertility_vals = self.sup_linear_2(fertility_vals)
-                #fertility_vals = self.fertility * F.sigmoid(fertility_vals)
-                fertility_vals = torch.exp(fertility_vals)
+                fertility_vals = self.fertility * F.sigmoid(fertility_vals)
+                #fertility_vals = torch.exp(fertility_vals)
                 #print fertility_vals
               else:
 	        fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
