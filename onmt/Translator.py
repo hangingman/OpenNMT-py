@@ -132,7 +132,10 @@ class Translator(object):
         encStates, context, fertility_vals = self.model.encoder(batch.src)
         encStates = self.model.init_decoder_state(context, encStates)
         if fertility_vals is not None:
-            fertility_vals = fertility_vals.repeat(beamSize*batchSize, 1)
+            if len(fertility_vals.size()) == 3:
+                fertility_vals = fertility_vals.repeat(beamSize*batchSize, 1, 1)
+            else:
+                fertility_vals = fertility_vals.repeat(beamSize*batchSize, 1)
 
         decoder = self.model.decoder
         attentionLayer = decoder.attn
@@ -279,9 +282,9 @@ class Translator(object):
                     [[self.tgt_dict.getLabel(id)
                       for id in t.tolist()]
                      for t in beam[b].nextYs][1:])
-        if fertility_vals is not None:
+        if max_word_coverage is not None:
             cum_attn = allAttn[0][0].sum(0).squeeze(0).cpu().numpy()
-            fert = fertility_vals.data[0, :].cpu().numpy()
+            fert = max_word_coverage.data[0, :].cpu().numpy()
             for c, f in zip(cum_attn, fert):
                 print('%f (%f)' % (c, f))
         #print allAttn[0][0].sum(0)

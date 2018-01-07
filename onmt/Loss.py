@@ -214,13 +214,19 @@ class MemoryEfficientLoss:
 
             #import pdb; pdb.set_trace()
             if self.fertility_loss and "predicted_fertility_vals_t" in s:
-                #floss = nn.NLLLoss(size_average=False)
-                ##fscores = self.generator(out_t)
-                #reg_t = self.lambda_fertility * floss(fscores, s["true_fertility_vals_t"][0])
-                #loss_t += reg_t
-
-                reg_t = self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
+                fert_logprobs = nn.LogSoftmax()
+                fert_loss = nn.NLLLoss(size_average=False)
+                fert_target = s["true_fertility_vals_t"][0]
+                fert_scores = s["predicted_fertility_vals_t"][0]
+                n_batch = fert_scores.size(0)
+                s_len = fert_scores.size(1)
+                fert_scores = fert_scores.view(n_batch*s_len, -1)
+                fert_target = fert_target.view(n_batch*s_len)
+                reg_t = self.lambda_fertility * \
+                        fert_loss(fert_logprobs(fert_scores), fert_target.long())
                 loss_t += reg_t
+                #reg_t = self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
+                #loss_t += reg_t
             else:
                 reg_t = None
 
