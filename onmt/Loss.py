@@ -131,6 +131,7 @@ class MemoryEfficientLoss:
         self.lambda_exhaust = opt.lambda_exhaust
         self.fertility_loss = fertility_loss
         self.mse = torch.nn.MSELoss()
+        self.l1loss = torch.nn.L1Loss()
 
     def score(self, loss_t, reg_t, scores_t, targ_t):
         pred_t = scores_t.data.max(1)[1]
@@ -215,7 +216,8 @@ class MemoryEfficientLoss:
             #import pdb; pdb.set_trace()
             
             if self.fertility_loss and "predicted_fertility_vals_t" in s:
-                reg_t = self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
+                #reg_t = self.lambda_fertility * self.mse(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
+                reg_t = self.lambda_fertility * self.l1loss(s["predicted_fertility_vals_t"][0], s["true_fertility_vals_t"][0])
                 loss_t += reg_t
             else:
                 reg_t = None

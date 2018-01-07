@@ -129,8 +129,8 @@ def get_fertility(filename, train_filename, src_vocab):
 
     with open(filename) as f:
         for i, line in enumerate(f):
-            #fertility_i = [1] * len(sents[i])
-            fertility_i = [0] * len(sents[i])
+            fertility_i = [0.5] * len(sents[i])
+            #fertility_i = [0] * len(sents[i])
             alignments = line.split(" ")
             for al in alignments:
                 idxs = al.split("-")
