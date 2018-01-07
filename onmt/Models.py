@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-import torch.nn.functional as F 
+import torch.nn.functional as F
 import onmt
 import onmt.modules
 from onmt.modules import aeq
@@ -132,7 +132,8 @@ class Encoder(nn.Module):
             if opt.supervised_fertility:
 	        self.supervised_fertility = opt.supervised_fertility
 
-        self.use_sigmoid_fertility = True # False
+        self.use_sigmoid_fertility = False # False
+        self.use_softmax_fertility = opt.use_softmax_fertility
         if self.predict_fertility:
           if self.use_sigmoid_fertility:
               self.fertility_out = nn.Linear(self.hidden_size * self.num_directions + input_size, 1)
@@ -141,9 +142,12 @@ class Encoder(nn.Module):
               self.fertility_linear_2 = nn.Linear(2 * self.hidden_size * self.num_directions, 2 * self.hidden_size * self.num_directions)
               self.fertility_out = nn.Linear(2 * self.hidden_size * self.num_directions, 1, bias=False)
         elif self.supervised_fertility:
-	  self.sup_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, self.hidden_size)
-	  self.sup_linear_2 = nn.Linear(self.hidden_size, 1, bias=False)
-	
+            if self.use_softmax_fertility:
+                self.sup_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, self.hidden_size)
+                self.sup_linear_2 = nn.Linear(self.hidden_size, int(self.fertility), bias=True)
+            else:
+                self.sup_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, self.hidden_size)
+                self.sup_linear_2 = nn.Linear(self.hidden_size, 1, bias=False)
         self.guided_fertility = opt.guided_fertility
 
     def forward(self, input, lengths=None, hidden=None):
@@ -204,20 +208,25 @@ class Encoder(nn.Module):
             elif self.guided_fertility:
               fertility_vals = None #evaluation.get_fertility()
 	    elif self.supervised_fertility:
-              if self.use_sigmoid_fertility:
-                #fertility_vals = F.tanh(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
-                fertility_vals = F.tanh(self.sup_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
-	        fertility_vals = self.sup_linear_2(fertility_vals)
-                fertility_vals = self.fertility * F.sigmoid(fertility_vals)
-                #fertility_vals = torch.exp(fertility_vals)
-                #print fertility_vals
-              else:
-	        fertility_vals = F.relu(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
-	        fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
-	        fertility_vals = 1 + torch.exp(fertility_vals)
-	      fertility_vals = fertility_vals.view(n_batch, s_len)
+                if self.use_softmax_fertility:
+                    fertility_vals = F.tanh(self.sup_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
+                    fertility_vals = self.sup_linear_2(fertility_vals) # These are fertility scores.
+                    fertility_vals = fertility_vals.view(n_batch, s_len, -1)
+                elif self.use_sigmoid_fertility:
+                    #fertility_vals = F.tanh(self.sup_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+                    fertility_vals = F.tanh(self.sup_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
+                    fertility_vals = self.sup_linear_2(fertility_vals)
+                    fertility_vals = self.fertility * F.sigmoid(fertility_vals)
+                    #fertility_vals = torch.exp(fertility_vals)
+                    #print fertility_vals
+                    fertility_vals = fertility_vals.view(n_batch, s_len)
+                else:
+                    fertility_vals = F.relu(self.sup_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
+                    fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
+                    fertility_vals = 1 + torch.exp(fertility_vals)
+                    fertility_vals = fertility_vals.view(n_batch, s_len)
             else:
-              fertility_vals = None
+                fertility_vals = None
             return hidden_t, outputs, fertility_vals
 
 
@@ -240,6 +249,7 @@ class Decoder(nn.Module):
      	if 'supervised_fertility' in opt:
             if opt.supervised_fertility:
                 self.supervised_fertility=opt.supervised_fertility
+        self.use_softmax_fertility = opt.use_softmax_fertility
         self.hidden_size = opt.rnn_size
         self.input_feed = opt.input_feed
         input_size = opt.word_vec_size
@@ -317,12 +327,23 @@ class Decoder(nn.Module):
             max_word_coverage = fertility_vals
         elif self.supervised_fertility:
             if test:
-                max_word_coverage = fertility_vals.clone()
+                #import pdb; pdb.set_trace()
+                if self.use_softmax_fertility:
+                    _, max_word_coverage = torch.max(fertility_vals, dim=2)
+                    max_word_coverage = max_word_coverage.float() + 0.5
+                else:
+                    max_word_coverage = fertility_vals.clone()
             else:
+                #import pdb; pdb.set_trace()
                 fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
-                fert_tensor_list = [evaluation.pad(elem, fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
+                #fert_tensor_list = [evaluation.pad(elem, fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
+                fert_tensor_list = [evaluation.pad(elem, s_len) for i, elem in enumerate(fert_tensor_list)]
                 true_fertility_vals = Variable(torch.stack(fert_tensor_list).cuda(), requires_grad=False)
                 max_word_coverage = true_fertility_vals.clone()
+                #import pdb; pdb.set_trace()
+                max_word_coverage = torch.min(
+                    max_word_coverage,
+                    Variable(torch.Tensor([self.fertility-1]).cuda()))
         else:
             max_word_coverage = Variable(torch.Tensor([self.fertility]).repeat(n_batch, s_len)).cuda()
         return max_word_coverage

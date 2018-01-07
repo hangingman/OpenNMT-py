@@ -190,13 +190,20 @@ def getBatchFertilities(fert_dict, batch, default_fert=1.0):
     fertilities_tensor = torch.FloatTensor(fertilities).view(batch.size(0), batch.size(1)).cuda()
     return fertilities_tensor
   
-def pad(tensor1, tensor2):
-    zero_padded_tensor1 = torch.autograd.Variable(torch.cat([tensor1, tensor1.new(tensor2.size(0) - tensor1.size(0)).zero_()]).cuda(), requires_grad=False)
-    for i in range(tensor1.size(0), tensor2.size(0)):
-      zero_padded_tensor1[i] = tensor2[i]
+#def pad(tensor1, tensor2):
+#    zero_padded_tensor1 = torch.autograd.Variable(torch.cat([tensor1, tensor1.new(tensor2.size(0) - tensor1.size(0)).zero_()]).cud#a(), requires_grad=False)
+#   for i in range(tensor1.size(0), tensor2.size(0)):
+#      zero_padded_tensor1[i] = tensor2[i]
+#
+#    return zero_padded_tensor1.data
+ 
+def pad(tensor1, s_len):
+    zero_padded_tensor1 = torch.autograd.Variable(torch.cat([tensor1, tensor1.new(s_len - tensor1.size(0)).zero_()]).cuda(), requires_grad=False)
+    for i in range(tensor1.size(0), s_len):
+      zero_padded_tensor1[i] = 0
 
     return zero_padded_tensor1.data
- 
+
 def main():
     opt = parser.parse_args()
     
