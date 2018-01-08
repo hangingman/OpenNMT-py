@@ -336,7 +336,7 @@ class Decoder(nn.Module):
             else:
                 #import pdb; pdb.set_trace()
                 fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]
-                #fert_tensor_list = [evaluation.pad(elem, fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
+                #fert_tensor_list = [evaluation.padTensor(elem, fertility_vals[i]) for i, elem in enumerate(fert_tensor_list)]
                 fert_tensor_list = [evaluation.pad(elem, s_len) for i, elem in enumerate(fert_tensor_list)]
                 true_fertility_vals = Variable(torch.stack(fert_tensor_list).cuda(), requires_grad=False)
                 max_word_coverage = true_fertility_vals.clone()
