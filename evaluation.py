@@ -128,15 +128,15 @@ def get_fertility(filename, train_filename, src_vocab):
       sents = [src_vocab.convertToIdx(line, '.') for line in sents]
 
     with open(filename) as f:
-        for i, line in enumerate(f):
-            #fertility_i = [1] * len(sents[i])
+        lines = f.readlines()
+        lines = [line.strip().split() for line in lines]
+        for i, line in enumerate(lines):
+            #fertility_i = [0.5] * len(sents[i])
             fertility_i = [0] * len(sents[i])
-            alignments = line.split(" ")
-            for al in alignments:
+            for al in line:
                 idxs = al.split("-")
                 a = int(idxs[0])
                 b = int(idxs[1])
-
 
                 fertility_i[a] += 1
             #fertility_i = [elem for elem in fertility_i]
@@ -146,7 +146,6 @@ def get_fertility(filename, train_filename, src_vocab):
     return fertility
 
 def get_fert_dict(align_filename, train_filename, src_vocab):
-    
     fert_dict = {}
     fertility = []
 
@@ -162,8 +161,8 @@ def get_fert_dict(align_filename, train_filename, src_vocab):
       lines = f.readlines()
       lines = [line.strip().split() for line in lines]
       for i, line in enumerate(lines):
-        fertility_i = [1] * len(sents[i])
-        #fertility_i = [0] * len(sents[i])
+        #fertility_i = [1] * len(sents[i])
+        fertility_i = [0] * len(sents[i])
         #print(fertility_i)
         #print(line)
         for elem in line:
@@ -171,9 +170,9 @@ def get_fert_dict(align_filename, train_filename, src_vocab):
           a = int(idxs[0])
           b = int(idxs[1])
           fertility_i[a] += 1
-        for idx in sents[i]:
-          fert_dict[idx] = max(fert_dict[idx], fertility_i[a])
-    return fert_dict      
+        for k, idx in enumerate(sents[i]):
+          fert_dict[idx] = max(fert_dict[idx], fertility_i[k])
+    return fert_dict
 
 def getBatchFertilities(fert_dict, batch, default_fert=1.0):
     """
@@ -190,14 +189,14 @@ def getBatchFertilities(fert_dict, batch, default_fert=1.0):
             fertilities.append(default_fert)
     fertilities_tensor = torch.FloatTensor(fertilities).view(batch.size(0), batch.size(1)).cuda()
     return fertilities_tensor
-  
-#def pad(tensor1, tensor2):
-#    zero_padded_tensor1 = torch.autograd.Variable(torch.cat([tensor1, tensor1.new(tensor2.size(0) - tensor1.size(0)).zero_()]).cud#a(), requires_grad=False)
-#   for i in range(tensor1.size(0), tensor2.size(0)):
-#      zero_padded_tensor1[i] = tensor2[i]
-#
-#    return zero_padded_tensor1.data
- 
+
+def padTensor(tensor1, tensor2):
+    zero_padded_tensor1 = torch.autograd.Variable(torch.cat([tensor1, tensor1.new(tensor2.size(0) - tensor1.size(0)).zero_()]).cuda(), requires_grad=False)
+    for i in range(tensor1.size(0), tensor2.size(0)):
+      zero_padded_tensor1[i] = tensor2[i]
+
+    return zero_padded_tensor1.data
+
 def pad(tensor1, s_len):
     zero_padded_tensor1 = torch.autograd.Variable(torch.cat([tensor1, tensor1.new(s_len - tensor1.size(0)).zero_()]).cuda(), requires_grad=False)
     for i in range(tensor1.size(0), s_len):

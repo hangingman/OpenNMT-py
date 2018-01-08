@@ -101,7 +101,8 @@ parser.add_argument('-supervised_fertility', type=str, default=None,
                     help="""Get fertility values from external aligner, specify alignment file for preprocessed corpus""")
 parser.add_argument('-supervised_fertility_source_file', type=str, default=None,
                     help="""Get fertility values from external aligner, specify preprocessed source file""")
-
+parser.add_argument('-use_softmax_fertility', action="store_true",
+                    help="""Use a softmax over discrete fertility values in [0, opt.fertility-1] for supervision (Socher, 2017)""")
 # Optimization options
 parser.add_argument('-encoder_type', default='text',
                     help="Type of encoder to use. Options are [text|img].")
