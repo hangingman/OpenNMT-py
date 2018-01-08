@@ -328,7 +328,7 @@ class Decoder(nn.Module):
         elif self.supervised_fertility:
             if test:
                 if self.use_softmax_fertility:
-                    use_mean = False:
+                    use_mean = False
                     if use_mean:
                         p = torch.nn.Softmax(dim=2)(fertility_vals)
                         v = torch.arange(0, p.size(2)).cuda()
