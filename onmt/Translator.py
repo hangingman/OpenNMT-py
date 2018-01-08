@@ -39,6 +39,8 @@ class Translator(object):
             model_opt.guided_fertility = opt.guided_fertility
         if opt.guided_fertility_source_file is not None:
             model_opt.guided_fertility_source_file = opt.guided_fertility_source_file
+        if opt.c_attn is not None:
+            model_opt.c_attn = opt.c_attn
 
         print(model_opt)
         #import pdb; pdb.set_trace()

@@ -327,9 +327,17 @@ class Decoder(nn.Module):
         elif self.supervised_fertility:
             if test:
                 #import pdb; pdb.set_trace()
-                _, max_word_coverage = torch.max(fertility_vals, dim=2)
-                max_word_coverage = max_word_coverage.float() + 0.5
-                #max_word_coverage = fertility_vals.clone()
+                p = torch.nn.Softmax(dim=2)(fertility_vals)
+                v = torch.arange(0, p.size(2)).cuda()
+                max_word_coverage = torch.mm(
+                    p.view(-1, p.size(2)),
+                    Variable(v.unsqueeze(1)))
+                max_word_coverage = max_word_coverage.view(
+                    p.size(0), p.size(1))
+                #import pdb; pdb.set_trace()
+                #_, max_word_coverage = torch.max(fertility_vals, dim=2)
+                #max_word_coverage = max_word_coverage.float() #+ 0.5
+                ##max_word_coverage = fertility_vals.clone()
             else:
                 #import pdb; pdb.set_trace()
                 fert_tensor_list = [torch.FloatTensor(elem) for elem in fert_sents]

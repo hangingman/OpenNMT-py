@@ -39,6 +39,8 @@ parser.add_argument('-alpha', type=float, default=0.,
                     (higher = longer generation)""")
 parser.add_argument('-beta', type=float, default=-0.,
                    help="""Coverage penalty parameter""")
+parser.add_argument('-c_attn', type=float, default=None,
+                    help="""c factor for increasing a by u""")
 parser.add_argument('-replace_unk', action="store_true",
                     help="""Replace the generated UNK tokens with the source
                     token that had highest attention weight. If phrase_table

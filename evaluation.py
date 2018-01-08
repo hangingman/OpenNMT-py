@@ -163,6 +163,7 @@ def get_fert_dict(align_filename, train_filename, src_vocab):
       lines = [line.strip().split() for line in lines]
       for i, line in enumerate(lines):
         fertility_i = [1] * len(sents[i])
+        #fertility_i = [0] * len(sents[i])
         #print(fertility_i)
         #print(line)
         for elem in line:
