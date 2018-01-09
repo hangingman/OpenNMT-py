@@ -133,7 +133,7 @@ class Encoder(nn.Module):
 	        self.supervised_fertility = opt.supervised_fertility
 
         self.use_sigmoid_fertility = False # False
-        self.use_softmax_fertility = opt.use_softmax_fertility
+        self.use_softmax_fertility = True #opt.use_softmax_fertility
         if self.predict_fertility:
           if self.use_sigmoid_fertility:
               self.fertility_out = nn.Linear(self.hidden_size * self.num_directions + input_size, 1)
@@ -246,10 +246,10 @@ class Decoder(nn.Module):
         self._coverage = opt.coverage_attn
         self.exhaustion_loss = opt.exhaustion_loss
         self.supervised_fertility = False
-     	if 'supervised_fertility' in opt:
+        if 'supervised_fertility' in opt:
             if opt.supervised_fertility:
-                self.supervised_fertility=opt.supervised_fertility
-        self.use_softmax_fertility = opt.use_softmax_fertility
+                self.supervised_fertility = opt.supervised_fertility
+        self.use_softmax_fertility = True #opt.use_softmax_fertility
         self.hidden_size = opt.rnn_size
         self.input_feed = opt.input_feed
         input_size = opt.word_vec_size

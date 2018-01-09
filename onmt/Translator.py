@@ -61,7 +61,7 @@ class Translator(object):
             generator = onmt.modules.CopyGenerator(model_opt, self.src_dict,
                                                    self.tgt_dict)
 
-        if model_opt.guided_fertility!=None:
+        if model_opt.guided_fertility != None:
             print('Getting fertilities from external alignments..')
             self.fert_dict = evaluation.get_fert_dict(model_opt.guided_fertility,
                                                       model_opt.guided_fertility_source_file,
