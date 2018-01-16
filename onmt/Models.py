@@ -132,6 +132,8 @@ class Encoder(nn.Module):
             if opt.supervised_fertility:
 	        self.supervised_fertility = opt.supervised_fertility
 
+        self.classic_coverage = False
+
         self.use_sigmoid_fertility = False # False
         self.use_softmax_fertility = True #opt.use_softmax_fertility
         if self.predict_fertility:
@@ -148,6 +150,8 @@ class Encoder(nn.Module):
             else:
                 self.sup_linear = nn.Linear(self.hidden_size * self.num_directions + input_size, self.hidden_size)
                 self.sup_linear_2 = nn.Linear(self.hidden_size, 1, bias=False)
+        elif self.classic_coverage:
+            self.fertility_linear = nn.Linear(self.hidden_size * self.num_directions, 1, bias=False)
         self.guided_fertility = opt.guided_fertility
 
     def forward(self, input, lengths=None, hidden=None):
@@ -197,16 +201,16 @@ class Encoder(nn.Module):
             if lengths:
                 outputs = unpack(outputs)[0]
             if self.predict_fertility:
-              if self.use_sigmoid_fertility:
-                fertility_vals = self.fertility * F.sigmoid(self.fertility_out(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
-              else:
-                fertility_vals = F.relu(self.fertility_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
-                fertility_vals = F.relu(self.fertility_linear_2(fertility_vals))
-                fertility_vals = 1 + torch.exp(self.fertility_out(fertility_vals))
-              fertility_vals = fertility_vals.view(n_batch, s_len)
-              #fertility_vals = fertility_vals / torch.sum(fertility_vals, 1).repeat(1, s_len) * s_len
+                if self.use_sigmoid_fertility:
+                    fertility_vals = self.fertility * F.sigmoid(self.fertility_out(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
+                else:
+                    fertility_vals = F.relu(self.fertility_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
+                    fertility_vals = F.relu(self.fertility_linear_2(fertility_vals))
+                    fertility_vals = 1 + torch.exp(self.fertility_out(fertility_vals))
+                fertility_vals = fertility_vals.view(n_batch, s_len)
+                #fertility_vals = fertility_vals / torch.sum(fertility_vals, 1).repeat(1, s_len) * s_len
             elif self.guided_fertility:
-              fertility_vals = None #evaluation.get_fertility()
+                fertility_vals = None #evaluation.get_fertility()
 	    elif self.supervised_fertility:
                 if self.use_softmax_fertility:
                     fertility_vals = F.tanh(self.sup_linear(torch.cat([outputs.view(-1, self.hidden_size * self.num_directions), emb.view(-1, vec_size)], dim=1)))
@@ -225,6 +229,9 @@ class Encoder(nn.Module):
                     fertility_vals = F.relu(self.sup_linear_2(fertility_vals))
                     fertility_vals = 1 + torch.exp(fertility_vals)
                     fertility_vals = fertility_vals.view(n_batch, s_len)
+            elif self.classic_coverage:
+                fertility_vals = self.fertility * F.sigmoid(self.fertility_linear(outputs.view(-1, self.hidden_size * self.num_directions)))
+                fertility_vals = fertility_vals.view(n_batch, s_len)
             else:
                 fertility_vals = None
             return hidden_t, outputs, fertility_vals
@@ -279,10 +286,10 @@ class Decoder(nn.Module):
 
         self.dropout = nn.Dropout(opt.dropout)
         # Std attention layer.
-	if 'c_attn' not in opt:
-	    c_attn = 0.0
-	else:
-	    c_attn = opt.c_attn
+        if 'c_attn' not in opt:
+            c_attn = 0.0
+        else:
+            c_attn = opt.c_attn
         self.attn = onmt.modules.GlobalAttention(
             opt.rnn_size,
             coverage=self._coverage,
@@ -456,10 +463,20 @@ class Decoder(nn.Module):
                 else:
                     upper_bounds = None
 
+                #if self._coverage:
+                #    coverage_values = cumulative_attention / fertility_vals
+                #else:
+                #    coverage_values = None
+
+                # NOTE: it seems to me that "coverage" and "cumulative_attention" have the same values.
+                # NOTE: "coverage" was not being passed to the attention below.
+                # See issue https://github.com/OpenNMT/OpenNMT-py/issues/179.
                 rnn_output, hidden = self.rnn(emb_t, hidden)
+
                 attn_output, attn = self.attn(rnn_output,
                                               context.transpose(0, 1),
-                                              upper_bounds=upper_bounds)
+                                              upper_bounds=upper_bounds,
+                                              coverage=coverage)
 
                 cumulative_attention += attn
 

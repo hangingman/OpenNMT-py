@@ -67,7 +67,7 @@ class GlobalAttention(nn.Module):
         else:
             raise NotImplementedError
         self.attn_transform = attn_transform
-        
+
         self.tanh = nn.Tanh()
         self.mask = None
         self.c_attn = c_attn
@@ -85,6 +85,7 @@ class GlobalAttention(nn.Module):
         coverage (FloatTensor): batch x sourceL
         upper_bounds (FloatTensor): batch x sourceL
         """
+        #import pdb; pdb.set_trace()
         # Check input sizes
         batch, sourceL, dim = context.size()
         batch_, dim_ = input.size()
@@ -102,6 +103,7 @@ class GlobalAttention(nn.Module):
             aeq(sourceL, sourceL_)
 
         if coverage:
+            #import pdb; pdb.set_trace()
             context += self.linear_cover(coverage.view(-1).unsqueeze(1)) \
                            .view_as(context)
             context = self.tanh(context)
@@ -123,14 +125,14 @@ class GlobalAttention(nn.Module):
             # batch x sourceL
             #print("self.v: ", self.v.weight)
             attn = self.v(wquh.contiguous()).squeeze()
- 
+
         # EXPERIMENTAL
-        
         if upper_bounds is not None and 'constrained' in self.attn_transform and self.c_attn!=0.0:
             indices = torch.arange(0,upper_bounds.size(1)-1).cuda().long()
             uu = torch.index_select(upper_bounds.data, 1, indices) 
             attn = attn + self.c_attn * Variable(torch.cat((uu, torch.zeros(upper_bounds.size(0)).cuda()), 1))
 
+        #import pdb; pdb.set_trace()
 
         if self.mask is not None:
             attn.data.masked_fill_(self.mask, -float('inf'))
@@ -138,20 +140,31 @@ class GlobalAttention(nn.Module):
             if upper_bounds is None:
                 attn = nn.Softmax()(attn)
             else:
-        	# assert round(np.sum(upper_bounds.cpu().data.numpy()), 5) >= 1.0, pdb.set_trace() 
+                # assert round(np.sum(upper_bounds.cpu().data.numpy()), 5) >= 1.0, pdb.set_trace() 
                 attn = self.sm(attn, upper_bounds)
         elif self.attn_transform == 'constrained_sparsemax':
             if upper_bounds is None:
                 attn = Sparsemax()(attn)
             else:
+                import numpy as np
+                np.set_printoptions(threshold=np.inf)
+                print('Scores:')
+                print attn.cpu().data.numpy()
+                print()
+                print('Upper bounds:')
+                print upper_bounds.cpu().data.numpy()
+                print()
                 attn = self.sm(attn, upper_bounds)
+                print('Attentions:')
+                print attn.cpu().data.numpy()
+                print()
         else:
             attn = self.sm(attn)
             #if upper_bounds is None:
             #    attn = self.sm(attn)
             #else:
             #    attn = self.sm(attn - upper_bounds)
-        
+
         # Compute context weighted by attention.
         # batch x 1 x sourceL
         attn3 = attn.view(attn.size(0), 1, attn.size(1))

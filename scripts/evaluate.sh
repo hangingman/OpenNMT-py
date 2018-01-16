@@ -2,14 +2,16 @@ model=$1
 source=$2
 target=$3
 
-srclang=en #ro #ro_small
-tgtlang=ro #en
+srclang=fi #ro #ro_small
+tgtlang=en #en
 langpair=${srclang}-${tgtlang}
 align=data/${langpair}/corpus.bpe.${langpair}.forward.align
 train_src=data/${langpair}/corpus.bpe.${srclang}
 alpha=0 #0.2
 beta=0 #0.2
 #c_attn=0 #0.2
+
+cd ..
 
 #python translate.py -model $model -src $source -output $target.pred -attn_transform constrained_softmax -guided_fertility $align -guided_fertility_source_file ${train_src} -beam_size 10 -alpha ${alpha} -beta ${beta} -replace_unk -verbose -gpu 3
 #python translate.py -model $model -src $source -output $target.pred -beam_size 10 -alpha ${alpha} -beta ${beta} -c_attn ${c_attn} -replace_unk -verbose -gpu 3

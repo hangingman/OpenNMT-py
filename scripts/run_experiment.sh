@@ -3,7 +3,7 @@ SOURCE=$2 # ro
 TARGET=$3 # en
 LANGPAIR=${SOURCE}-${TARGET}
 DATA=/mnt/data/home/afm/mt_data/data/${LANGPAIR}
-MODEL=/mnt/data/home/afm/mt_data/data/${LANGPAIR}
+MODEL=/mnt/data/home/afm/mt_data/model/${LANGPAIR}
 LOGS=logs
 ATTN=$4 # softmax|sparsemax|csoftmax|csparsemax
 cattn=$5 # 0|0.2
@@ -60,6 +60,7 @@ then
         python -u train.py -data ${DATA}/preprocessed.sink.align.train.pt \
                -save_model ${MODEL}/preprocessed_${ATTN}_cattn-${cattn} \
                -attn_transform ${TRANSFORM} \
+               -start_epoch 7 -train_from ${MODEL}/preprocessed_sparsemax_cattn-0_acc_39.22_ppl_48.04_e6.pt \
                -c_attn ${cattn} -seed 42 -gpus ${gpu} &> \
                ${LOGS}/log_${LANGPAIR}_${ATTN}_cattn-${cattn}.txt
     elif [ "$FERTTYPE" == "fixed" ]
@@ -77,6 +78,7 @@ then
                -attn_transform ${TRANSFORM} \
                -guided_fertility ${DATA}/corpus.bpe.${LANGPAIR}.preprocessed.forward.align \
                -guided_fertility_source_file ${DATA}/corpus.bpe.sink.${SOURCE}.preprocessed \
+               -start_epoch 4 -train_from ${MODEL}/preprocessed_csoftmax_guided_cattn-0.2_acc_37.88_ppl_58.60_e3.pt \
                -c_attn ${cattn} -seed 42 -gpus ${gpu} &> \
                ${LOGS}/log_${LANGPAIR}_${ATTN}_${FERTTYPE}_cattn-${cattn}.txt
     fi
