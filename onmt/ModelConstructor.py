@@ -96,6 +96,9 @@ def make_decoder(opt, embeddings):
                                    opt.coverage_attn,
                                    opt.context_gate,
                                    opt.copy_attn,
+                                   opt.attn_transform,
+                                   opt.c_attn,
+                                   opt.fertility,
                                    opt.dropout,
                                    embeddings)
     else:
@@ -122,6 +125,7 @@ def load_test_model(opt, dummy_opt):
 
     model = make_base_model(model_opt, fields,
                             use_gpu(opt), checkpoint)
+    print(model)
     model.eval()
     model.generator.eval()
     return fields, model, model_opt

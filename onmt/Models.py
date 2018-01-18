@@ -190,7 +190,9 @@ class RNNDecoderBase(nn.Module):
     def __init__(self, rnn_type, bidirectional_encoder, num_layers,
                  hidden_size, attn_type="general",
                  coverage_attn=False, context_gate=None,
-                 copy_attn=False, dropout=0.0, embeddings=None):
+                 copy_attn=False, attn_transform='softmax', c_attn=0.0,
+                 fertility=None,
+                 dropout=0.0, embeddings=None):
         super(RNNDecoderBase, self).__init__()
 
         # Basic attributes.
@@ -200,6 +202,7 @@ class RNNDecoderBase(nn.Module):
         self.hidden_size = hidden_size
         self.embeddings = embeddings
         self.dropout = nn.Dropout(dropout)
+        self.fertility = fertility
 
         # Build the RNN.
         self.rnn = self._build_rnn(rnn_type, self._input_size, hidden_size,
@@ -215,9 +218,13 @@ class RNNDecoderBase(nn.Module):
 
         # Set up the standard attention.
         self._coverage = coverage_attn
+        self._constrained = 'constrained' in attn_transform
         self.attn = onmt.modules.GlobalAttention(
             hidden_size, coverage=coverage_attn,
-            attn_type=attn_type
+            constrained=self._constrained,
+            attn_type=attn_type,
+            attn_transform=attn_transform,
+            c_attn=c_attn
         )
 
         # Set up a separated copy attention layer, if needed.
@@ -435,12 +442,14 @@ class InputFeedRNNDecoder(RNNDecoderBase):
         aeq(input_batch, output_batch)
         # END Additional args check.
 
+        source_len, source_batch, _ = context.size()
+
         # Initialize local and return variables.
         outputs = []
         attns = {"std": []}
         if self._copy:
             attns["copy"] = []
-        if self._coverage:
+        if self._coverage or self._constrained:
             attns["coverage"] = []
 
         emb = self.embeddings(input)
@@ -457,10 +466,43 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             emb_t = torch.cat([emb_t, output], 1)
 
             rnn_output, hidden = self.rnn(emb_t, hidden)
+
+            # Compute attention upper bounds.
+            max_word_coverage = Variable(torch.Tensor(
+                [self.fertility]).repeat(source_batch, source_len)).cuda()
+            if max_word_coverage is not None:
+                if coverage is None:
+                    upper_bounds = max_word_coverage
+                else:
+                    upper_bounds = max_word_coverage - coverage
+                # Use <SINK> token for absorbing remaining attention weight.
+                # TODO: this strategy of packing fails when using batches at
+                # time which are not sorted by sentence length. To fix this,
+                # we need to do torch.sort before packing and then restoring
+                # the previous order.
+                packed_upper_bounds = pack(
+                    upper_bounds, (context_lengths - 1).view(-1).tolist(),
+                    batch_first=True)
+                upper_bounds[:, :-1] = unpack(
+                    packed_upper_bounds, batch_first=True, padding_value=1)[0]
+                upper_bounds[:, -1] = 1
+                # Make sure we're >= 0.
+                upper_bounds = torch.max(upper_bounds,
+                                         Variable(torch.zeros(
+                                             upper_bounds.size(0),
+                                             upper_bounds.size(1)).cuda()))
+            else:
+                upper_bounds = None
+
+            # NOTE: "coverage" was not being passed to the attention below.
+            # See issue https://github.com/OpenNMT/OpenNMT-py/issues/179.
             attn_output, attn = self.attn(
                 rnn_output,
                 context.transpose(0, 1),
-                context_lengths=context_lengths)
+                context_lengths=context_lengths,
+                upper_bounds=upper_bounds,
+                coverage=coverage if self._coverage else None)
+
             if self.context_gate is not None:
                 # TODO: context gate should be employed
                 # instead of second RNN transform.
@@ -474,7 +516,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             attns["std"] += [attn]
 
             # Update the coverage attention.
-            if self._coverage:
+            if self._coverage or self._constrained:
                 coverage = coverage + attn \
                     if coverage is not None else attn
                 attns["coverage"] += [coverage]
@@ -614,6 +656,19 @@ class RNNDecoderState(DecoderState):
             self.hidden = rnnstate
         self.input_feed = input_feed
         self.coverage = coverage
+
+    def beam_update(self, idx, positions, beam_size):
+        # I'm overriding this method to handle the upper bounds in the beam
+        # updates. May be simpler to add this as part of self._all and not
+        # do the overriding.
+        DecoderState.beam_update(self, idx, positions, beam_size)
+        if self.coverage is not None:
+            e = self.coverage
+            a, br, d = e.size()
+            sent_states = e.view(a, beam_size, br // beam_size, d)[:, :, idx]
+            sent_states.data.copy_(
+                sent_states.data.index_select(1, positions))
+                #sent_states.data.index_select(0, positions))
 
     def repeat_beam_size_times(self, beam_size):
         """ Repeat beam_size times along batch dimension. """

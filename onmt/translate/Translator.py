@@ -26,14 +26,17 @@ class Translator(object):
     def __init__(self, model, fields,
                  beam_size, n_best=1,
                  max_length=100,
-                 global_scorer=None, copy_attn=False, cuda=False,
-                 beam_trace=False, min_length=0):
+                 global_scorer=None, copy_attn=False,
+                 attn_transform="softmax", c_attn=0.0,
+                 cuda=False, beam_trace=False, min_length=0):
         self.model = model
         self.fields = fields
         self.n_best = n_best
         self.max_length = max_length
         self.global_scorer = global_scorer
         self.copy_attn = copy_attn
+        self.attn_transform = attn_transform
+        self.c_attn = c_attn
         self.beam_size = beam_size
         self.cuda = cuda
         self.min_length = min_length
@@ -165,6 +168,9 @@ class Translator(object):
         if "tgt" in batch.__dict__:
             ret["gold_score"] = self._run_target(batch, data)
         ret["batch"] = batch
+
+        print ret['attention'][0][0].sum(0)
+        #import pdb; pdb.set_trace()
         return ret
 
     def _from_beam(self, beam):

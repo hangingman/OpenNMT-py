@@ -103,6 +103,17 @@ def model_opts(parser):
                        help="""The attention type to use:
                        dotprod or general (Luong) or MLP (Bahdanau)""")
 
+    # Constrained attention/coverage options.
+    group.add_argument('-attn_transform', type=str, default='softmax',
+                       choices=['softmax', 'constrained_softmax','sparsemax',
+                                'constrained_sparsemax'],
+                       help="""The attention transform to use""")
+
+    group.add_argument('-c_attn', type=float, default=0.0,
+                       help="""c factor for increasing a by u""")
+    group.add_argument('-fertility', type=float, default=2.0,
+                       help="""Constant fertility value for each source word""")
+
     # Genenerator and loss options.
     group.add_argument('-copy_attn', action="store_true",
                        help='Train copy attention layer.')

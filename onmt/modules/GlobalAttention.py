@@ -3,7 +3,8 @@ import torch.nn as nn
 
 from onmt.modules.UtilClass import BottleLinear
 from onmt.Utils import aeq, sequence_mask
-
+from onmt.modules.activations import Softmax, Sparsemax, ConstrainedSoftmax, \
+    ConstrainedSparsemax
 
 class GlobalAttention(nn.Module):
     """
@@ -59,7 +60,8 @@ class GlobalAttention(nn.Module):
        attn_type (str): type of attention to use, options [dot,general,mlp]
 
     """
-    def __init__(self, dim, coverage=False, attn_type="dot"):
+    def __init__(self, dim, coverage=False, constrained=False, attn_type="dot",
+                 attn_transform="softmax", c_attn=0.0):
         super(GlobalAttention, self).__init__()
 
         self.dim = dim
@@ -77,7 +79,20 @@ class GlobalAttention(nn.Module):
         out_bias = self.attn_type == "mlp"
         self.linear_out = nn.Linear(dim*2, dim, bias=out_bias)
 
-        self.sm = nn.Softmax()
+        if attn_transform == 'softmax':
+            self.sm = nn.Softmax()
+        elif attn_transform == 'sparsemax':
+            self.sm = Sparsemax()
+        elif attn_transform == 'constrained_softmax':
+            self.sm = ConstrainedSoftmax()
+        elif attn_transform == 'constrained_sparsemax':
+            self.sm = ConstrainedSparsemax()
+        else:
+            raise NotImplementedError
+        self.attn_transform = attn_transform
+        self.constrained = constrained
+        self.c_attn = c_attn
+
         self.tanh = nn.Tanh()
 
         if coverage:
@@ -126,7 +141,8 @@ class GlobalAttention(nn.Module):
 
             return self.v(wquh.view(-1, dim)).view(tgt_batch, tgt_len, src_len)
 
-    def forward(self, input, context, context_lengths=None, coverage=None):
+    def forward(self, input, context, context_lengths=None, coverage=None,
+                upper_bounds=None):
         """
 
         Args:
@@ -134,6 +150,7 @@ class GlobalAttention(nn.Module):
           context (`FloatTensor`): source vectors `[batch x src_len x dim]`
           context_lengths (`LongTensor`): the source context lengths `[batch]`
           coverage (`FloatTensor`): None (not supported yet)
+          upper_bounds (`FloatTensor`): attention bounds `[batch x src_len]`
 
         Returns:
           (`FloatTensor`, `FloatTensor`):
@@ -173,8 +190,30 @@ class GlobalAttention(nn.Module):
             mask = mask.unsqueeze(1)  # Make it broadcastable.
             align.data.masked_fill_(1 - mask, -float('inf'))
 
+        attn = align.view(batch*targetL, sourceL)
+
+        # Encourage more attention on words with larger upper bounds.
+        # TODO: Make this not cuda-specific.
+        if upper_bounds is not None and self.constrained and self.c_attn != 0.0:
+            indices = torch.arange(0, upper_bounds.size(1)-1).cuda().long()
+            uu = torch.index_select(upper_bounds.data, 1, indices)
+            attn = attn + self.c_attn * Variable(torch.cat(
+                (uu, torch.zeros(upper_bounds.size(0)).cuda()), 1))
+
         # Softmax to normalize attention weights
-        align_vectors = self.sm(align.view(batch*targetL, sourceL))
+        if self.attn_transform == 'constrained_softmax':
+            if upper_bounds is None:
+                align_vectors = nn.Softmax()(attn)
+            else:
+                align_vectors = self.sm(attn, upper_bounds)
+        elif self.attn_transform == 'constrained_sparsemax':
+            if upper_bounds is None:
+                align_vectors = Sparsemax()(attn)
+            else:
+                align_vectors = self.sm(attn, upper_bounds)
+        else:
+            align_vectors = self.sm(attn)
+
         align_vectors = align_vectors.view(batch, targetL, sourceL)
 
         # each context vector c_t is the weighted average
