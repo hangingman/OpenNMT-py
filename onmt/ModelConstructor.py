@@ -118,6 +118,9 @@ def load_test_model(opt, dummy_opt):
     fields = onmt.io.load_fields_from_vocab(
         checkpoint['vocab'], data_type=opt.data_type)
 
+    # TODO: if the model was trained without fertility and we're
+    # using fertility at test time, a fertility field needs to be
+    # added here.
     model_opt = checkpoint['opt']
     for arg in dummy_opt:
         if arg not in model_opt:

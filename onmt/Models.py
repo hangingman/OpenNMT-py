@@ -235,7 +235,8 @@ class RNNDecoderBase(nn.Module):
             )
             self._copy = True
 
-    def forward(self, input, context, state, context_lengths=None):
+    def forward(self, input, context, state, context_lengths=None,
+                fertility=None):
         """
         Args:
             input (`LongTensor`): sequences of padded tokens
@@ -263,7 +264,8 @@ class RNNDecoderBase(nn.Module):
 
         # Run the forward pass of the RNN.
         hidden, outputs, attns, coverage = self._run_forward_pass(
-            input, context, state, context_lengths=context_lengths)
+            input, context, state, context_lengths=context_lengths,
+            fertility=fertility)
 
         # Update the state with the result.
         final_output = outputs[-1]
@@ -430,7 +432,8 @@ class InputFeedRNNDecoder(RNNDecoderBase):
           G --> H
     """
 
-    def _run_forward_pass(self, input, context, state, context_lengths=None):
+    def _run_forward_pass(self, input, context, state, context_lengths=None,
+                          fertility=None):
         """
         See StdRNNDecoder._run_forward_pass() for description
         of arguments and return values.
@@ -468,8 +471,12 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             rnn_output, hidden = self.rnn(emb_t, hidden)
 
             # Compute attention upper bounds.
-            max_word_coverage = Variable(torch.Tensor(
-                [self.fertility]).repeat(source_batch, source_len)).cuda()
+            #import pdb; pdb.set_trace()
+            if fertility is not None:
+                max_word_coverage = Variable(fertility.data.transpose(1, 0))
+            else:
+                max_word_coverage = Variable(torch.Tensor(
+                    [self.fertility]).repeat(source_batch, source_len)).cuda()
             if max_word_coverage is not None:
                 if coverage is None:
                     upper_bounds = max_word_coverage
@@ -565,7 +572,7 @@ class NMTModel(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, src, tgt, lengths, dec_state=None):
+    def forward(self, src, tgt, lengths, fertility=None, dec_state=None):
         """Forward propagate a `src` and `tgt` pair for training.
         Possible initialized with a beginning decoder state.
 
@@ -592,7 +599,8 @@ class NMTModel(nn.Module):
         out, dec_state, attns = self.decoder(tgt, context,
                                              enc_state if dec_state is None
                                              else dec_state,
-                                             context_lengths=lengths)
+                                             context_lengths=lengths,
+                                             fertility=fertility)
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None

@@ -65,6 +65,8 @@ def main():
     out_file = codecs.open(opt.output, 'w', 'utf-8')
 
     # Test data
+    # TODO: if the model was trained without fertility but tested with
+    # fertility, need to use opt instead of model_opt below.
     data = onmt.io.build_dataset(fields, opt.data_type,
                                  opt.src, opt.tgt,
                                  src_dir=opt.src_dir,
@@ -72,7 +74,9 @@ def main():
                                  window_size=opt.window_size,
                                  window_stride=opt.window_stride,
                                  window=opt.window,
-                                 use_filter_pred=False)
+                                 use_filter_pred=False,
+                                 fertility_type=model_opt.fertility_type,
+                                 fertility_value=model_opt.fertility)
 
     # Sort batch by decreasing lengths of sentence required by pytorch.
     # sort=False means "Use dataset's sortkey instead of iterator's".

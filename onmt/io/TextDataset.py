@@ -108,7 +108,9 @@ class TextDataset(ONMTDatasetBase):
         return scores
 
     @staticmethod
-    def make_text_examples_nfeats_tpl(path, truncate, side):
+    def make_text_examples_nfeats_tpl(path, truncate, side,
+                                      fertility_type=None,
+                                      fertility_value=None):
         """
         Args:
             path (str): location of a src or tgt file.
@@ -126,7 +128,9 @@ class TextDataset(ONMTDatasetBase):
         # All examples have same number of features, so we peek first one
         # to get the num_feats.
         examples_nfeats_iter = \
-            TextDataset.read_text_file(path, truncate, side)
+            TextDataset.read_text_file(path, truncate, side,
+                                       fertility_type=fertility_type,
+                                       fertility_value=fertility_value)
 
         first_ex = next(examples_nfeats_iter)
         num_feats = first_ex[1]
@@ -138,7 +142,8 @@ class TextDataset(ONMTDatasetBase):
         return (examples_iter, num_feats)
 
     @staticmethod
-    def read_text_file(path, truncate, side):
+    def read_text_file(path, truncate, side, fertility_type=None,
+                       fertility_value=None):
         """
         Args:
             path (str): location of a src or tgt file.
@@ -149,6 +154,10 @@ class TextDataset(ONMTDatasetBase):
             (word, features, nfeat) triples for each line.
         """
         with codecs.open(path, "r", "utf-8") as corpus_file:
+            if side == 'src' and fertility_type == 'guided':
+                fertility_file = path + '.fert.guided'
+                f = open(fertility_file)
+
             for i, line in enumerate(corpus_file):
                 line = line.strip().split()
                 if truncate:
@@ -158,11 +167,30 @@ class TextDataset(ONMTDatasetBase):
                     TextDataset.extract_text_features(line)
 
                 example_dict = {side: words, "indices": i}
+
+                if side == 'src':
+                    if fertility_type is None:
+                        pass
+                    elif fertility_type == 'fixed':
+                        fertility = tuple([fertility_value] * len(words))
+                        example_dict['fertility'] = fertility
+                    elif fertility_type == 'guided':
+                        values = f.readline().rstrip().split()
+                        if truncate:
+                            values = values[:truncate]
+                        fertility = tuple([float(value) for value in values])
+                        example_dict['fertility'] = fertility
+                    else:
+                        raise NotImplementedError
+
                 if feats:
                     prefix = side + "_feat_"
                     example_dict.update((prefix + str(j), f)
                                         for j, f in enumerate(feats))
                 yield example_dict, n_feats
+
+            if fertility_type == 'guided':
+                f.close()
 
     @staticmethod
     def get_fields(n_src_features, n_tgt_features):
@@ -186,6 +214,10 @@ class TextDataset(ONMTDatasetBase):
         for j in range(n_src_features):
             fields["src_feat_"+str(j)] = \
                 torchtext.data.Field(pad_token=PAD_WORD)
+
+        # Add fertility information for constrained attentions.
+        fields["fertility"] = torchtext.data.Field(
+            pad_token=0, use_vocab=False, tensor_type=torch.FloatTensor)
 
         fields["tgt"] = torchtext.data.Field(
             init_token=BOS_WORD, eos_token=EOS_WORD,

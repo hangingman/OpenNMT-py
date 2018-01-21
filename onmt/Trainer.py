@@ -162,9 +162,14 @@ class Trainer(object):
                 src = onmt.io.make_features(batch, 'src', self.data_type)
                 if self.data_type == 'text':
                     _, src_lengths = batch.src
+                    if 'fertility' in batch.__dict__:
+                        fertility = batch.fertility
+                    else:
+                        fertility = None
                     report_stats.n_src_words += src_lengths.sum()
                 else:
                     src_lengths = None
+                    fertility = None
 
                 tgt_outer = onmt.io.make_features(batch, 'tgt')
 
@@ -176,7 +181,8 @@ class Trainer(object):
                     if self.accum_count == 1:
                         self.model.zero_grad()
                     outputs, attns, dec_state = \
-                        self.model(src, tgt, src_lengths, dec_state)
+                        self.model(src, tgt, src_lengths, fertility=fertility,
+                                   dec_state=dec_state)
 
                     # 3. Compute loss in shards for memory efficiency.
                     batch_stats = self.train_loss.sharded_compute_loss(

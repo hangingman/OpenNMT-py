@@ -103,6 +103,16 @@ def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, fields,
 
         ret_list.append(pt_file)
 
+        if opt.write_txt:
+            import codecs
+            txt_file = pt_file + '.txt'
+            print(" * writing train text data shard to %s." % txt_file)
+            with codecs.open(txt_file + '.src', 'w', 'utf-8') as f_src, \
+                 codecs.open(txt_file + '.tgt', 'w', 'utf-8') as f_tgt:
+                for ex in dataset.examples:
+                    f_src.write(' '.join(ex.src) + '\n')
+                    f_tgt.write(' '.join(ex.tgt) + '\n')
+
     return ret_list
 
 

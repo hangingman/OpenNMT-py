@@ -96,6 +96,12 @@ class Translator(object):
         src_lengths = None
         if data_type == 'text':
             _, src_lengths = batch.src
+            if 'fertility' in batch.__dict__:
+                fertility = batch.fertility
+            else:
+                fertility = None
+        else:
+            fertility = None
 
         enc_states, context = self.model.encoder(src, src_lengths)
         dec_states = self.model.decoder.init_decoder_state(
@@ -111,6 +117,8 @@ class Translator(object):
             if data_type == 'text' and self.copy_attn else None
         context = rvar(context.data)
         context_lengths = src_lengths.repeat(beam_size)
+        if fertility is not None:
+            fertility = var(fertility.data.repeat(1, beam_size))
         dec_states.repeat_beam_size_times(beam_size)
 
         # (3) run the decoder to generate sentences, using beam search.
@@ -135,7 +143,8 @@ class Translator(object):
 
             # Run one step.
             dec_out, dec_states, attn = self.model.decoder(
-                inp, context, dec_states, context_lengths=context_lengths)
+                inp, context, dec_states, fertility=fertility,
+                context_lengths=context_lengths)
             dec_out = dec_out.squeeze(0)
             # dec_out: beam x rnn_size
 
@@ -169,8 +178,14 @@ class Translator(object):
             ret["gold_score"] = self._run_target(batch, data)
         ret["batch"] = batch
 
-        print ret['attention'][0][0].sum(0)
-        #import pdb; pdb.set_trace()
+        if fertility is not None:
+            cum_attn = ret['attention'][0][0].sum(0).squeeze(0).cpu().numpy()
+            fert = fertility.data[:, 0].cpu().numpy()
+            for c, f in zip(cum_attn, fert):
+                print('%f (%f)' % (c, f))
+        else:
+            print ret['attention'][0][0].sum(0)
+
         return ret
 
     def _from_beam(self, beam):

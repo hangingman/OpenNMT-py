@@ -279,6 +279,25 @@ def lazily_load_dataset(corpus_type):
         dataset = torch.load(pt_file)
         print('Loading %s dataset from %s, number of examples: %d' %
               (corpus_type, pt_file, len(dataset)))
+
+        if opt.fertility_type is None:
+            pass
+        elif opt.fertility_type == 'fixed':
+            print('Using fixed fertility of %f' % opt.fertility)
+            for example in dataset:
+                example.fertility = tuple([opt.fertility] * len(example.src))
+        elif opt.fertility_type == 'guided':
+            fertility_file = pt_file + '.txt.src.fert.guided'
+            print('Loading %s fertilities from %s' %
+                  (corpus_type, fertility_file))
+            with open(fertility_file) as f:
+                for example in dataset:
+                    values = f.readline().rstrip().split()
+                    example.fertility = tuple([float(value) for value in values])
+                    assert len(example.fertility) == len(example.src)
+        else:
+            raise NotImplementedError
+
         return dataset
 
     # Sort the glob output by file name (by increasing indexes).
@@ -360,7 +379,6 @@ def build_optim(model, checkpoint):
 
 
 def main():
-
     # Lazily load a list of train/validate dataset.
     print("Lazily loading train/validate datasets from '%s'" % opt.data)
     train_datasets = lazily_load_dataset("train")

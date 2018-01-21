@@ -43,6 +43,7 @@ def generate_guided_fertilities(fertility_dict, source, output):
             # Minimum fertility is 1.
             ferts = [fertility_dict[word] if word in fertility_dict else 1
                      for word in words]
+            ferts = [max(fert, 1) for fert in ferts]
             f_out.write(' '.join([str(fert) for fert in ferts]) + '\n')
 
 def main():

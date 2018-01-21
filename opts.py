@@ -113,6 +113,9 @@ def model_opts(parser):
                        help="""c factor for increasing a by u""")
     group.add_argument('-fertility', type=float, default=2.0,
                        help="""Constant fertility value for each source word""")
+    group.add_argument('-fertility_type', type=str, default=None,
+                       choices=['fixed', 'guided', 'actual'],
+                       help="""Fertility type.""")
 
     # Genenerator and loss options.
     group.add_argument('-copy_attn', action="store_true",
@@ -146,6 +149,9 @@ def preprocess_opts(parser):
 
     group.add_argument('-save_data', required=True,
                        help="Output file for the prepared data")
+
+    parser.add_argument('-write_txt', action='store_true',
+                        help="Write training files in txt format")
 
     group.add_argument('-max_shard_size', type=int, default=0,
                        help="""For text corpus of large volume, it will
