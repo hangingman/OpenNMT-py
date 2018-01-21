@@ -17,12 +17,13 @@ This must contain the following files:
 - `newstest2016.tc.en`
 
 Note 1: don't forget to include the non-BPE's test target file.
+
 Note 2: these files should *not* include the `sink` symbol.
 
 2. Run the following script:
 
 ```
->> prepare_experiment.sh ro en`
+>> prepare_experiment.sh ro en
 ```
 
 This will add the `sink` symbol on the source files, train the aligner,
@@ -37,25 +38,26 @@ Note: you need to adjust the DATA and ALIGNER paths in this script.
 following scripts:
 
 ```
->> run_experiment.sh <gpuid> ro en softmax 0 &`
->> run_experiment.sh <gpuid> ro en sparsemax 0 &`
->> run_experiment.sh <gpuid> ro en csoftmax 0 fixed 2 &`
->> run_experiment.sh <gpuid> ro en csparsemax 0 fixed 2 &`
->> run_experiment.sh <gpuid> ro en csoftmax 0 fixed 3 &`
->> run_experiment.sh <gpuid> ro en csparsemax 0 fixed 3 &`
->> run_experiment.sh <gpuid> ro en csoftmax 0.2 fixed 3 &`
->> run_experiment.sh <gpuid> ro en csparsemax 0.2 fixed 3 &`
->> run_experiment.sh <gpuid> ro en csoftmax 0 guided &`
->> run_experiment.sh <gpuid> ro en csparsemax 0 guided &`
->> run_experiment.sh <gpuid> ro en csoftmax 0.2 guided &`
->> run_experiment.sh <gpuid> ro en csparsemax 0.2 guided &`
+>> run_experiment.sh <gpuid> ro en softmax 0 &
+>> run_experiment.sh <gpuid> ro en sparsemax 0 &
+>> run_experiment.sh <gpuid> ro en csoftmax 0 fixed 2 &
+>> run_experiment.sh <gpuid> ro en csparsemax 0 fixed 2 &
+>> run_experiment.sh <gpuid> ro en csoftmax 0 fixed 3 &
+>> run_experiment.sh <gpuid> ro en csparsemax 0 fixed 3 &
+>> run_experiment.sh <gpuid> ro en csoftmax 0.2 fixed 3 &
+>> run_experiment.sh <gpuid> ro en csparsemax 0.2 fixed 3 &
+>> run_experiment.sh <gpuid> ro en csoftmax 0 guided &
+>> run_experiment.sh <gpuid> ro en csparsemax 0 guided &
+>> run_experiment.sh <gpuid> ro en csoftmax 0.2 guided &
+>> run_experiment.sh <gpuid> ro en csparsemax 0.2 guided &
 ```
 
 This will generate log files in the folder `../logs`.
 
 Note: you need to adjust the DATA and ALIGNER paths in this script.
 
-4. To measure BLEU and METEOR on the test files, use this script:
+4. To measure the BLEU and METEOR model performance on the test files,
+pick the <model> with best dev performance and use this script:
 
 ```
 >> ./evaluate.sh <model> <DATA>/ro-en/newstest.bpe.sink.ro <DATA>/ro-en/newstest.tc.en
