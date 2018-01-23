@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from torch.autograd import Variable
 from onmt.modules.UtilClass import BottleLinear
 from onmt.Utils import aeq, sequence_mask
 from onmt.modules.activations import Softmax, Sparsemax, ConstrainedSoftmax, \
