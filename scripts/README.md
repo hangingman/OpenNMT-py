@@ -32,7 +32,9 @@ create the gold and guided fertility files.
 It will also run the `preprocess.py` OpenNMT-py script to create
 the train and validation data files.
 
-Note: you need to adjust the DATA and ALIGNER paths in this script.
+Note 1: you need to adjust the DATA and ALIGNER paths in this script.
+
+Note 2: you also need to adjust the PATH_FAST_ALIGN in the script `force_align.py`.
 
 3. For training new models with different configurations, run the
 following scripts:

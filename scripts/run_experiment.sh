@@ -2,8 +2,10 @@ gpu=$1
 SOURCE=$2 # ro
 TARGET=$3 # en
 LANGPAIR=${SOURCE}-${TARGET}
-DATA=/mnt/data/home/afm/mt_data/data/${LANGPAIR}
-MODEL=/mnt/data/home/afm/mt_data/model/${LANGPAIR}
+#DATA=/mnt/data/home/afm/mt_data/data/${LANGPAIR}
+#MODEL=/mnt/data/home/afm/mt_data/model/${LANGPAIR}
+DATA=/mnt/disk/afm/data/${LANGPAIR}
+MODEL=/mnt/disk/afm/model/${LANGPAIR}
 LOGS=logs
 ATTN=$4 # softmax|sparsemax|csoftmax|csparsemax
 cattn=$5 # 0|0.2
@@ -23,6 +25,7 @@ fi
 
 cd ..
 mkdir -p ${MODEL}
+mkdir -p ${LOGS}
 
 if $train
 then

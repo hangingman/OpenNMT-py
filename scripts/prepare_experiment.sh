@@ -1,8 +1,10 @@
 SOURCE=$1 # ro
 TARGET=$2 # en
 LANGPAIR=${SOURCE}-${TARGET}
-DATA=/mnt/data/home/afm/mt_data/data/${LANGPAIR}
-ALIGNER=/home/afm/fast_align/build
+#DATA=/mnt/data/home/afm/mt_data/data/${LANGPAIR}
+#ALIGNER=/home/afm/fast_align/build
+DATA=/mnt/disk/afm/data/${LANGPAIR}
+ALIGNER=/mnt/disk/afm/fast_align/build
 preprocess=true
 align=true
 fertilize=true
