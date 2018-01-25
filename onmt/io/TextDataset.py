@@ -154,9 +154,10 @@ class TextDataset(ONMTDatasetBase):
             (word, features, nfeat) triples for each line.
         """
         with codecs.open(path, "r", "utf-8") as corpus_file:
-            if side == 'src' and fertility_type == 'guided':
-                fertility_file = path + '.fert.guided'
+            if side == 'src' and fertility_type in ['guided', 'predicted', 'actual']:
+                fertility_file = path + '.fert.%s' % fertility_type
                 f = open(fertility_file)
+                print('Loading fertilities from %s' % fertility_file)
 
             for i, line in enumerate(corpus_file):
                 line = line.strip().split()
@@ -174,11 +175,12 @@ class TextDataset(ONMTDatasetBase):
                     elif fertility_type == 'fixed':
                         fertility = tuple([fertility_value] * len(words))
                         example_dict['fertility'] = fertility
-                    elif fertility_type == 'guided':
+                    elif fertility_type in ['guided', 'predicted', 'actual']:
                         values = f.readline().rstrip().split()
                         if truncate:
                             values = values[:truncate]
-                        fertility = tuple([float(value) for value in values])
+                        slack = 0. if fertility_type == 'guided' else 1 # Decide what to do here.
+                        fertility = tuple([slack + float(value) for value in values])
                         example_dict['fertility'] = fertility
                     else:
                         raise NotImplementedError
@@ -189,7 +191,7 @@ class TextDataset(ONMTDatasetBase):
                                         for j, f in enumerate(feats))
                 yield example_dict, n_feats
 
-            if fertility_type == 'guided':
+            if fertility_type in ['guided', 'predicted', 'actual']:
                 f.close()
 
     @staticmethod

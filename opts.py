@@ -114,7 +114,7 @@ def model_opts(parser):
     group.add_argument('-fertility', type=float, default=2.0,
                        help="""Constant fertility value for each source word""")
     group.add_argument('-fertility_type', type=str, default=None,
-                       choices=['fixed', 'guided', 'actual'],
+                       choices=['fixed', 'guided', 'predicted', 'actual'],
                        help="""Fertility type.""")
 
     # Genenerator and loss options.
@@ -426,6 +426,21 @@ def translate_opts(parser):
                        target token. If it is not provided(or the identified
                        source token does not exist in the table) then it
                        will copy the source token""")
+
+    # Constrained attention/coverage options (Note: this will override the options
+    # stored in the model!!
+    group.add_argument('-attn_transform', type=str, default=None,
+                       choices=['softmax', 'constrained_softmax','sparsemax',
+                                'constrained_sparsemax'],
+                       help="""The attention transform to use""")
+
+    group.add_argument('-c_attn', type=float, default=None,
+                       help="""c factor for increasing a by u""")
+    group.add_argument('-fertility', type=float, default=None,
+                       help="""Constant fertility value for each source word""")
+    group.add_argument('-fertility_type', type=str, default=None,
+                       choices=['fixed', 'guided', 'predicted', 'actual'],
+                       help="""Fertility type.""")
 
     group = parser.add_argument_group('Logging')
     group.add_argument('-verbose', action="store_true",

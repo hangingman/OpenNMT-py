@@ -165,11 +165,17 @@ class GNMTGlobalScorer(object):
     def __init__(self, alpha, beta):
         self.alpha = alpha
         self.beta = beta
+        self.min_attention = 0.1
 
     def score(self, beam, logprobs):
         "Additional term add to log probability"
         cov = beam.global_state["coverage"]
-        pen = self.beta * torch.min(cov, cov.clone().fill_(1.0)).log().sum(1)
+        # Clip the between 1 and min_attention > 0 to avoid infinite penalty
+        # when coverage is zero (common in sparse attention).
+        pen = self.beta * torch.max(
+            torch.min(cov, cov.clone().fill_(1.0)),
+            cov.clone().fill_(self.min_attention)).log().sum(1)
+        #pen = self.beta * torch.min(cov, cov.clone().fill_(1.0)).log().sum(1)
         l_term = (((5 + len(beam.next_ys)) ** self.alpha) /
                   ((5 + 1) ** self.alpha))
         return (logprobs / l_term) + pen

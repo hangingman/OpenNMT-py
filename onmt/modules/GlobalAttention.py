@@ -99,7 +99,7 @@ class GlobalAttention(nn.Module):
         if coverage:
             self.linear_cover = nn.Linear(1, dim, bias=False)
 
-    def score(self, h_t, h_s):
+    def score(self, h_t, h_s, coverage=None):
         """
         Args:
           h_t (`FloatTensor`): sequence of queries `[batch x tgt_len x dim]`
@@ -124,6 +124,14 @@ class GlobalAttention(nn.Module):
                 h_t_ = h_t.view(tgt_batch*tgt_len, tgt_dim)
                 h_t_ = self.linear_in(h_t_)
                 h_t = h_t_.view(tgt_batch, tgt_len, tgt_dim)
+                #import pdb; pdb.set_trace()
+                if coverage is not None:
+                    cover = coverage.view(-1).unsqueeze(1)
+                    # Use coverage dim equal to src dim for now.
+                    cc = self.linear_cover(cover).view_as(h_s)
+                    cc += h_t # 64, 16, 500
+                    return (cc * h_s).sum(2)
+
             h_s_ = h_s.transpose(1, 2)
             # (batch, t_len, d) x (batch, d, s_len) --> (batch, t_len, s_len)
             return torch.bmm(h_t, h_s_)
@@ -178,13 +186,21 @@ class GlobalAttention(nn.Module):
             aeq(batch, batch_)
             aeq(sourceL, sourceL_)
 
-        if coverage is not None:
-            cover = coverage.view(-1).unsqueeze(1)
-            context += self.linear_cover(cover).view_as(context)
-            context = self.tanh(context)
+        #if coverage is not None:
+            #cover = coverage.view(-1).unsqueeze(1)
+            # Getting this: RuntimeError: in-place operations can be only used
+            # on variables that don't share storage with any other variables,
+            # but detected that there are 2 objects sharing it.
+            #context += self.linear_cover(cover).view_as(context)
+            #import pdb; pdb.set_trace()
+            # This is wrong, instead of summing we need to concatenate
+            # context and cover (no need for self.linear_cover)
+            # or just pass that to the self.score function.
+            #context = context + self.linear_cover(cover).view_as(context)
+            #context = self.tanh(context) # I don't think this tanh should be here.
 
         # compute attention scores, as in Luong et al.
-        align = self.score(input, context)
+        align = self.score(input, context, coverage=coverage)
 
         if context_lengths is not None:
             mask = sequence_mask(context_lengths)

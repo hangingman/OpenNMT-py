@@ -64,6 +64,8 @@ def main():
     # File to write sentences to.
     out_file = codecs.open(opt.output, 'w', 'utf-8')
 
+    #import pdb; pdb.set_trace()
+            
     # Test data
     # TODO: if the model was trained without fertility but tested with
     # fertility, need to use opt instead of model_opt below.

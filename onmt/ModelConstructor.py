@@ -126,6 +126,15 @@ def load_test_model(opt, dummy_opt):
         if arg not in model_opt:
             model_opt.__dict__[arg] = dummy_opt[arg]
 
+    # Allow overriding some options.
+    for arg in opt.__dict__:
+        if arg in model_opt.__dict__ and opt.__dict__[arg] is not None:
+            if arg in ['attn_transform', 'c_attn', 'fertility', 'fertility_type']:
+                model_opt.__dict__[arg] = opt.__dict__[arg]
+                print("Overriding option %s to %s" % (arg, opt.__dict__[arg]))
+            else:
+                print("Could not override option %s" % arg)
+
     model = make_base_model(model_opt, fields,
                             use_gpu(opt), checkpoint)
     print(model)

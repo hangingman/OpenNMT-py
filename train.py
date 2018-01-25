@@ -286,8 +286,8 @@ def lazily_load_dataset(corpus_type):
             print('Using fixed fertility of %f' % opt.fertility)
             for example in dataset:
                 example.fertility = tuple([opt.fertility] * len(example.src))
-        elif opt.fertility_type == 'guided':
-            fertility_file = pt_file + '.txt.src.fert.guided'
+        elif opt.fertility_type in ['guided', 'predicted', 'actual']:
+            fertility_file = pt_file + '.txt.src.fert.%s' % opt.fertility_type
             print('Loading %s fertilities from %s' %
                   (corpus_type, fertility_file))
             with open(fertility_file) as f:
