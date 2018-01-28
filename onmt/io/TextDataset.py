@@ -179,7 +179,8 @@ class TextDataset(ONMTDatasetBase):
                         values = f.readline().rstrip().split()
                         if truncate:
                             values = values[:truncate]
-                        slack = 0. if fertility_type == 'guided' else 1 # Decide what to do here.
+                        # Slack value is 1 for actual/predicted fertility.
+                        slack = 0. if fertility_type == 'guided' else 1
                         fertility = tuple([slack + float(value) for value in values])
                         example_dict['fertility'] = fertility
                     else:

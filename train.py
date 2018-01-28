@@ -293,7 +293,9 @@ def lazily_load_dataset(corpus_type):
             with open(fertility_file) as f:
                 for example in dataset:
                     values = f.readline().rstrip().split()
-                    example.fertility = tuple([float(value) for value in values])
+                    # Slack value is 1 for actual/predicted fertility.
+                    slack = 0. if opt.fertility_type == 'guided' else 1
+                    example.fertility = tuple([slack + float(value) for value in values])
                     assert len(example.fertility) == len(example.src)
         else:
             raise NotImplementedError

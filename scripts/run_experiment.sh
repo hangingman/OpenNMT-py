@@ -56,12 +56,12 @@ then
                -fertility_type fixed \
                -c_attn ${cattn} ${EXTRA_FLAGS} -seed 42 -gpuid ${gpu} &> \
                ${LOGS}/log_${LANGPAIR}_${ATTN}_${FERTTYPE}-${FERTILITY}_cattn-${cattn}${EXTRA_NAME}.txt
-    elif [ "$FERTTYPE" == "guided" ]
+    elif [ "$FERTTYPE" == "guided" ] || [ "$FERTTYPE" == "predicted" ] || [ "$FERTTYPE" == "actual" ]
     then
         python -u train.py -data ${DATA}/preprocessed.sink.align \
                -save_model ${MODEL}/preprocessed_${ATTN}_${FERTTYPE}_cattn-${cattn}${EXTRA_NAME} \
                -attn_transform ${TRANSFORM} \
-               -fertility_type guided \
+               -fertility_type ${FERTTYPE} \
                -c_attn ${cattn} ${EXTRA_FLAGS} -seed 42 -gpuid ${gpu} &> \
                ${LOGS}/log_${LANGPAIR}_${ATTN}_${FERTTYPE}_cattn-${cattn}${EXTRA_NAME}.txt
     fi
