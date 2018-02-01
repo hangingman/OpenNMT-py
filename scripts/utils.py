@@ -24,7 +24,7 @@ def read_file(path, fert=False):
 
 def prepare_sequence(seq, to_ix=None, gpu=False):
     if isinstance(to_ix, dict):
-      idxs = map(lambda w: to_ix[w], seq)
+      idxs = map(lambda w: to_ix[w] if w in to_ix else 0, seq)
     elif isinstance(to_ix, list):
       # Temporary fix for unknown labels
       idxs = map(lambda w: to_ix.index(w) if w in to_ix else 0, seq)

@@ -20,18 +20,20 @@ parser.add_argument("--hidden_dim", type=int, default=256)
 parser.add_argument("--mlp_dim", type=int, default=64)
 parser.add_argument("--n_layers", type=int, default=2)
 parser.add_argument("--dropout", type=float, default=0.2)
-parser.add_argument("--epochs", type=int, default=5)
+parser.add_argument("--epochs", type=int, default=8)
 parser.add_argument("--model_name", type=str, default="fertility_model")
 parser.add_argument("--train_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-train.cln.low.sink.ja.preprocessed")
-parser.add_argument("--dev_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-dev.low.sink.ja")
+parser.add_argument("--dev_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-dev.low.sink.ja.preprocessed")
 parser.add_argument("--test_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-test.low.sink.ja")
 parser.add_argument("--train_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/ja-en-preprocessed.align")
-parser.add_argument("--dev_alignments_path", type=str)
+parser.add_argument("--dev_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/dev-ja-en-preprocessed.align")
+parser.add_argument("--patience", type=int, default=3)
 parser.add_argument("--max_fert", type=int, default=10)
 parser.add_argument("--test", action='store_true')
+parser.add_argument("--write_fertilities", type=str)
 parser.add_argument("--gpu", action='store_true')
 args = parser.parse_args()
-
+print(args)
 
 print("Reading training data...")
 training_data = utils.read_file(args.train_source_path)
@@ -46,9 +48,10 @@ for ferts in training_ferts:
             args.max_fert = fert
 
 print("Maximum fertility set to %d" %args.max_fert)
-# dev_data = utils.read_file(args.dev_source_path)
-# gen.generate_actual_fertilities(args.dev_source_path, args.dev_alignments_path, args.dev_source_path + ".fert.actual")
-# dev_ferts = utils.read_file(args.dev_source_path + ".fert.actual", fert=True)
+
+dev_data = utils.read_file(args.dev_source_path)
+gen.generate_actual_fertilities(args.dev_source_path, args.dev_alignments_path, args.dev_source_path + ".fert.actual")
+dev_ferts = utils.read_file(args.dev_source_path + ".fert.actual", fert=True)
 
 if args.test:
     test_data = utils.read_file(args.test_source_path)
@@ -73,6 +76,8 @@ def main():
         loss_function = nn.NLLLoss()
         optimizer = optim.SGD(fert_model.parameters(), lr=0.1)
         print("Training fertility predictor model...")
+        patience_counter = 0
+        prev_avg_tok_accuracy = 0
 
         for epoch in xrange(args.epochs):
             accuracies = []
@@ -125,6 +130,18 @@ def main():
             print("Accuracy: %f" % np.mean(accuracies))
             print("Saving model..")
             torch.save(fert_model, args.model_name)
+            print("Evaluating on dev set...")
+            avg_tok_accuracy = eval(fert_model, epoch) 
+
+            # Early Stopping
+            if avg_tok_accuracy <= prev_avg_tok_accuracy:
+                patience_counter += 1
+                if patience_counter==args.patience:
+                    print("Model hasn't improved on dev set for %d epochs. Stopping Training." % patience_counter)
+                    break
+
+            prev_avg_tok_accuracy = avg_tok_accuracy
+
 
     else:
         print("Loading tagger model from " + args.model_name + "...")
@@ -133,29 +150,66 @@ def main():
             fert_model = fert_model.cuda()
 
     if args.test:
-        correct = 0
-        toks = 0
-        # all_out_tags = np.array([])
-        # all_targets = np.array([])
-        print("Starting evaluation on dev set... (%d sentences)" % len(dev_data))
-        for sentence, ferts in zip(dev_data, dev_ferts):
-            fert_model.zero_grad()
-            fert_model.hidden = fert_model.init_hidden()
+        out_path = args.write_fertilities if args.write_fertilities else args.test_source_path+".fert.predicted"
+        test(fert_model, out_path)
 
-            sentence_in = utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu)
-            targets = utils.prepare_sequence(ferts, gpu=args.gpu)
+def eval(fert_model, curEpoch=None):
 
-            fert_scores = fert_model(sentence_in)
-            values, indices = torch.max(fert_scores, 1)
-            out_ferts = indices.cpu().data.numpy().flatten() + 1
-            target_ferts = targets.cpu().data.numpy()
-            correct += np.count_nonzero(out_ferts==target_ferts)
-            toks += out_ferts.shape[0]
-            # all_out_tags = np.append(all_out_tags, out_ferts)
-            # all_targets = np.append(all_targets, targets)
+    correct = 0
+    toks = 0
+    all_out_ferts = []
+    # all_targets = np.array([])
 
-        avg_tok_accuracy = correct/toks
-        print("Dev Set Accuracy: %f" %avg_tok_accuracy)
+    print("Starting evaluation on dev set... (%d sentences)" %  len(dev_data))
+    for sentence, ferts in zip(dev_data, dev_ferts):
+        fert_model.zero_grad()
+        fert_model.hidden = fert_model.init_hidden()
+
+        sentence_in = utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu)
+        targets = utils.prepare_sequence(ferts, gpu=args.gpu)
+
+        fert_scores = fert_model(sentence_in)
+        values, indices = torch.max(fert_scores, 1)
+        out_ferts = indices.cpu().data.numpy().flatten() + 1
+        target_ferts = targets.cpu().data.numpy()
+        correct += np.count_nonzero(out_ferts==target_ferts)
+        toks += out_ferts.shape[0]
+        all_out_ferts.append(out_ferts.tolist())
+        # all_targets = np.append(all_targets, targets)
+
+    avg_tok_accuracy = correct/toks
+    print("Dev Set Accuracy: %f" %avg_tok_accuracy)
+
+    return avg_tok_accuracy
+
+        
+
+def test(fert_model, out_path):
+
+    toks = 0
+    all_out_ferts = []
+
+    print("Starting evaluation on test set... (%d sentences)" % len(test_data))
+    for sentence in test_data:
+        fert_model.zero_grad()
+        fert_model.hidden = fert_model.init_hidden()
+
+        sentence_in = utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu)
+
+        fert_scores = fert_model(sentence_in)
+        values, indices = torch.max(fert_scores, 1)
+        out_ferts = indices.cpu().data.numpy().flatten() + 1
+        toks += out_ferts.shape[0]
+        all_out_ferts.append(out_ferts.tolist())
+    
+    print("Writing predicted fertility values..")
+    # Write fertility values to file
+    with open(out_path, 'w') as f:
+        for ferts in all_out_ferts:
+            for fert in ferts:
+                f.write("%s " %fert)
+            f.write("\n")
+
 
 if __name__=="__main__":
     main()
