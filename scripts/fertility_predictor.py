@@ -37,7 +37,7 @@ print(args)
 
 print("Reading training data...")
 training_data = utils.read_file(args.train_source_path)
-gen.generate_actual_fertilities(args.train_source_path, args.train_alignments_path, args.train_source_path + ".fert.actual")
+#gen.generate_actual_fertilities(args.train_source_path, args.train_alignments_path, args.train_source_path + ".fert.actual")
 training_ferts = utils.read_file(args.train_source_path + ".fert.actual", fert=True)
 
 # Set no. of classes as max(max_fert, highest fertility of any word in training set)
@@ -50,7 +50,7 @@ for ferts in training_ferts:
 print("Maximum fertility set to %d" %args.max_fert)
 
 dev_data = utils.read_file(args.dev_source_path)
-gen.generate_actual_fertilities(args.dev_source_path, args.dev_alignments_path, args.dev_source_path + ".fert.actual")
+#gen.generate_actual_fertilities(args.dev_source_path, args.dev_alignments_path, args.dev_source_path + ".fert.actual")
 dev_ferts = utils.read_file(args.dev_source_path + ".fert.actual", fert=True)
 
 if args.test:
