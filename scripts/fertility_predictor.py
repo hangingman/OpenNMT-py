@@ -20,7 +20,7 @@ parser.add_argument("--hidden_dim", type=int, default=256)
 parser.add_argument("--mlp_dim", type=int, default=64)
 parser.add_argument("--n_layers", type=int, default=2)
 parser.add_argument("--dropout", type=float, default=0.2)
-parser.add_argument("--epochs", type=int, default=8)
+parser.add_argument("--epochs", type=int, default=5)
 parser.add_argument("--model_name", type=str, default="fertility_model")
 parser.add_argument("--train_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-train.cln.low.sink.ja.preprocessed")
 parser.add_argument("--dev_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-dev.low.sink.ja.preprocessed")
@@ -71,9 +71,12 @@ def main():
     if not os.path.isfile(args.model_name):
         fert_model = models.BiLSTMTagger(args.emb_dim, args.hidden_dim, len(word_to_ix), 
                                         args.max_fert, args.n_layers, args.dropout, args.gpu)
+        custom_weight = torch.ones(args.max_fert)
+        custom_weight[0] = 0.6
         if args.gpu:
             fert_model = fert_model.cuda()
-        loss_function = nn.NLLLoss()
+	    custom_weight = custom_weight.cuda()
+        loss_function = nn.NLLLoss(weight=custom_weight)
         optimizer = optim.SGD(fert_model.parameters(), lr=0.1)
         print("Training fertility predictor model...")
         patience_counter = 0
