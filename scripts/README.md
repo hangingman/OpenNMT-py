@@ -65,3 +65,7 @@ pick the <model> with best dev performance and use this script:
 >> ./evaluate.sh <model> <DATA>/ro-en/newstest.bpe.sink.ro <DATA>/ro-en/newstest.tc.en
 ```
 
+To dump the attention matrices, use the -dump_attn argument with translate.py. You can load the outputted file with pickle as:
+```
+>> attn_matrices = pickle.load( open(<filename>, 'rb') )
+```

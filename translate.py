@@ -107,9 +107,11 @@ def main():
     counter = count(1)
     pred_score_total, pred_words_total = 0, 0
     gold_score_total, gold_words_total = 0, 0
+    attn_matrices = []    
 
     for batch in data_iter:
         batch_data = translator.translate_batch(batch, data)
+        attn_matrices.append(batch_data['attention'])
         translations = builder.from_batch(batch_data)
 
         for trans in translations:
@@ -143,6 +145,10 @@ def main():
         json.dump(translator.beam_accum,
                   codecs.open(opt.dump_beam, 'w', 'utf-8'))
 
+    if opt.dump_attn:
+       import pickle
+       pickle.dump(attn_matrices, 
+                   open('attn_matrices_' + dummy_opt.attn_transform + '.out', 'wb'))
 
 if __name__ == "__main__":
     main()

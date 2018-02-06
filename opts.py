@@ -449,6 +449,8 @@ def translate_opts(parser):
                        help='Print best attn for each word')
     group.add_argument('-dump_beam', type=str, default="",
                        help='File to dump beam information to.')
+    group.add_argument('-dump_attn', action='store_true',
+                       help='Dump attention matrices') 
     group.add_argument('-n_best', type=int, default=1,
                        help="""If verbose is set, will output the n_best
                        decoded sentences""")
