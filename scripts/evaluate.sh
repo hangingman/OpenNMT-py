@@ -17,7 +17,7 @@ cd ..
 
 #python translate.py -model $model -src $source -output $target.pred -attn_transform constrained_softmax -guided_fertility $align -guided_fertility_source_file ${train_src} -beam_size 10 -alpha ${alpha} -beta ${beta} -replace_unk -verbose -gpu 3
 #python translate.py -model $model -src $source -output $target.pred -beam_size 10 -alpha ${alpha} -beta ${beta} -c_attn ${c_attn} -replace_unk -verbose -gpu 3
-python translate.py -model $model -src $source -output $target.pred -beam_size 10 -batch_size 1 -alpha ${alpha} -beta ${beta} -replace_unk -verbose -gpu 0
+python translate.py -model $model -src $source -output $target.pred -beam_size 10 -batch_size 1 -alpha ${alpha} -beta ${beta} -replace_unk -verbose -dump_attn -gpu 1
 #python translate.py -model $model -src $source -output $target.pred -beam_size 10 -batch_size 1 -alpha ${alpha} -beta ${beta} -fertility_type ${fertility_type} -replace_unk -verbose -gpu 0
 #python translate.py -model $model -src $source -output $target.pred -beam_size 10 -batch_size 1 -alpha ${alpha} -beta ${beta} -attn_transform ${attn_transform} -fertility_type ${fertility_type} -c_attn ${c_attn} -replace_unk -verbose -gpu 0
 sed -r 's/(@@ )|(@@ ?$)//g' $target.pred > $target.pred.merged

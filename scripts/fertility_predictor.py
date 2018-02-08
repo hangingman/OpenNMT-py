@@ -29,6 +29,7 @@ parser.add_argument("--train_alignments_path", type=str, default="/projects/tir1
 parser.add_argument("--dev_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/dev-ja-en-preprocessed.align")
 parser.add_argument("--patience", type=int, default=3)
 parser.add_argument("--max_fert", type=int, default=10)
+parser.add_argument("--model_type", type=str, default="classification")
 parser.add_argument("--test", action='store_true')
 parser.add_argument("--write_fertilities", type=str)
 parser.add_argument("--gpu", action='store_true')
@@ -69,14 +70,22 @@ def main():
 
 
     if not os.path.isfile(args.model_name):
-        fert_model = models.BiLSTMTagger(args.emb_dim, args.hidden_dim, len(word_to_ix), 
-                                        args.max_fert, args.n_layers, args.dropout, args.gpu)
+        if args.model_type == 'regression':
+            fert_model = models.BiLSTMRegressor(args.emb_dim, args.hidden_dim, len(word_to_ix), 
+                                                args.max_fert, args.n_layers, args.dropout, args.gpu)
+        else:
+            fert_model = models.BiLSTMTagger(args.emb_dim, args.hidden_dim, len(word_to_ix), 
+                                             args.max_fert, args.n_layers, args.dropout, args.gpu)
         custom_weight = torch.ones(args.max_fert)
-        custom_weight[0] = 0.6
+        custom_weight[0] = 0.6 # TODO: set this as a hyperparameter?
         if args.gpu:
             fert_model = fert_model.cuda()
-	    custom_weight = custom_weight.cuda()
-        loss_function = nn.NLLLoss(weight=custom_weight)
+            custom_weight = custom_weight.cuda()
+        if args.model_type == 'regression':
+            loss_function = nn.MSELoss()
+        else:
+            loss_function = nn.NLLLoss(weight=custom_weight)
+
         optimizer = optim.SGD(fert_model.parameters(), lr=0.1)
         print("Training fertility predictor model...")
         patience_counter = 0
@@ -96,35 +105,47 @@ def main():
                         Sentence %d/%d, \
                         Tokens %d \
                         Cum_Loss: %f \
-                        Average Accuracy: %f" 
+                        Average Accuracy: %f"
                         % (epoch, sent, len(training_data), tokens,
                             cum_loss/tokens, sum(accuracies)/len(accuracies)))
 
                 # Step 1. Remember that Pytorch accumulates gradients.  We need to clear them out
                 # before each instance
                 fert_model.zero_grad()
-                
+
                 # Also, we need to clear out the hidden state of the LSTM, detaching it from its
                 # history on the last instance.
                 fert_model.hidden = fert_model.init_hidden()
-            
+
                 # Step 2. Get our inputs ready for the network, that is, turn them into Variables
                 # of word indices.
                 sentence_in = utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu)
                 target_ferts = utils.prepare_sequence(ferts, gpu=args.gpu)
 
+                #if sent%1000==0:
+                #    import pdb; pdb.set_trace()
 
                 # Step 3. Run our forward pass.
                 fert_scores = fert_model(sentence_in)
-                values, indices = torch.max(fert_scores, 1) 
-                out_ferts = indices.cpu().data.numpy().flatten() + 1
+                if args.model_type == 'regression':
+                    out_ferts = fert_scores.cpu().data.numpy().flatten()
 
-                sent_acc = np.count_nonzero(out_ferts==target_ferts.cpu().data.numpy()) / out_ferts.shape[0]
-                accuracies.append(sent_acc)
+                    err = out_ferts - target_ferts.float().cpu().data.numpy()
+                    sent_acc =  sum(err**2 / out_ferts.shape[0])
+                    accuracies.append(sent_acc) # This is actually MSE.
 
-                # Step 4. Compute the loss, gradients, and update the parameters
+                    # Step 4. Compute the loss, gradients, and update the parameters
+                    loss = loss_function(fert_scores, target_ferts.float())
+                else:
+                    values, indices = torch.max(fert_scores, 1)
+                    out_ferts = indices.cpu().data.numpy().flatten() + 1
 
-                loss = loss_function(fert_scores, target_ferts-1)
+                    sent_acc = np.count_nonzero(out_ferts==target_ferts.cpu().data.numpy()) / out_ferts.shape[0]
+                    accuracies.append(sent_acc)
+
+                    # Step 4. Compute the loss, gradients, and update the parameters
+                    loss = loss_function(fert_scores, target_ferts-1)
+
                 cum_loss += loss.cpu().data[0]
                 loss.backward()
                 optimizer.step()
@@ -134,7 +155,7 @@ def main():
             print("Saving model..")
             torch.save(fert_model, args.model_name)
             print("Evaluating on dev set...")
-            avg_tok_accuracy = eval(fert_model, epoch) 
+            avg_tok_accuracy = eval(fert_model, epoch)
 
             # Early Stopping
             if avg_tok_accuracy <= prev_avg_tok_accuracy:
@@ -172,8 +193,12 @@ def eval(fert_model, curEpoch=None):
         targets = utils.prepare_sequence(ferts, gpu=args.gpu)
 
         fert_scores = fert_model(sentence_in)
-        values, indices = torch.max(fert_scores, 1)
-        out_ferts = indices.cpu().data.numpy().flatten() + 1
+        if args.model_type == 'regression':
+            out_ferts = fert_scores.cpu().data.numpy().flatten()
+        else:
+            values, indices = torch.max(fert_scores, 1)
+            out_ferts = indices.cpu().data.numpy().flatten() + 1
+
         target_ferts = targets.cpu().data.numpy()
         correct += np.count_nonzero(out_ferts==target_ferts)
         toks += out_ferts.shape[0]
@@ -185,7 +210,6 @@ def eval(fert_model, curEpoch=None):
 
     return avg_tok_accuracy
 
-        
 
 def test(fert_model, out_path):
 
@@ -200,11 +224,15 @@ def test(fert_model, out_path):
         sentence_in = utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu)
 
         fert_scores = fert_model(sentence_in)
-        values, indices = torch.max(fert_scores, 1)
-        out_ferts = indices.cpu().data.numpy().flatten() + 1
+        if args.model_type == 'regression':
+            out_ferts = fert_scores.cpu().data.numpy().flatten()
+        else:
+            values, indices = torch.max(fert_scores, 1)
+            out_ferts = indices.cpu().data.numpy().flatten() + 1
+
         toks += out_ferts.shape[0]
         all_out_ferts.append(out_ferts.tolist())
-    
+
     print("Writing predicted fertility values..")
     # Write fertility values to file
     with open(out_path, 'w') as f:

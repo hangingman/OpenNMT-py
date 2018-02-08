@@ -107,7 +107,7 @@ def main():
     counter = count(1)
     pred_score_total, pred_words_total = 0, 0
     gold_score_total, gold_words_total = 0, 0
-    attn_matrices = []    
+    attn_matrices = []
 
     for batch in data_iter:
         batch_data = translator.translate_batch(batch, data)
@@ -147,8 +147,8 @@ def main():
 
     if opt.dump_attn:
        import pickle
-       pickle.dump(attn_matrices, 
-                   open('attn_matrices_' + dummy_opt.attn_transform + '.out', 'wb'))
+       pickle.dump(attn_matrices,
+                   open('attn_matrices_' + model_opt.attn_transform + '.out', 'wb'))
 
 if __name__ == "__main__":
     main()
