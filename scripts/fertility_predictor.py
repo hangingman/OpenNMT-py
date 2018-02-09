@@ -71,7 +71,7 @@ dev_data, dev_ferts = utils.sortbylength(dev_data, dev_ferts)
 
 if args.test:
     test_data = utils.read_file(args.test_source_path)
-    test_data, _ = utils.sortbylength(test_data)
+    #test_data, _ = utils.sortbylength(test_data)
 
 
 # Store starting index of each minibatch
