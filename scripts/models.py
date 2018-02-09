@@ -30,18 +30,20 @@ class BiLSTMTagger(nn.Module):
 
         self.hidden = self.init_hidden()
 
-    def init_hidden(self):
+    def init_hidden(self, batch_size=1):
         # Before we've done anything, we dont have any hidden state.
         # Refer to the Pytorch documentation to see exactly why they have this dimensionality.
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
-        return (utils.get_var(torch.zeros(self.n_layers * 2, 1, self.hidden_dim), gpu=True),
-                utils.get_var(torch.zeros(self.n_layers * 2, 1, self.hidden_dim), gpu=True))
+        return (utils.get_var(torch.zeros(self.n_layers * 2, batch_size, self.hidden_dim), gpu=True),
+                utils.get_var(torch.zeros(self.n_layers * 2, batch_size, self.hidden_dim), gpu=True))
 
-    def forward(self, sentence):
-        wembs = self.word_embeddings(sentence)
-        lstm_out, self.hidden = self.lstm(wembs.view(len(sentence),1,-1) , self.hidden)
-        fert_space = self.hidden2tag(lstm_out.view(wembs.size(0), -1))
-        fert_scores = F.log_softmax(fert_space, dim=1)
+    def forward(self, batch_sents):
+        batch_size = batch_sents.size(0)
+        sent_length = batch_sents.size(1)
+        wembs = self.word_embeddings(batch_sents)
+        lstm_out, self.hidden = self.lstm(wembs.view(sent_length, batch_size, -1) , self.hidden)
+        fert_space = self.hidden2tag(lstm_out.view(batch_size, sent_length, -1))
+        fert_scores = F.log_softmax(fert_space, dim=2)
         return fert_scores
 
 
@@ -66,16 +68,18 @@ class BiLSTMRegressor(nn.Module):
 
         self.hidden = self.init_hidden()
 
-    def init_hidden(self):
+    def init_hidden(self, batch_size=1):
         # Before we've done anything, we dont have any hidden state.
         # Refer to the Pytorch documentation to see exactly why they have this dimensionality.
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
-        return (utils.get_var(torch.zeros(self.n_layers * 2, 1, self.hidden_dim), gpu=True),
-                utils.get_var(torch.zeros(self.n_layers * 2, 1, self.hidden_dim), gpu=True))
+        return (utils.get_var(torch.zeros(self.n_layers * 2, batch_size, self.hidden_dim), gpu=True),
+                utils.get_var(torch.zeros(self.n_layers * 2, batch_size, self.hidden_dim), gpu=True))
 
-    def forward(self, sentence):
-        wembs = self.word_embeddings(sentence)
-        lstm_out, self.hidden = self.lstm(wembs.view(len(sentence),1,-1) , self.hidden)
-        fert_space = self.hidden2score(lstm_out.view(wembs.size(0), -1))
+    def forward(self, batch_sents):
+        batch_size = batch_sents.size(0)
+        sent_length = batch_sents.size(1)
+        wembs = self.word_embeddings(batch_sents)
+        lstm_out, self.hidden = self.lstm(wembs.view(sent_length, batch_size, -1) , self.hidden)
+        fert_space = self.hidden2score(lstm_out.view(batch_size, sent_length, -1))
         fert_scores = self.max_fert * F.sigmoid(fert_space)
-        return fert_scores
+        return fert_scores.view(batch_size, sent_length)

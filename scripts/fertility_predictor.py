@@ -9,6 +9,7 @@ import argparse
 import pdb
 import numpy as np
 import os
+import random
 import utils, models
 
 torch.manual_seed(1)
@@ -21,12 +22,13 @@ parser.add_argument("--mlp_dim", type=int, default=64)
 parser.add_argument("--n_layers", type=int, default=2)
 parser.add_argument("--dropout", type=float, default=0.2)
 parser.add_argument("--epochs", type=int, default=5)
+parser.add_argument("--batch_size", type=int, default=32)
 parser.add_argument("--model_name", type=str, default="fertility_model")
-parser.add_argument("--train_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-train.cln.low.sink.ja.preprocessed")
-parser.add_argument("--dev_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-dev.low.sink.ja.preprocessed")
-parser.add_argument("--test_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/bpe.kyoto-test.low.sink.ja")
-parser.add_argument("--train_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/ja-en-preprocessed.align")
-parser.add_argument("--dev_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py/ja-en/dev-ja-en-preprocessed.align")
+parser.add_argument("--train_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/bpe.kyoto-train.cln.low.sink.ja.preprocessed")
+parser.add_argument("--dev_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/bpe.kyoto-dev.low.sink.ja.preprocessed")
+parser.add_argument("--test_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/bpe.kyoto-test.low.sink.ja")
+parser.add_argument("--train_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/ja-en-preprocessed.align")
+parser.add_argument("--dev_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/dev-ja-en-preprocessed.align")
 parser.add_argument("--patience", type=int, default=3)
 parser.add_argument("--max_fert", type=int, default=10)
 parser.add_argument("--model_type", type=str, default="classification")
@@ -36,10 +38,19 @@ parser.add_argument("--gpu", action='store_true')
 args = parser.parse_args()
 print(args)
 
+args.model_name += "_" + args.model_type
+
 print("Reading training data...")
 training_data = utils.read_file(args.train_source_path)
 #gen.generate_actual_fertilities(args.train_source_path, args.train_alignments_path, args.train_source_path + ".fert.actual")
 training_ferts = utils.read_file(args.train_source_path + ".fert.actual", fert=True)
+training_data, training_ferts = utils.sortbylength(training_data, training_ferts)
+
+word_to_ix = {}
+for sent in training_data:
+    for word in sent:
+        if word not in word_to_ix:
+            word_to_ix[word] = len(word_to_ix)
 
 # Set no. of classes as max(max_fert, highest fertility of any word in training set)
 
@@ -50,18 +61,31 @@ for ferts in training_ferts:
 
 print("Maximum fertility set to %d" %args.max_fert)
 
+
+# Read dev and test data
+
 dev_data = utils.read_file(args.dev_source_path)
 #gen.generate_actual_fertilities(args.dev_source_path, args.dev_alignments_path, args.dev_source_path + ".fert.actual")
 dev_ferts = utils.read_file(args.dev_source_path + ".fert.actual", fert=True)
+dev_data, dev_ferts = utils.sortbylength(dev_data, dev_ferts)
 
 if args.test:
     test_data = utils.read_file(args.test_source_path)
+    test_data, _ = utils.sortbylength(test_data)
 
-word_to_ix = {}
-for sent in training_data:
-    for word in sent:
-        if word not in word_to_ix:
-            word_to_ix[word] = len(word_to_ix)
+
+# Store starting index of each minibatch
+if args.batch_size != 1:
+    train_order = utils.get_train_order(training_data, args.batch_size)
+    dev_order = utils.get_train_order(dev_data, args.batch_size)
+    if args.test:
+        test_order = utils.get_train_order(test_data, args.batch_size)
+
+else:
+    train_order = range(len(train_data))
+    dev_order = range(len(dev_data))
+    if args.test:
+        test_order = range(len(test_data))
 
 
 def main():
@@ -87,27 +111,36 @@ def main():
             loss_function = nn.NLLLoss(weight=custom_weight)
 
         optimizer = optim.SGD(fert_model.parameters(), lr=0.1)
+        optimizer = optim.Adam(fert_model.parameters())
         print("Training fertility predictor model...")
         patience_counter = 0
         prev_avg_tok_accuracy = 0
-
+        random.shuffle(train_order)
+        
         for epoch in xrange(args.epochs):
             accuracies = []
             sent = 0
             tokens = 0
             cum_loss = 0
+            batch_idx = 1
+
             print("Starting epoch %d .." %epoch)
-            for sentence, ferts in zip(training_data, training_ferts):
-                sent += 1
-                tokens += len(sentence)
-                if sent%100==0:
+            for start_idx, end_idx in train_order[:3000]:
+                train_sents = training_data[start_idx : end_idx + 1]
+                target_ferts = training_ferts[start_idx : end_idx + 1]
+                sent += end_idx - start_idx + 1
+                tokens += sum([len(sentence) for sentence in train_sents])
+
+                metric = "MSE" if args.model_type == 'regression' else "Average Accuracy"
+
+                if batch_idx%100==0:
                     print("[Epoch %d] \
                         Sentence %d/%d, \
                         Tokens %d \
                         Cum_Loss: %f \
-                        Average Accuracy: %f"
+                        %s: %f"
                         % (epoch, sent, len(training_data), tokens,
-                            cum_loss/tokens, sum(accuracies)/len(accuracies)))
+                            cum_loss/tokens, metric, sum(accuracies)/len(accuracies)))
 
                 # Step 1. Remember that Pytorch accumulates gradients.  We need to clear them out
                 # before each instance
@@ -115,40 +148,39 @@ def main():
 
                 # Also, we need to clear out the hidden state of the LSTM, detaching it from its
                 # history on the last instance.
-                fert_model.hidden = fert_model.init_hidden()
+                fert_model.hidden = fert_model.init_hidden(len(train_sents))
 
                 # Step 2. Get our inputs ready for the network, that is, turn them into Variables
                 # of word indices.
-                sentence_in = utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu)
-                target_ferts = utils.prepare_sequence(ferts, gpu=args.gpu)
-
-                #if sent%1000==0:
-                #    import pdb; pdb.set_trace()
+                batch_sents = torch.stack([utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu) for sentence in train_sents])
+                batch_ferts = torch.stack([utils.prepare_sequence(ferts, gpu=args.gpu) for ferts in target_ferts])
 
                 # Step 3. Run our forward pass.
-                fert_scores = fert_model(sentence_in)
+                fert_scores = fert_model(batch_sents)
+
                 if args.model_type == 'regression':
                     out_ferts = fert_scores.cpu().data.numpy().flatten()
 
-                    err = out_ferts - target_ferts.float().cpu().data.numpy()
+                    err = out_ferts - batch_ferts.float().cpu().data.numpy().flatten()
                     sent_acc =  sum(err**2 / out_ferts.shape[0])
                     accuracies.append(sent_acc) # This is actually MSE.
 
                     # Step 4. Compute the loss, gradients, and update the parameters
-                    loss = loss_function(fert_scores, target_ferts.float())
+                    loss = loss_function(fert_scores, batch_ferts.float())
                 else:
-                    values, indices = torch.max(fert_scores, 1)
+                    values, indices = torch.max(fert_scores, 2)
                     out_ferts = indices.cpu().data.numpy().flatten() + 1
 
-                    sent_acc = np.count_nonzero(out_ferts==target_ferts.cpu().data.numpy()) / out_ferts.shape[0]
+                    sent_acc = np.count_nonzero(out_ferts==batch_ferts.cpu().data.numpy().flatten()) / out_ferts.shape[0]
                     accuracies.append(sent_acc)
 
                     # Step 4. Compute the loss, gradients, and update the parameters
-                    loss = loss_function(fert_scores, target_ferts-1)
+                    loss = loss_function(fert_scores.view(len(train_sents)*len(train_sents[0]), -1), batch_ferts.view(-1) - 1)
 
                 cum_loss += loss.cpu().data[0]
                 loss.backward()
                 optimizer.step()
+                batch_idx += 1
 
             print("Loss: %f" % loss.cpu().data.numpy())
             print("Accuracy: %f" % np.mean(accuracies))
@@ -185,25 +217,30 @@ def eval(fert_model, curEpoch=None):
     # all_targets = np.array([])
 
     print("Starting evaluation on dev set... (%d sentences)" %  len(dev_data))
-    for sentence, ferts in zip(dev_data, dev_ferts):
+
+    for start_idx, end_idx in dev_order:
+
+        dev_sents = dev_data[start_idx : end_idx + 1]
+        target_ferts = dev_ferts[start_idx : end_idx + 1]
+
         fert_model.zero_grad()
-        fert_model.hidden = fert_model.init_hidden()
+        fert_model.hidden = fert_model.init_hidden(len(dev_sents))
 
-        sentence_in = utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu)
-        targets = utils.prepare_sequence(ferts, gpu=args.gpu)
+        batch_sents = torch.stack([utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu) for sentence in dev_sents])
+        batch_ferts = torch.stack([utils.prepare_sequence(ferts, gpu=args.gpu) for ferts in target_ferts])
 
-        fert_scores = fert_model(sentence_in)
+        fert_scores = fert_model(batch_sents)
+
         if args.model_type == 'regression':
             out_ferts = fert_scores.cpu().data.numpy().flatten()
         else:
-            values, indices = torch.max(fert_scores, 1)
+            values, indices = torch.max(fert_scores, 2)
             out_ferts = indices.cpu().data.numpy().flatten() + 1
 
-        target_ferts = targets.cpu().data.numpy()
-        correct += np.count_nonzero(out_ferts==target_ferts)
+        correct += np.count_nonzero(out_ferts==batch_ferts.cpu().data.numpy().flatten())
         toks += out_ferts.shape[0]
         all_out_ferts.append(out_ferts.tolist())
-        # all_targets = np.append(all_targets, targets)
+        # all_targets = np.append(all_targets, batch_ferts)
 
     avg_tok_accuracy = correct/toks
     print("Dev Set Accuracy: %f" %avg_tok_accuracy)
@@ -223,11 +260,11 @@ def test(fert_model, out_path):
 
         sentence_in = utils.prepare_sequence(sentence, word_to_ix, gpu=args.gpu)
 
-        fert_scores = fert_model(sentence_in)
+        fert_scores = fert_model(sentence_in.view(1, -1))
         if args.model_type == 'regression':
             out_ferts = fert_scores.cpu().data.numpy().flatten()
         else:
-            values, indices = torch.max(fert_scores, 1)
+            values, indices = torch.max(fert_scores, 2)
             out_ferts = indices.cpu().data.numpy().flatten() + 1
 
         toks += out_ferts.shape[0]
