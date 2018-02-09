@@ -78,14 +78,14 @@ if args.test:
 if args.batch_size != 1:
     train_order = utils.get_train_order(training_data, args.batch_size)
     dev_order = utils.get_train_order(dev_data, args.batch_size)
-    if args.test:
-        test_order = utils.get_train_order(test_data, args.batch_size)
+    #if args.test:
+    #    test_order = utils.get_train_order(test_data, args.batch_size)
 
 else:
     train_order = range(len(train_data))
     dev_order = range(len(dev_data))
-    if args.test:
-        test_order = range(len(test_data))
+    #if args.test:
+    #    test_order = range(len(test_data))
 
 
 def main():
@@ -125,7 +125,7 @@ def main():
             batch_idx = 1
 
             print("Starting epoch %d .." %epoch)
-            for start_idx, end_idx in train_order[:3000]:
+            for start_idx, end_idx in train_order:
                 train_sents = training_data[start_idx : end_idx + 1]
                 target_ferts = training_ferts[start_idx : end_idx + 1]
                 sent += end_idx - start_idx + 1

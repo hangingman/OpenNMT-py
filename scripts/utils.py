@@ -22,7 +22,7 @@ def read_file(path, fert=False):
   return training_data
 
 
-def sortbylength(src, ferts=None, maxlen=100):
+def sortbylength(src, ferts=None, maxlen=10000):
   """
   :param data: List of tuples of source sentences and fertility values
   :param maxlen: Maximum sentence length permitted
