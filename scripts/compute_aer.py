@@ -37,5 +37,5 @@ for pred, gold in zip(attention, alignments):
     num_pred += pred.sum()
     num_gold += gold.sum()
 
-print 1. -  2*num_match / (num_pred + num_gold)
-print 1. -  2*num_match_hard / (num_pred_hard + num_gold)
+print 'SAER:', 1. -  2*num_match / (num_pred + num_gold)
+print 'AER:', 1. -  2*num_match_hard / (num_pred_hard + num_gold)

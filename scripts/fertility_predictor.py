@@ -22,7 +22,7 @@ parser.add_argument("--mlp_dim", type=int, default=64)
 parser.add_argument("--n_layers", type=int, default=2)
 parser.add_argument("--dropout", type=float, default=0.2)
 parser.add_argument("--epochs", type=int, default=5)
-parser.add_argument("--batch_size", type=int, default=32)
+parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--model_name", type=str, default="fertility_model")
 parser.add_argument("--train_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/bpe.kyoto-train.cln.low.sink.ja.preprocessed")
 parser.add_argument("--dev_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/bpe.kyoto-dev.low.sink.ja.preprocessed")
@@ -110,13 +110,14 @@ def main():
         else:
             loss_function = nn.NLLLoss(weight=custom_weight)
 
-        optimizer = optim.SGD(fert_model.parameters(), lr=0.1)
-        optimizer = optim.Adam(fert_model.parameters())
+        #optimizer = optim.SGD(fert_model.parameters(), lr=0.1)
+        #optimizer = optim.Adam(fert_model.parameters(), lr=0.001)
+        optimizer = optim.Adam(fert_model.parameters(), lr=0.01)
         print("Training fertility predictor model...")
         patience_counter = 0
         prev_avg_tok_accuracy = 0
         random.shuffle(train_order)
-        
+
         for epoch in xrange(args.epochs):
             accuracies = []
             sent = 0
