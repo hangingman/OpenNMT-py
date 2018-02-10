@@ -108,10 +108,13 @@ def main():
     pred_score_total, pred_words_total = 0, 0
     gold_score_total, gold_words_total = 0, 0
     attn_matrices = []
+    gold_attn_matrices = []
 
     for batch in data_iter:
         batch_data = translator.translate_batch(batch, data)
         attn_matrices.append(batch_data['attention'])
+        if opt.tgt:
+            gold_attn_matrices.append(batch_data['gold_attention'])
         translations = builder.from_batch(batch_data)
 
         for trans in translations:
@@ -146,9 +149,13 @@ def main():
                   codecs.open(opt.dump_beam, 'w', 'utf-8'))
 
     if opt.dump_attn:
-       import pickle
-       pickle.dump(attn_matrices,
-                   open('attn_matrices_' + model_opt.attn_transform + '.out', 'wb'))
+        attn_matrices = [a[0][0].cpu().numpy() for a in attn_matrices]
+        gold_attn_matrices = [a['std'][:,0,:].data.cpu().numpy()
+                              for a in gold_attn_matrices]
+        import pickle
+        pickle.dump({'pred': attn_matrices, 'gold': gold_attn_matrices},
+                   open('attn_matrices_' + model_opt.attn_transform + '.out',
+                        'wb'))
 
 if __name__ == "__main__":
     main()

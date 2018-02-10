@@ -175,7 +175,8 @@ class Translator(object):
         ret = self._from_beam(beam)
         ret["gold_score"] = [0] * batch_size
         if "tgt" in batch.__dict__:
-            ret["gold_score"] = self._run_target(batch, data)
+            ret["gold_score"], ret["gold_attention"] = self._run_target(
+                batch, data)
         ret["batch"] = batch
 
         if fertility is not None:
@@ -234,4 +235,4 @@ class Translator(object):
             scores = out.data.gather(1, tgt)
             scores.masked_fill_(tgt.eq(tgt_pad), 0)
             gold_scores += scores
-        return gold_scores
+        return gold_scores, attn
