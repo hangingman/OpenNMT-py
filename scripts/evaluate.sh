@@ -15,7 +15,7 @@ attn_transform=constrained_softmax
 c_attn=0.2
 
 beam=10
-srclang=ro #tr
+srclang=tr
 tgtlang=en
 
 langpair=${srclang}-${tgtlang}
