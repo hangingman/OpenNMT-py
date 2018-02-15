@@ -5,7 +5,9 @@ target=$3
 gpu=0
 dump_attention=true #false
 
-use_fertility_type=true #false
+# Set use_fertility_type=true to try out the predicted fertilities
+# on a model trained with actual fertilities.
+use_fertility_type=false #true
 fertility_type=predicted
 
 use_attn_transform=false
