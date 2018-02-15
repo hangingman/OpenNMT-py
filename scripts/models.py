@@ -10,7 +10,7 @@ import numpy as np
 import utils
 
 class BiLSTMTagger(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, vocab_size, max_fert, n_layers=2, dropOut=0.2, gpu=False):
+    def __init__(self, embedding_dim, hidden_dim, vocab_size, max_fert, n_layers=2, mlp_dim=-1, dropOut=0.2, gpu=False):
         super(BiLSTMTagger, self).__init__()
 
         self.embedding_dim = embedding_dim
@@ -25,8 +25,15 @@ class BiLSTMTagger(nn.Module):
         # with dimensionality hidden_dim.
         self.lstm = nn.LSTM(self.embedding_dim, self.hidden_dim, num_layers=self.n_layers, dropout=dropOut, bidirectional=True)
 
-        # The linear layer that maps from hidden state space to tag space
-        self.hidden2tag = nn.Linear(2 * self.hidden_dim, self.max_fert)
+        # Optional MLP layer.
+        if mlp_dim >= 0:
+            self.mlp = nn.Linear(2 * self.hidden_dim, self.mlp_dim)
+            # The linear layer that maps from hidden state space to tag space
+            self.hidden2tag = nn.Linear(self.mlp_dim, self.max_fert)
+        else:
+            self.mlp = None
+            # The linear layer that maps from hidden state space to tag space
+            self.hidden2tag = nn.Linear(2 * self.hidden_dim, self.max_fert)
 
         self.hidden = self.init_hidden()
 
@@ -42,7 +49,11 @@ class BiLSTMTagger(nn.Module):
         sent_length = batch_sents.size(1)
         wembs = self.word_embeddings(batch_sents)
         lstm_out, self.hidden = self.lstm(wembs.view(sent_length, batch_size, -1) , self.hidden)
-        fert_space = self.hidden2tag(lstm_out.view(batch_size, sent_length, -1))
+        if self.mlp is not None:
+            states = F.tanh(self.mlp(lstm_out.view(batch_size, sent_length, -1)))
+            fert_space = self.hidden2tag(states)
+        else:
+            fert_space = self.hidden2tag(lstm_out.view(batch_size, sent_length, -1))
         fert_scores = F.log_softmax(fert_space, dim=2)
         return fert_scores
 

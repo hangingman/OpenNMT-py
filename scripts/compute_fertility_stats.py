@@ -11,4 +11,4 @@ f.close()
 
 for fert in range(len(counts)):
     if counts[fert]:
-        print fert, counts[fert]
+        print fert, counts[fert], '%f%%' % (counts[fert] / float(sum(counts)))

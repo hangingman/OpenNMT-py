@@ -4,7 +4,6 @@ from torch.autograd import Variable
 
 
 def read_file(path, fert=False):
-  
   """
    Reads source training file
    dev_or_train: read training data
@@ -56,14 +55,13 @@ def get_train_order(training_data, batch_size):
   batch_counter = 0
 
   for i, length in enumerate(lengths, start=0):
-    
     if length!=prev_length or batch_counter>batch_size:
       start_idxs.append(i)
       if prev_length!=-1:
         end_idxs.append(i-1)
       batch_counter = 1
 
-    batch_counter += 1 
+    batch_counter += 1
     prev_length = length
 
   end_idxs.append(len(lengths)-1)

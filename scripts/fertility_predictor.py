@@ -13,14 +13,14 @@ import random
 import utils, models
 
 torch.manual_seed(1)
-
+random.seed(42)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--emb_dim", type=int, default=128)
-parser.add_argument("--hidden_dim", type=int, default=256)
-parser.add_argument("--mlp_dim", type=int, default=64)
+parser.add_argument("--emb_dim", type=int, default=256) #128)
+parser.add_argument("--hidden_dim", type=int, default=256) #256)
+parser.add_argument("--mlp_dim", type=int, default=-1) # -1 means no MLP.
 parser.add_argument("--n_layers", type=int, default=2)
-parser.add_argument("--dropout", type=float, default=0) #0.2)
+parser.add_argument("--dropout", type=float, default=0.2) #0.2)
 parser.add_argument("--epochs", type=int, default=5)
 parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--model_name", type=str, default="fertility_model")
@@ -29,7 +29,7 @@ parser.add_argument("--dev_source_path", type=str, default="/projects/tir1/users
 parser.add_argument("--test_source_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/bpe.kyoto-test.low.sink.ja")
 parser.add_argument("--train_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/ja-en-preprocessed.align")
 parser.add_argument("--dev_alignments_path", type=str, default="/projects/tir1/users/cmalaviy/OpenNMT-py-old/ja-en/dev-ja-en-preprocessed.align")
-parser.add_argument("--patience", type=int, default=3)
+parser.add_argument("--patience", type=int, default=100) #3)
 parser.add_argument("--max_fert", type=int, default=10)
 parser.add_argument("--model_type", type=str, default="classification")
 parser.add_argument("--test", action='store_true')
@@ -99,9 +99,9 @@ def main():
                                                 args.max_fert, args.n_layers, args.dropout, args.gpu)
         else:
             fert_model = models.BiLSTMTagger(args.emb_dim, args.hidden_dim, len(word_to_ix), 
-                                             args.max_fert, args.n_layers, args.dropout, args.gpu)
+                                             args.max_fert, args.n_layers, args.mlp_dim, args.dropout, args.gpu)
         custom_weight = torch.ones(args.max_fert)
-        custom_weight[0] = 0.6 # TODO: set this as a hyperparameter?
+        custom_weight[0] = 0.5 #0.6 # TODO: set this as a hyperparameter?
         if args.gpu:
             fert_model = fert_model.cuda()
             custom_weight = custom_weight.cuda()
@@ -112,10 +112,12 @@ def main():
 
         #optimizer = optim.SGD(fert_model.parameters(), lr=0.1)
         #optimizer = optim.Adam(fert_model.parameters(), lr=0.001)
-        optimizer = optim.Adam(fert_model.parameters(), lr=0.01)
+        #optimizer = optim.Adam(fert_model.parameters(), lr=0.001, weight_decay=0.001)
+        optimizer = optim.Adam(fert_model.parameters(), lr=0.001)
         print("Training fertility predictor model...")
         patience_counter = 0
         prev_avg_tok_accuracy = 0
+        best_avg_tok_accuracy = 0
         random.shuffle(train_order)
 
         for epoch in xrange(args.epochs):
@@ -125,6 +127,7 @@ def main():
             cum_loss = 0
             batch_idx = 1
 
+            num_matches = num_pred = num_gold = 0
             print("Starting epoch %d .." %epoch)
             for start_idx, end_idx in train_order:
                 train_sents = training_data[start_idx : end_idx + 1]
@@ -166,14 +169,26 @@ def main():
                     sent_acc =  sum(err**2 / out_ferts.shape[0])
                     accuracies.append(sent_acc) # This is actually MSE.
 
+                    out_ferts = np.round(out_ferts)
+                    gold_ferts = batch_ferts.cpu().data.numpy().flatten()
+                    #sent_acc = np.count_nonzero(out_ferts==gold_ferts) / out_ferts.shape[0]
+                    #accuracies.append(sent_acc)
+                    num_matches += np.count_nonzero(np.logical_and(out_ferts==gold_ferts, gold_ferts != 1))
+                    num_pred += np.count_nonzero(out_ferts != 1)
+                    num_gold += np.count_nonzero(gold_ferts != 1)
+
                     # Step 4. Compute the loss, gradients, and update the parameters
                     loss = loss_function(fert_scores, batch_ferts.float())
                 else:
                     values, indices = torch.max(fert_scores, 2)
                     out_ferts = indices.cpu().data.numpy().flatten() + 1
 
-                    sent_acc = np.count_nonzero(out_ferts==batch_ferts.cpu().data.numpy().flatten()) / out_ferts.shape[0]
+                    gold_ferts = batch_ferts.cpu().data.numpy().flatten()
+                    sent_acc = np.count_nonzero(out_ferts==gold_ferts) / out_ferts.shape[0]
                     accuracies.append(sent_acc)
+                    num_matches += np.count_nonzero(np.logical_and(out_ferts==gold_ferts, gold_ferts != 1))
+                    num_pred += np.count_nonzero(out_ferts != 1)
+                    num_gold += np.count_nonzero(gold_ferts != 1)
 
                     # Step 4. Compute the loss, gradients, and update the parameters
                     loss = loss_function(fert_scores.view(len(train_sents)*len(train_sents[0]), -1), batch_ferts.view(-1) - 1)
@@ -183,12 +198,21 @@ def main():
                 optimizer.step()
                 batch_idx += 1
 
+            precision = num_matches / num_pred
+            recall = num_matches / num_gold
+            f1 = 2. * num_matches / (num_pred + num_gold)
+
             print("Loss: %f" % loss.cpu().data.numpy())
             print("Accuracy: %f" % np.mean(accuracies))
-            print("Saving model..")
-            torch.save(fert_model, args.model_name)
+            print("Precision: %f" % precision)
+            print("Recall: %f" % recall)
+            print("F1: %f" % f1)
             print("Evaluating on dev set...")
             avg_tok_accuracy = eval(fert_model, epoch)
+            if avg_tok_accuracy > best_avg_tok_accuracy:
+                best_avg_tok_accuracy = avg_tok_accuracy
+                print("Saving model..")
+                torch.save(fert_model, args.model_name)
 
             # Early Stopping
             if avg_tok_accuracy <= prev_avg_tok_accuracy:
@@ -214,6 +238,7 @@ def eval(fert_model, curEpoch=None):
 
     correct = 0
     toks = 0
+    num_matches = num_pred = num_gold = 0
     all_out_ferts = []
     # all_targets = np.array([])
 
@@ -234,19 +259,39 @@ def eval(fert_model, curEpoch=None):
 
         if args.model_type == 'regression':
             out_ferts = fert_scores.cpu().data.numpy().flatten()
+            out_ferts = np.round(out_ferts)
+
+            gold_ferts = batch_ferts.cpu().data.numpy().flatten()
+            correct += np.count_nonzero(out_ferts==gold_ferts)
+            toks += out_ferts.shape[0]
+            num_matches += np.count_nonzero(np.logical_and(out_ferts==gold_ferts, gold_ferts != 1))
+            num_pred += np.count_nonzero(out_ferts != 1)
+            num_gold += np.count_nonzero(gold_ferts != 1)
         else:
             values, indices = torch.max(fert_scores, 2)
             out_ferts = indices.cpu().data.numpy().flatten() + 1
 
-        correct += np.count_nonzero(out_ferts==batch_ferts.cpu().data.numpy().flatten())
-        toks += out_ferts.shape[0]
+            gold_ferts = batch_ferts.cpu().data.numpy().flatten()
+            correct += np.count_nonzero(out_ferts==gold_ferts)
+            toks += out_ferts.shape[0]
+            num_matches += np.count_nonzero(np.logical_and(out_ferts==gold_ferts, gold_ferts != 1))
+            num_pred += np.count_nonzero(out_ferts != 1)
+            num_gold += np.count_nonzero(gold_ferts != 1)
+
         all_out_ferts.append(out_ferts.tolist())
         # all_targets = np.append(all_targets, batch_ferts)
 
+    precision = num_matches / num_pred
+    recall = num_matches / num_gold
+    f1 = 2. * num_matches / (num_pred + num_gold)
     avg_tok_accuracy = correct/toks
-    print("Dev Set Accuracy: %f" %avg_tok_accuracy)
 
-    return avg_tok_accuracy
+    print("Dev Set Accuracy: %f" %avg_tok_accuracy)
+    print("Dev Set Precision: %f" % precision)
+    print("Dev Set Recall: %f" % recall)
+    print("Dev Set F1: %f" % f1)
+
+    return f1 #avg_tok_accuracy
 
 
 def test(fert_model, out_path):
@@ -265,8 +310,16 @@ def test(fert_model, out_path):
         if args.model_type == 'regression':
             out_ferts = fert_scores.cpu().data.numpy().flatten()
         else:
-            values, indices = torch.max(fert_scores, 2)
-            out_ferts = indices.cpu().data.numpy().flatten() + 1
+            expected = True
+            if expected:
+                ss = fert_scores.cpu().data.numpy()
+                probs = np.exp(ss) / np.tile(np.exp(ss).sum(2)[:,:,None],
+                                             (1,1,ss.shape[2]))
+                out_ferts = (probs[0, :, :] * np.tile(
+                    (1. + np.arange(ss.shape[2])), (ss.shape[1], 1))).sum(1)
+            else:
+                values, indices = torch.max(fert_scores, 2)
+                out_ferts = indices.cpu().data.numpy().flatten() + 1
 
         toks += out_ferts.shape[0]
         all_out_ferts.append(out_ferts.tolist())
