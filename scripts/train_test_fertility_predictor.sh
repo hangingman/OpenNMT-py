@@ -33,6 +33,6 @@ CUDA_VISIBLE_DEVICES=${gpu} \
     --train_alignments_path ${DATA}/preprocessed.sink.align.train.1.pt.txt.src-tgt.forward.align \
     --dev_source_path ${DATA}/preprocessed.sink.align.valid.1.pt.txt.src \
     --dev_alignments_path ${DATA}/preprocessed.sink.align.valid.1.pt.txt.src-tgt.forward.align \
-    --test --test_source_path ${DATA}/newstest2016.bpe.sink.ro
+    --test --test_source_path ${DATA}/newstest2016.bpe.sink.${SOURCE}
 
 
