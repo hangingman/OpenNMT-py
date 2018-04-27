@@ -42,6 +42,8 @@ def get_fields(data_type, n_src_features, n_tgt_features):
     """
     if data_type == 'text':
         return TextDataset.get_fields(n_src_features, n_tgt_features)
+    elif data_type == 'monotext':
+        return TextDataset.get_fields(n_src_features, n_tgt_features)
     elif data_type == 'img':
         return ImageDataset.get_fields(n_src_features, n_tgt_features)
     elif data_type == 'audio':
@@ -53,7 +55,10 @@ def load_fields_from_vocab(vocab, data_type="text"):
     Load Field objects from `vocab.pt` file.
     """
     vocab = dict(vocab)
-    n_src_features = len(collect_features(vocab, 'src'))
+    if data_type == 'monotext':
+        n_src_features = 0
+    else:
+        n_src_features = len(collect_features(vocab, 'src'))
     n_tgt_features = len(collect_features(vocab, 'tgt'))
     fields = get_fields(data_type, n_src_features, n_tgt_features)
     for k, v in vocab.items():

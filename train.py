@@ -239,9 +239,15 @@ def train_model(model, fields, optim, data_type, model_opt):
     norm_method = opt.normalization
     grad_accum_count = opt.accum_count
 
-    trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
-                           trunc_size, shard_size, data_type,
-                           norm_method, grad_accum_count)
+    if model_opt.lm:
+        trainer = onmt.LanguageModelTrainer(model, train_loss, valid_loss,
+                                            optim, trunc_size, shard_size,
+                                            data_type, norm_method,
+                                            grad_accum_count)
+    else:
+        trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
+                               trunc_size, shard_size, data_type,
+                               norm_method, grad_accum_count)
 
     print('\nStart training...')
     print(' * number of epochs: %d, starting from Epoch %d' %
@@ -346,6 +352,9 @@ def load_fields(dataset, data_type, checkpoint):
     if data_type == 'text':
         print(' * vocabulary size. source = %d; target = %d' %
               (len(fields['src'].vocab), len(fields['tgt'].vocab)))
+    elif data_type == 'monotext':
+        print(' * vocabulary size = %d' %
+              (len(fields['tgt'].vocab)))
     else:
         print(' * vocabulary size. target = %d' %
               (len(fields['tgt'].vocab)))
@@ -365,8 +374,13 @@ def collect_report_features(fields):
 
 def build_model(model_opt, opt, fields, checkpoint):
     print('Building model...')
-    model = onmt.ModelConstructor.make_base_model(model_opt, fields,
-                                                  use_gpu(opt), checkpoint)
+    if not model_opt.lm:
+        model = onmt.ModelConstructor.make_base_model(model_opt, fields,
+                                                      use_gpu(opt), checkpoint)
+    else:
+        model = onmt.ModelConstructor.make_language_model(model_opt, fields,
+                                                          use_gpu(opt),
+                                                          checkpoint)
     if len(opt.gpuid) > 1:
         print('Multi gpu training: ', opt.gpuid)
         model = nn.DataParallel(model, device_ids=opt.gpuid, dim=1)
@@ -475,6 +489,9 @@ def main():
     # (All datasets have the same data_type).
     first_dataset = next(lazily_load_dataset("train"))
     data_type = first_dataset.data_type
+    # Only use one language (tgt side) if training a language model
+    if model_opt.lm:
+        data_type = 'monotext'
 
     # Load fields generated from preprocess phase.
     fields = load_fields(first_dataset, data_type, checkpoint)

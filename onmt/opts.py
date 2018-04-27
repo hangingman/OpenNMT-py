@@ -119,6 +119,26 @@ def model_opts(parser):
     group.add_argument('-lambda_coverage', type=float, default=1,
                        help='Lambda value for coverage.')
 
+    # Language Model options
+    group = parser.add_argument_group('Language Model')
+    group.add_argument('-lm', action="store_true",
+                       help='Train a language model intead of NMT.')
+    group.add_argument('-bilm', action="store_true",
+                       help='Make the language model bidirectional.')
+    group.add_argument('-tie_weights', action="store_true",
+                       help='Tie the generator weights with the embeddings.')
+    group.add_argument('-lm_rnn_dropout', type=float, default=0.,
+                       help='Dropout probability applied in the LM RNN.')
+    group.add_argument('-lm_word_vec_size', type=int, default=500,
+                       help='Word embedding size for LM.')
+    group.add_argument('-lm_rnn_size', type=int, default=500,
+                       help='Size of rnn hidden states for LM.')
+    group.add_argument('-lm_layers', type=int, default=2,
+                       help='Number of layers in LM RNN.')
+    group.add_argument('-lm_rnn_type', type=str, default='LSTM',
+                       choices=['LSTM', 'GRU'],
+                       help="""The gate type to use in the RNNs""")
+
 
 def preprocess_opts(parser):
     # Data options

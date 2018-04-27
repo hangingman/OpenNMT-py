@@ -322,3 +322,102 @@ class Trainer(object):
 
         if self.grad_accum_count > 1:
             self.optim.step()
+
+
+class LanguageModelTrainer(Trainer):
+
+    def __init__(self, model, train_loss, valid_loss, optim,
+                 trunc_size=0, shard_size=32, data_type='text',
+                 norm_method="sents", grad_accum_count=1):
+
+        super(LanguageModelTrainer, self).__init__(model, train_loss,
+                                                   valid_loss, optim,
+                                                   trunc_size, shard_size,
+                                                   data_type,
+                                                   norm_method,
+                                                   grad_accum_count)
+
+    def validate(self, valid_iter):
+        """ Validate model.
+            valid_iter: validate data iterator
+        Returns:
+            :obj:`onmt.Statistics`: validation loss statistics
+        """
+        # Set model in validating mode.
+        self.model.eval()
+
+        stats = Statistics()
+
+        attns = None
+
+        for batch in valid_iter:
+            cur_dataset = valid_iter.get_cur_dataset()
+            self.valid_loss.cur_dataset = cur_dataset
+
+            self.model.init_rnn_state(batch.tgt.size(1))
+
+            tgt = onmt.io.make_features(batch, 'tgt')
+
+            # F-prop through the model.
+            outputs = self.model(tgt)
+
+            # Compute loss.
+            batch_stats = self.valid_loss.monolithic_compute_loss(
+                    batch, outputs, attns)
+            # remove attns for lm
+
+            # Update statistics.
+            stats.update(batch_stats)
+
+        # Set model back to training mode.
+        self.model.train()
+
+        return stats
+
+    def _gradient_accumulation(self, true_batchs, total_stats,
+                               report_stats, normalization):
+        if self.grad_accum_count > 1:
+            self.model.zero_grad()
+
+        for batch in true_batchs:
+            target_size = batch.tgt.size(0)
+            # Truncated BPTT
+            if self.trunc_size:
+                trunc_size = self.trunc_size
+            else:
+                trunc_size = target_size
+
+            self.model.init_rnn_state(batch.tgt.size(1))
+            attns = None
+
+            tgt_outer = onmt.io.make_features(batch, 'tgt')
+
+            for j in range(0, target_size-1, trunc_size):
+                # 1. Create truncated target.
+                tgt = tgt_outer[j: j + trunc_size]
+
+                # 2. F-prop all but generator.
+                if self.grad_accum_count == 1:
+                    self.model.zero_grad()
+
+                outputs = self.model(tgt)
+
+                # 3. Compute loss in shards for memory efficiency.
+                batch_stats = self.train_loss.sharded_compute_loss(
+                        batch, outputs, attns, j,
+                        trunc_size, self.shard_size, normalization)
+
+                # 4. Update the parameters and statistics.
+                if self.grad_accum_count == 1:
+                    self.optim.step()
+                total_stats.update(batch_stats)
+                report_stats.update(batch_stats)
+
+                # If truncated, don't backprop fully.
+                # if hidden_state is not None:
+                #     hidden_state.detach()
+                #     hidden_state = self.model.init_rnn_state(
+                # batch.tgt.size(1))
+
+        if self.grad_accum_count > 1:
+            self.optim.step()

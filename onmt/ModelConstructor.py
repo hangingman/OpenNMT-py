@@ -10,7 +10,7 @@ import onmt.io
 import onmt.Models
 import onmt.modules
 from onmt.Models import NMTModel, MeanEncoder, RNNEncoder, \
-                        StdRNNDecoder, InputFeedRNNDecoder
+                        StdRNNDecoder, InputFeedRNNDecoder, LanguageModel
 from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, \
                          TransformerEncoder, TransformerDecoder, \
                          CNNEncoder, CNNDecoder, AudioEncoder
@@ -29,6 +29,8 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
     """
     if for_encoder:
         embedding_dim = opt.src_word_vec_size
+    elif opt.lm:
+        embedding_dim = opt.lm_word_vec_size
     else:
         embedding_dim = opt.tgt_word_vec_size
 
@@ -224,6 +226,78 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
         if hasattr(model.decoder, 'embeddings'):
             model.decoder.embeddings.load_pretrained_vectors(
                     model_opt.pre_word_vecs_dec, model_opt.fix_word_vecs_dec)
+
+    # Add generator to model (this registers it as parameter of model).
+    model.generator = generator
+
+    # Make the whole model leverage GPU if indicated to do so.
+    if gpu:
+        model.cuda()
+    else:
+        model.cpu()
+
+    return model
+
+
+def make_language_model(model_opt, fields, gpu, checkpoint=None):
+    """
+    Args:
+        model_opt: the option loaded from checkpoint.
+        fields: `Field` objects for the model.
+        gpu(bool): whether to use gpu.
+        checkpoint: the model gnerated by train phase, or a resumed snapshot
+                    model from a stopped training.
+    Returns:
+        the Language Model.
+    """
+    assert model_opt.model_type in ["text"], \
+        ("Unsupported model type %s" % (model_opt.model_type))
+
+    # Make Embeddings
+    tgt_dict = fields["tgt"].vocab
+    feature_dicts = onmt.io.collect_feature_vocabs(fields, 'tgt')
+    tgt_embeddings = make_embeddings(model_opt, tgt_dict,
+                                     feature_dicts, for_encoder=False)
+
+    # Make LanguageModel.
+    model = LanguageModel(model_opt, tgt_embeddings, gpu)
+    model.model_type = model_opt.model_type
+
+    # Make Generator.
+    generator = nn.Sequential(
+        nn.Linear(model_opt.lm_rnn_size, len(fields["tgt"].vocab)),
+        nn.LogSoftmax(dim=-1))
+
+    if model_opt.tie_weights:
+            if model_opt.lm_rnn_size != model_opt.lm_word_vec_size:
+                raise ValueError(
+                    'When using the tied flag, hidden size'
+                    'must be equal to embedding size')
+            generator[0].weight = tgt_embeddings.word_lut.weight
+
+    # Load the model states from checkpoint or initialize them.
+    if checkpoint is not None:
+        print('Loading model parameters.')
+        model.load_state_dict(checkpoint['model'])
+        generator.load_state_dict(checkpoint['generator'])
+    else:
+        if model_opt.param_init != 0.0:
+            print('Intializing model parameters.')
+            for p in model.parameters():
+                p.data.uniform_(-model_opt.param_init, model_opt.param_init)
+            for p in generator.parameters():
+                p.data.uniform_(-model_opt.param_init, model_opt.param_init)
+        if model_opt.param_init_glorot:
+            for p in model.parameters():
+                if p.dim() > 1:
+                    xavier_uniform(p)
+            for p in generator.parameters():
+                if p.dim() > 1:
+                    xavier_uniform(p)
+
+        # if hasattr(model, 'embeddings'):
+        #     model.load_pretrained_vectors(
+        #             model_opt.pre_word_vecs, model_opt.fix_word_vecs)
 
     # Add generator to model (this registers it as parameter of model).
     model.generator = generator

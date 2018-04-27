@@ -199,14 +199,14 @@ class TextDataset(ONMTDatasetBase):
             are the corresponding Field objects.
         """
         fields = {}
+        if n_src_features is not None:
+            fields["src"] = torchtext.data.Field(
+                pad_token=PAD_WORD,
+                include_lengths=True)
 
-        fields["src"] = torchtext.data.Field(
-            pad_token=PAD_WORD,
-            include_lengths=True)
-
-        for j in range(n_src_features):
-            fields["src_feat_"+str(j)] = \
-                torchtext.data.Field(pad_token=PAD_WORD)
+            for j in range(n_src_features):
+                fields["src_feat_"+str(j)] = \
+                    torchtext.data.Field(pad_token=PAD_WORD)
 
         fields["tgt"] = torchtext.data.Field(
             init_token=BOS_WORD, eos_token=EOS_WORD,
@@ -226,9 +226,10 @@ class TextDataset(ONMTDatasetBase):
                     alignment[j, i, t] = 1
             return alignment
 
-        fields["src_map"] = torchtext.data.Field(
-            use_vocab=False, tensor_type=torch.FloatTensor,
-            postprocessing=make_src, sequential=False)
+        if n_src_features is not None:
+            fields["src_map"] = torchtext.data.Field(
+                use_vocab=False, tensor_type=torch.FloatTensor,
+                postprocessing=make_src, sequential=False)
 
         def make_tgt(data, vocab, is_train):
             tgt_size = max([t.size(0) for t in data])

@@ -665,3 +665,65 @@ class RNNDecoderState(DecoderState):
                 for e in self._all]
         self.hidden = tuple(vars[:-1])
         self.input_feed = vars[-1]
+
+
+class LanguageModel(nn.Module):
+    def __init__(self, opt, embeddings, gpu):
+        self.layers = opt.lm_layers
+        self.num_directions = 2 if opt.bilm else 1
+
+        if self.num_directions == 2:
+            return NotImplementedError
+
+        self.is_cuda = True if gpu else False
+        input_size = opt.lm_word_vec_size
+
+        super(LanguageModel, self).__init__()
+        self.embeddings = embeddings
+
+        stackedCell = onmt.modules.StackedLSTM if opt.lm_rnn_type == "LSTM"\
+            else onmt.modules.StackedGRU
+        self.rnn_type = opt.lm_rnn_type
+        self.rnn = stackedCell(opt.lm_layers, input_size,
+                               opt.lm_rnn_size, opt.lm_rnn_dropout)
+        self.dropout = nn.Dropout(opt.dropout)
+
+        self.hidden_size = opt.lm_rnn_size
+        self.hidden = None
+
+    def load_pretrained_vectors(self, opt):
+        if opt.pre_word_vecs is not None:
+            pretrained = torch.load(opt.pre_word_vecs)
+            self.embeddings.weight.data.copy_(pretrained)
+
+    def init_rnn_state(self, batch_size):
+        def get_variable():
+            v = torch.zeros(self.layers, batch_size, self.hidden_size)
+            if self.is_cuda:
+                v = Variable(v.cuda(), requires_grad=False)
+            else:
+                v = Variable(v, requires_grad=False)
+            return v
+
+        if self.rnn_type == 'LSTM':
+            state = (get_variable(), get_variable())
+        elif self.rnn_type == 'GRU':
+            state = get_variable()
+        else:
+            raise NotImplementedError("Not valid rnn_type: %s" % self.rnn_type)
+
+        self.hidden = state
+
+    def forward(self, tgt):
+        tgt = tgt[:-1]  # No EOS
+        emb = self.embeddings(tgt)
+        outputs = []
+        for emb_t in emb.split(1):
+            emb_t = emb_t.squeeze(0)
+            output, self.hidden = self.rnn(emb_t, self.hidden)
+            output = self.dropout(output)
+
+            outputs += [output]
+
+        outputs = torch.stack(outputs)
+        return outputs
