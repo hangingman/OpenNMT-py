@@ -35,15 +35,16 @@ class TextDataset(ONMTDatasetBase):
             use_filter_pred (bool): use a custom filter predicate to filter
                 out examples?
     """
-    def __init__(self, fields, src_examples_iter, tgt_examples_iter,
+    def __init__(self, data_type, fields, src_examples_iter, tgt_examples_iter,
                  num_src_feats=0, num_tgt_feats=0,
                  src_seq_length=0, tgt_seq_length=0,
                  dynamic_dict=True, use_filter_pred=True):
-        self.data_type = 'text'
+        self.data_type = data_type
 
         # self.src_vocabs: mutated in dynamic_dict, used in
         # collapse_copy_scores and in Translator.py
-        self.src_vocabs = []
+        if self.data_type == 'text':
+            self.src_vocabs = []
 
         self.n_src_feats = num_src_feats
         self.n_tgt_feats = num_tgt_feats
@@ -51,7 +52,9 @@ class TextDataset(ONMTDatasetBase):
         # Each element of an example is a dictionary whose keys represents
         # at minimum the src tokens and their indices and potentially also
         # the src and tgt features and alignment information.
-        if tgt_examples_iter is not None:
+        if self.data_type == 'monotext':
+            examples_iter = tgt_examples_iter
+        elif tgt_examples_iter is not None:
             examples_iter = (self._join_dicts(src, tgt) for src, tgt in
                              zip(src_examples_iter, tgt_examples_iter))
         else:
@@ -71,21 +74,38 @@ class TextDataset(ONMTDatasetBase):
         # If out_examples is a generator, we need to save the filter_pred
         # function in serialization too, which would cause a problem when
         # `torch.save()`. Thus we materialize it as a list.
-        src_size = 0
+        if data_type == 'text':
+            src_size = 0
 
-        out_examples = []
-        for ex_values in example_values:
-            example = self._construct_example_fromlist(
-                ex_values, out_fields)
-            src_size += len(example.src)
-            out_examples.append(example)
+            out_examples = []
+            for ex_values in example_values:
+                example = self._construct_example_fromlist(
+                    ex_values, out_fields)
+                src_size += len(example.src)
+                out_examples.append(example)
 
-        print("average src size", src_size / len(out_examples),
-              len(out_examples))
+            print("average src size", src_size / len(out_examples),
+                  len(out_examples))
 
-        def filter_pred(example):
-            return 0 < len(example.src) <= src_seq_length \
-               and 0 < len(example.tgt) <= tgt_seq_length
+            def filter_pred(example):
+                return 0 < len(example.src) <= src_seq_length \
+                    and 0 < len(example.tgt) <= tgt_seq_length
+
+        else:
+            tgt_size = 0
+
+            out_examples = []
+            for ex_values in example_values:
+                example = self._construct_example_fromlist(
+                    ex_values, out_fields)
+                tgt_size += len(example.tgt)
+                out_examples.append(example)
+
+            print("average tgt size", tgt_size / len(out_examples),
+                  len(out_examples))
+
+            def filter_pred(example):
+                return 0 < len(example.tgt) <= tgt_seq_length
 
         filter_pred = filter_pred if use_filter_pred else lambda x: True
 
@@ -97,7 +117,9 @@ class TextDataset(ONMTDatasetBase):
         """ Sort using length of source sentences. """
         # Default to a balanced sort, prioritizing tgt len match.
         # TODO: make this configurable.
-        if hasattr(ex, "tgt"):
+        if not hasattr(ex, "src"):
+            return len(ex.tgt)
+        elif hasattr(ex, "tgt"):
             return len(ex.src), len(ex.tgt)
         return len(ex.src)
 

@@ -113,6 +113,11 @@ def get_num_features(data_type, corpus_file, side):
 
     if data_type == 'text':
         return TextDataset.get_num_features(corpus_file, side)
+    elif data_type == 'monotext':
+        if side == 'src':
+            return 0
+        else:
+            return TextDataset.get_num_features(corpus_file, side)
     elif data_type == 'img':
         return ImageDataset.get_num_features(corpus_file, side)
     elif data_type == 'audio':
@@ -184,19 +189,23 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_dir=None,
 
     # Build src/tgt examples iterator from corpus files, also extract
     # number of features.
-    src_examples_iter, num_src_feats = \
-        _make_examples_nfeats_tpl(data_type, src_path, src_dir,
-                                  src_seq_length_trunc, sample_rate,
-                                  window_size, window_stride,
-                                  window, normalize_audio)
+    if data_type != 'monotext':
+        src_examples_iter, num_src_feats = \
+            _make_examples_nfeats_tpl(data_type, src_path, src_dir,
+                                      src_seq_length_trunc, sample_rate,
+                                      window_size, window_stride,
+                                      window, normalize_audio)
+    else:
+        src_examples_iter = num_src_feats = None
 
     # For all data types, the tgt side corpus is in form of text.
     tgt_examples_iter, num_tgt_feats = \
         TextDataset.make_text_examples_nfeats_tpl(
             tgt_path, tgt_seq_length_trunc, "tgt")
 
-    if data_type == 'text':
-        dataset = TextDataset(fields, src_examples_iter, tgt_examples_iter,
+    if data_type == 'text' or data_type == 'monotext':
+        dataset = TextDataset(data_type, fields, src_examples_iter,
+                              tgt_examples_iter,
                               num_src_feats, num_tgt_feats,
                               src_seq_length=src_seq_length,
                               tgt_seq_length=tgt_seq_length,

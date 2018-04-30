@@ -33,6 +33,14 @@ def parse_args():
     onmt.opts.preprocess_opts(parser)
 
     opt = parser.parse_args()
+
+    invalid = not opt.train_src or not opt.valid_src
+
+    if not opt.data_type == 'monotext' and invalid:
+        sys.stderr.write("src paths (train_src and valid_src) are required,"
+                         " unless using data_type option 'monotext'\n")
+        sys.exit(1)
+
     torch.manual_seed(opt.seed)
 
     check_existing_pt_files(opt)
@@ -69,6 +77,8 @@ def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, fields,
     2 * `max_shard_size`(source + target).
     '''
 
+    data_type = 'text'
+
     corpus_size = os.path.getsize(src_corpus)
     if corpus_size > 10 * (1024**2) and opt.max_shard_size == 0:
         print("Warning. The corpus %s is larger than 10M bytes, you can "
@@ -92,7 +102,7 @@ def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, fields,
     while not src_iter.hit_end():
         index += 1
         dataset = onmt.io.TextDataset(
-            fields, src_iter, tgt_iter,
+            data_type, fields, src_iter, tgt_iter,
             src_iter.num_feats, tgt_iter.num_feats,
             src_seq_length=opt.src_seq_length,
             tgt_seq_length=opt.tgt_seq_length,
