@@ -263,3 +263,109 @@ def shards(state, shard_size, eval=False):
                      if isinstance(v, Variable) and v.grad is not None)
         inputs, grads = zip(*variables)
         torch.autograd.backward(inputs, grads)
+
+
+class LMLossCompute(NMTLossCompute):
+    """
+    Standard NMT Loss Computation.
+    """
+    def __init__(self, generator, tgt_vocab, bidirectional,
+                 normalization="sents", label_smoothing=0.0):
+        super(LMLossCompute, self).__init__(generator, tgt_vocab,
+                                            normalization,
+                                            label_smoothing)
+
+        self.bidirectional = bidirectional
+
+    def _make_shard_state(self, batch, output, range_, attns=None):
+        target = batch.tgt
+        lengths = target.ne(self.padding_idx).sum(dim=0)
+        idx = self._get_reverse_idx(lengths)
+        target_size = int(lengths[0])
+        reversed_tgt = target.view(batch.batch_size*target_size,
+                                   -1)[idx, :].view(target_size,
+                                                    batch.batch_size)
+
+        return {
+            "output": output,
+            "target": batch.tgt[range_[0] + 1: range_[1]],
+            "reverse_target": reversed_tgt[range_[0] + 1: range_[1]]
+        }
+
+    def _compute_loss(self, batch, output, target, reverse_target):
+
+        if self.bidirectional:
+
+            scores = self.generator(
+                self._bottle(output[:,
+                                    :,
+                                    :output.size(-1)//2].contiguous()))
+            backward_scores = self.generator(
+                self._bottle(output[:,
+                                    :,
+                                    output.size(-1)//2:].contiguous()))
+
+            rev_gtruth = reverse_target.view(-1)
+
+        else:
+            scores = self.generator(self._bottle(output))
+
+        gtruth = target.view(-1)
+        if self.confidence < 1:
+            tdata = gtruth.data
+            mask = torch.nonzero(tdata.eq(self.padding_idx)).squeeze()
+            log_likelihood = torch.gather(scores.data, 1, tdata.unsqueeze(1))
+            tmp_ = self.one_hot.repeat(gtruth.size(0), 1)
+            tmp_.scatter_(1, tdata.unsqueeze(1), self.confidence)
+            if mask.dim() > 0:
+                log_likelihood.index_fill_(0, mask, 0)
+                tmp_.index_fill_(0, mask, 0)
+            gtruth = Variable(tmp_, requires_grad=False)
+
+            if self.bidirectional:
+                tdata = rev_gtruth.data
+                mask = torch.nonzero(tdata.eq(self.padding_idx)).squeeze()
+                log_likelihood = torch.gather(backward_scores.data,
+                                              1, tdata.unsqueeze(1))
+                tmp_ = self.one_hot.repeat(rev_gtruth.size(0), 1)
+                tmp_.scatter_(1, tdata.unsqueeze(1), self.confidence)
+                if mask.dim() > 0:
+                    log_likelihood.index_fill_(0, mask, 0)
+                    tmp_.index_fill_(0, mask, 0)
+                rev_gtruth = Variable(tmp_, requires_grad=False)
+
+        if self.bidirectional:
+            f_loss = stat_loss = self.criterion(scores, gtruth)
+            b_loss = self.criterion(backward_scores, rev_gtruth)
+            loss = f_loss + b_loss
+        else:
+            loss = stat_loss = self.criterion(scores, gtruth)
+
+        if self.confidence < 1:
+            # Default: report smoothed ppl.
+            # loss_data = -log_likelihood.sum(0)
+            loss_data = stat_loss.data.clone()
+        else:
+            loss_data = stat_loss.data.clone()
+
+        stats = self._stats(loss_data,
+                            scores.data,
+                            target.view(-1).data)
+
+        return loss, stats
+
+    def _get_reverse_idx(self, lengths):
+        sentence_size = int(lengths[0])
+        batch_size = len(lengths)
+
+        idx = [0]*(batch_size*sentence_size)
+
+        for i in range(batch_size*sentence_size):
+            batch_index = i % batch_size
+            sentence_index = i//batch_size
+            idx[i] = (int(lengths[batch_index])-sentence_index-1)*batch_size \
+                + batch_index
+            if idx[i] < 0:  # Padding symbol, don't change order
+                idx[i] = i
+
+        return idx

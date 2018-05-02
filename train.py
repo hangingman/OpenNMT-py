@@ -218,6 +218,10 @@ def make_loss_compute(model, tgt_vocab, opt, train=True):
         compute = onmt.modules.CopyGeneratorLossCompute(
             model.generator, tgt_vocab, opt.copy_attn_force,
             opt.copy_loss_by_seqlength)
+    elif opt.lm:
+        compute = onmt.Loss.LMLossCompute(
+            model.generator, tgt_vocab, opt.bilm,
+            label_smoothing=opt.label_smoothing if train else 0.0)
     else:
         compute = onmt.Loss.NMTLossCompute(
             model.generator, tgt_vocab,

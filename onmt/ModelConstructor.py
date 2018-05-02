@@ -263,6 +263,12 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None):
     model = LanguageModel(model_opt, tgt_embeddings, gpu)
     model.model_type = model_opt.model_type
 
+    if model_opt.bilm:
+        model.backwards = LanguageModel(model_opt, tgt_embeddings, gpu)
+        model.bidirectional = True
+    else:
+        model.bidirectional = False
+
     # Make Generator.
     generator = nn.Sequential(
         nn.Linear(model_opt.lm_rnn_size, len(fields["tgt"].vocab)),

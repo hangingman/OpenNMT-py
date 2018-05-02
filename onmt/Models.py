@@ -670,11 +670,6 @@ class RNNDecoderState(DecoderState):
 class LanguageModel(nn.Module):
     def __init__(self, opt, embeddings, gpu):
         self.layers = opt.lm_layers
-        self.num_directions = 2 if opt.bilm else 1
-
-        if self.num_directions == 2:
-            return NotImplementedError
-
         self.is_cuda = True if gpu else False
         input_size = opt.lm_word_vec_size
 

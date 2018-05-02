@@ -356,10 +356,25 @@ class LanguageModelTrainer(Trainer):
 
             self.model.init_rnn_state(batch.tgt.size(1))
 
+            if self.model.bidirectional:
+                self.model.backwards.init_rnn_state(batch.tgt.size(1))
+
             tgt = onmt.io.make_features(batch, 'tgt')
 
             # F-prop through the model.
             outputs = self.model(tgt)
+
+            if self.model.bidirectional:
+                lengths = tgt[:,
+                              :,
+                              0].ne(self.train_loss.padding_idx).sum(dim=0)
+                idx = self._get_reverse_idx(lengths)
+                reversed_tgt = tgt.view(batch.batch_size*tgt.size(0),
+                                        -1)[idx, :].view(tgt.size(0),
+                                                         batch.batch_size,
+                                                         1)
+                reversed_outputs = self.model.backwards(reversed_tgt)
+                outputs = torch.cat([outputs, reversed_outputs], dim=-1)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -388,6 +403,8 @@ class LanguageModelTrainer(Trainer):
                 trunc_size = target_size
 
             self.model.init_rnn_state(batch.tgt.size(1))
+            if self.model.bidirectional:
+                self.model.backwards.init_rnn_state(batch.tgt.size(1))
             attns = None
 
             tgt_outer = onmt.io.make_features(batch, 'tgt')
@@ -401,6 +418,21 @@ class LanguageModelTrainer(Trainer):
                     self.model.zero_grad()
 
                 outputs = self.model(tgt)
+
+                # Backwards LM F-prop
+                reversed_outputs = None
+                reversed_tgt = None
+                if self.model.bidirectional:
+                    lengths = tgt[:,
+                                  :,
+                                  0].ne(self.train_loss.padding_idx).sum(dim=0)
+                    idx = self._get_reverse_idx(lengths)
+                    reversed_tgt = tgt.view(batch.batch_size*tgt.size(0),
+                                            -1)[idx, :].view(tgt.size(0),
+                                                             batch.batch_size,
+                                                             1)
+                    reversed_outputs = self.model.backwards(reversed_tgt)
+                    outputs = torch.cat([outputs, reversed_outputs], dim=-1)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
@@ -421,3 +453,19 @@ class LanguageModelTrainer(Trainer):
 
         if self.grad_accum_count > 1:
             self.optim.step()
+
+    def _get_reverse_idx(self, lengths):
+        sentence_size = int(lengths[0])
+        batch_size = len(lengths)
+
+        idx = [0]*(batch_size*sentence_size)
+
+        for i in range(batch_size*sentence_size):
+            batch_index = i % batch_size
+            sentence_index = i//batch_size
+            idx[i] = (int(lengths[batch_index])-sentence_index-1)*batch_size \
+                + batch_index
+            if idx[i] < 0:  # Padding symbol, don't change order
+                idx[i] = i
+
+        return idx
