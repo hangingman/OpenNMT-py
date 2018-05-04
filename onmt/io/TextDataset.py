@@ -53,7 +53,8 @@ class TextDataset(ONMTDatasetBase):
         # at minimum the src tokens and their indices and potentially also
         # the src and tgt features and alignment information.
         if self.data_type == 'monotext':
-            examples_iter = tgt_examples_iter
+            examples_iter = (self._join_dicts(tgt) for tgt in
+                             tgt_examples_iter)
         elif tgt_examples_iter is not None:
             examples_iter = (self._join_dicts(src, tgt) for src, tgt in
                              zip(src_examples_iter, tgt_examples_iter))

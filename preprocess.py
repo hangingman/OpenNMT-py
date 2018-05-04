@@ -79,31 +79,39 @@ def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, fields,
 
     data_type = 'text'
 
-    corpus_size = os.path.getsize(src_corpus)
+    corpus_size = os.path.getsize(tgt_corpus)
     if corpus_size > 10 * (1024**2) and opt.max_shard_size == 0:
         print("Warning. The corpus %s is larger than 10M bytes, you can "
               "set '-max_shard_size' to process it by small shards "
-              "to use less memory." % src_corpus)
+              "to use less memory." % tgt_corpus)
 
     if opt.max_shard_size != 0:
         print(' * divide corpus into shards and build dataset separately'
               '(shard_size = %d bytes).' % opt.max_shard_size)
 
     ret_list = []
-    src_iter = onmt.io.ShardedTextCorpusIterator(
-        src_corpus, opt.src_seq_length_trunc,
-        "src", opt.max_shard_size)
+    if src_corpus is not None:
+        src_iter = onmt.io.ShardedTextCorpusIterator(
+            src_corpus, opt.src_seq_length_trunc,
+            "src", opt.max_shard_size)
+        src_num_features = src_iter.num_feats
+    else:
+        src_iter = None
+        src_num_features = 0
+        data_type = 'monotext'
+
     tgt_iter = onmt.io.ShardedTextCorpusIterator(
         tgt_corpus, opt.tgt_seq_length_trunc,
         "tgt", opt.max_shard_size,
         assoc_iter=src_iter)
 
     index = 0
-    while not src_iter.hit_end():
+    while_end_condition = False
+    while not while_end_condition:
         index += 1
         dataset = onmt.io.TextDataset(
             data_type, fields, src_iter, tgt_iter,
-            src_iter.num_feats, tgt_iter.num_feats,
+            src_num_features, tgt_iter.num_feats,
             src_seq_length=opt.src_seq_length,
             tgt_seq_length=opt.tgt_seq_length,
             dynamic_dict=opt.dynamic_dict)
@@ -117,6 +125,11 @@ def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, fields,
         torch.save(dataset, pt_file)
 
         ret_list.append(pt_file)
+
+        if data_type == 'text':
+            while_end_condition = src_iter.hit_end()
+        else:
+            while_end_condition = tgt_iter.hit_end()
 
     return ret_list
 
@@ -132,7 +145,7 @@ def build_save_dataset(corpus_type, fields, opt):
         tgt_corpus = opt.valid_tgt
 
     # Currently we only do preprocess sharding for corpus: data_type=='text'.
-    if opt.data_type == 'text':
+    if opt.data_type == 'text' or opt.data_type == 'monotext':
         return build_save_text_dataset_in_shards(
             src_corpus, tgt_corpus, fields,
             corpus_type, opt)
