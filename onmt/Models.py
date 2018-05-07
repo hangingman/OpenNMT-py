@@ -669,29 +669,37 @@ class RNNDecoderState(DecoderState):
 
 class LanguageModel(nn.Module):
     def __init__(self, opt, embeddings, gpu):
-        self.layers = opt.lm_layers
-        self.is_cuda = True if gpu else False
-        input_size = opt.lm_word_vec_size
 
         super(LanguageModel, self).__init__()
+
+        self.is_cuda = True if gpu else False
+
+        self.input_size = opt.lm_word_vec_size
+        self.layers = opt.lm_layers
         self.embeddings = embeddings
+        self.rnn_type = opt.lm_rnn_type
+        self.hidden_size = opt.lm_rnn_size
+        self.lm_use_projection = opt.lm_use_projection
 
         stackedCell = onmt.modules.StackedLSTM if opt.lm_rnn_type == "LSTM"\
             else onmt.modules.StackedGRU
-        self.rnn_type = opt.lm_rnn_type
-        self.rnn = stackedCell(opt.lm_layers, input_size,
-                               opt.lm_rnn_size, opt.dropout)
-        self.dropout = nn.Dropout(opt.dropout)
+
+        self.rnns = []
+        rnn_input_size = self.input_size
+
+        for layer in range(self.layers):
+            rnn = stackedCell(1, rnn_input_size,
+                              self.hidden_size, opt.dropout)
+            self.rnns.append(rnn)
+
+            rnn_input_size = self.hidden_size
+            if self.lm_use_projection:
+                self.projection = nn.Linear(self.hidden_size, self.input_size)
+                rnn_input_size = self.input_size
 
         self.gal_dropout = opt.lm_gal_dropout
 
-        self.hidden_size = opt.lm_rnn_size
         self.hidden = None
-
-    def load_pretrained_vectors(self, opt):
-        if opt.pre_word_vecs is not None:
-            pretrained = torch.load(opt.pre_word_vecs)
-            self.embeddings.weight.data.copy_(pretrained)
 
     def sample_mask(self, batch_size):
         keep = 1.0 - self.gal_dropout
@@ -719,7 +727,8 @@ class LanguageModel(nn.Module):
 
     def forward(self, tgt):
 
-        # Get a dropout mask for recurrent dropout
+        # Get a dropout mask for recurrent dropout that will
+        # be used for every timestep
         if self.gal_dropout > 0:
             self.sample_mask(tgt.size(1))
 
@@ -727,17 +736,27 @@ class LanguageModel(nn.Module):
         emb = self.embeddings(tgt)
         outputs = []
         for emb_t in emb.split(1):
-            emb_t = emb_t.squeeze(0)
-            output, self.hidden = self.rnn(emb_t, self.hidden)
-            output = self.dropout(output)
+            rnn_input = emb_t.squeeze(0)
+            for i, layer in enumerate(self.rnns):
+                ht, ct = self.hidden
+                output, new_hidden = layer(rnn_input, (ht[i], ct[i]))
+
+                # Update hidden and cell state
+                self.hidden[0][i].data.set_(new_hidden[0][0].data)
+                self.hidden[1][i].data.set_(new_hidden[1][0].data)
+
+                # Apply recurrent dropout
+                if self.gal_dropout > 0:
+                    self.hidden[0][i].data.set_(torch.mul(self.hidden[0][i],
+                                                          self.mask).data)
+                    self.hidden[0][i].data *= 1.0/(1.0 - self.gal_dropout)
+
+                if self.lm_use_projection:
+                    rnn_input = F.tanh(self.projection(output))
+                else:
+                    rnn_input = output
 
             outputs += [output]
-
-            # Apply recurrent dropout
-            if self.gal_dropout > 0:
-                self.hidden[0].data.set_(torch.mul(self.hidden[0],
-                                                   self.mask).data)
-                self.hidden[0].data *= 1.0/(1.0 - self.gal_dropout)
 
         outputs = torch.stack(outputs)
         return outputs

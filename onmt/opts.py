@@ -127,6 +127,8 @@ def model_opts(parser):
                        help='Make the language model bidirectional.')
     group.add_argument('-tie_weights', action="store_true",
                        help='Tie the generator weights with the embeddings.')
+    group.add_argument('-lm_use_projection', action="store_true",
+                       help='Use projections to smaller size between layers.')
     group.add_argument('-lm_gal_dropout', type=float, default=0.,
                        help='Dropout probability applied in the LM RNN.')
     group.add_argument('-lm_word_vec_size', type=int, default=500,
@@ -137,7 +139,7 @@ def model_opts(parser):
                        help='Number of layers in LM RNN.')
     group.add_argument('-lm_rnn_type', type=str, default='LSTM',
                        choices=['LSTM', 'GRU'],
-                       help="""The gate type to use in the RNNs""")
+                       help='The gate type to use in the RNNs')
 
 
 def preprocess_opts(parser):
