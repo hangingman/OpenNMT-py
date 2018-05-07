@@ -335,9 +335,10 @@ class LMLossCompute(NMTLossCompute):
                 rev_gtruth = Variable(tmp_, requires_grad=False)
 
         if self.bidirectional:
-            f_loss = stat_loss = self.criterion(scores, gtruth)
+            f_loss = self.criterion(scores, gtruth)
             b_loss = self.criterion(backward_scores, rev_gtruth)
             loss = f_loss + b_loss
+            stat_loss = loss/2
         else:
             loss = stat_loss = self.criterion(scores, gtruth)
 
