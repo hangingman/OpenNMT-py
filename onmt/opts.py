@@ -129,6 +129,8 @@ def model_opts(parser):
                        help='Tie the generator weights with the embeddings.')
     group.add_argument('-lm_use_projection', action="store_true",
                        help='Use projections to smaller size between layers.')
+    group.add_argument('-lm_use_residual', action="store_true",
+                       help='Use a residual connection between layers.')
     group.add_argument('-lm_gal_dropout', type=float, default=0.,
                        help='Dropout probability applied in the LM RNN.')
     group.add_argument('-lm_word_vec_size', type=int, default=500,

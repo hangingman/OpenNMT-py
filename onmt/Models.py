@@ -679,7 +679,8 @@ class LanguageModel(nn.Module):
         self.embeddings = embeddings
         self.rnn_type = opt.lm_rnn_type
         self.hidden_size = opt.lm_rnn_size
-        self.lm_use_projection = opt.lm_use_projection
+        self.use_projection = opt.lm_use_projection
+        self.use_residual = opt.lm_use_residual
 
         stackedCell = onmt.modules.StackedLSTM if opt.lm_rnn_type == "LSTM"\
             else onmt.modules.StackedGRU
@@ -693,7 +694,7 @@ class LanguageModel(nn.Module):
             self.rnns.append(rnn)
 
             rnn_input_size = self.hidden_size
-            if self.lm_use_projection:
+            if self.use_projection:
                 self.projection = nn.Linear(self.hidden_size, self.input_size)
                 rnn_input_size = self.input_size
 
@@ -738,10 +739,11 @@ class LanguageModel(nn.Module):
         for emb_t in emb.split(1):
             rnn_input = emb_t.squeeze(0)
             for i, layer in enumerate(self.rnns):
+
                 ht, ct = self.hidden
                 output, new_hidden = layer(rnn_input, (ht[i], ct[i]))
 
-                # Update hidden and cell state
+                # Update hidden and cell state of this layer
                 self.hidden[0][i].data.set_(new_hidden[0][0].data)
                 self.hidden[1][i].data.set_(new_hidden[1][0].data)
 
@@ -751,12 +753,20 @@ class LanguageModel(nn.Module):
                                                           self.mask).data)
                     self.hidden[0][i].data *= 1.0/(1.0 - self.gal_dropout)
 
-                if self.lm_use_projection:
+                # Project into smaller space
+                if self.use_projection:
                     rnn_input = F.tanh(self.projection(output))
                 else:
                     rnn_input = output
 
-            outputs += [output]
+                # Residual Connection
+                if i > 0 and self.use_residual:
+                    rnn_input.data += output_cache.data
+                # Cache  the first layer output
+                elif self.use_residual:
+                    output_cache = rnn_input
+
+            outputs += [rnn_input]
 
         outputs = torch.stack(outputs)
         return outputs

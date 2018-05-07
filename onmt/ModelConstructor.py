@@ -270,12 +270,14 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None):
         model.bidirectional = False
 
     # Make Generator.
+    output_size = model_opt.lm_word_vec_size if model_opt.lm_use_projection \
+        else model_opt.lm_rnn_size
     generator = nn.Sequential(
-        nn.Linear(model_opt.lm_rnn_size, len(fields["tgt"].vocab)),
+        nn.Linear(output_size, len(fields["tgt"].vocab)),
         nn.LogSoftmax(dim=-1))
 
     if model_opt.tie_weights:
-            if model_opt.lm_rnn_size != model_opt.lm_word_vec_size:
+            if output_size != model_opt.lm_word_vec_size:
                 raise ValueError(
                     'When using the tied flag, hidden size'
                     'must be equal to embedding size')
