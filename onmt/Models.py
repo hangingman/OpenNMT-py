@@ -680,8 +680,10 @@ class LanguageModel(nn.Module):
             else onmt.modules.StackedGRU
         self.rnn_type = opt.lm_rnn_type
         self.rnn = stackedCell(opt.lm_layers, input_size,
-                               opt.lm_rnn_size, opt.lm_rnn_dropout)
+                               opt.lm_rnn_size, opt.dropout)
         self.dropout = nn.Dropout(opt.dropout)
+
+        self.gal_dropout = opt.lm_gal_dropout
 
         self.hidden_size = opt.lm_rnn_size
         self.hidden = None
@@ -690,6 +692,12 @@ class LanguageModel(nn.Module):
         if opt.pre_word_vecs is not None:
             pretrained = torch.load(opt.pre_word_vecs)
             self.embeddings.weight.data.copy_(pretrained)
+
+    def sample_mask(self, batch_size):
+        keep = 1.0 - self.gal_dropout
+        self.mask = Variable(torch.bernoulli(
+                        torch.Tensor(batch_size,
+                                     self.hidden_size).fill_(keep)))
 
     def init_rnn_state(self, batch_size):
         def get_variable():
@@ -710,6 +718,11 @@ class LanguageModel(nn.Module):
         self.hidden = state
 
     def forward(self, tgt):
+
+        # Get a dropout mask for recurrent dropout
+        if self.gal_dropout > 0:
+            self.sample_mask(tgt.size(1))
+
         tgt = tgt[:-1]  # No EOS
         emb = self.embeddings(tgt)
         outputs = []
@@ -719,6 +732,12 @@ class LanguageModel(nn.Module):
             output = self.dropout(output)
 
             outputs += [output]
+
+            # Apply recurrent dropout
+            if self.gal_dropout > 0:
+                self.hidden[0].data.set_(torch.mul(self.hidden[0],
+                                                   self.mask).data)
+                self.hidden[0].data *= 1.0/(1.0 - self.gal_dropout)
 
         outputs = torch.stack(outputs)
         return outputs
