@@ -1,4 +1,4 @@
-
+# Code for the paper Sparse and Constrained Attention for Neural Machine Translation
 
 ## Preparing the data for a language pair
 
@@ -69,3 +69,8 @@ To dump the attention matrices, use the -dump_attn argument with translate.py. Y
 ```
 >> attn_matrices = pickle.load( open(<filename>, 'rb') )
 ```
+
+
+## Reference
+
+TBA
