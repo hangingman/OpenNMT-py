@@ -1,4 +1,4 @@
-# Code for the paper Sparse and Constrained Attention for Neural Machine Translation
+# Sparse and Constrained Attention for Neural Machine Translation
 
 ## Preparing the data for a language pair
 
