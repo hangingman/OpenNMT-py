@@ -1,4 +1,6 @@
 # Sparse and Constrained Attention for Neural Machine Translation
+----------------
+by Chaitanya Malaviya, Pedro Ferreira, André Martins
 
 ## Preparing the data for a language pair
 
