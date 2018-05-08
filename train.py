@@ -219,9 +219,16 @@ def make_loss_compute(model, tgt_vocab, opt, train=True):
             model.generator, tgt_vocab, opt.copy_attn_force,
             opt.copy_loss_by_seqlength)
     else:
-        compute = onmt.Loss.NMTLossCompute(
-            model.generator, tgt_vocab,
-            label_smoothing=opt.label_smoothing if train else 0.0)
+        lbl_smoothing = opt.label_smoothing if train else 0.0
+        if opt.deep_out:
+            compute = onmt.Loss.NMTDeepOutLossCompute(
+                model.generator,
+                tgt_vocab, model.decoder.embeddings.word_lut,
+                label_smoothing=lbl_smoothing)
+        else:
+            compute = onmt.Loss.NMTLossCompute(
+                model.generator, tgt_vocab,
+                label_smoothing=lbl_smoothing)
 
     if use_gpu(opt):
         compute.cuda()

@@ -118,6 +118,8 @@ def model_opts(parser):
                        help='Train a coverage attention layer.')
     group.add_argument('-lambda_coverage', type=float, default=1,
                        help='Lambda value for coverage.')
+    group.add_argument('-deep_out', action="store_true",
+                       help="Generator deep out")
 
 
 def preprocess_opts(parser):

@@ -209,6 +209,44 @@ class NMTLossCompute(LossComputeBase):
         return loss, stats
 
 
+class NMTDeepOutLossCompute(NMTLossCompute):
+
+    def __init__(self, generator, tgt_vocab, word_lut, normalization="sents",
+                 label_smoothing=0.0):
+        super(NMTDeepOutLossCompute, self).__init__(generator, tgt_vocab,
+                                                    normalization,
+                                                    label_smoothing)
+        self.word_lut = word_lut
+
+    def _make_shard_state(self, batch, output, range_, attns=None):
+        # First prev embedding is 0
+        zero_embds = torch.zeros(1, output.size(1),
+                                 self.word_lut.weight.data.size()[-1])
+        # Get the embeddings of each target word
+        prev_embds = torch.stack([self.word_lut(tgt)
+                                  for tgt in batch.tgt[1:-1]])
+
+        # If the model is in cuda mode, the zero_embds need to be
+        # put into cuda device
+        if prev_embds.is_cuda:
+                device = prev_embds.get_device()
+                zero_embds = zero_embds.cuda(device)
+
+        # Concatenate the embeddings and delete the intermediate steps
+        embds = torch.cat((zero_embds, prev_embds.data), dim=0)
+        del prev_embds
+        del zero_embds
+        embds = Variable(embds)
+        # New output is the concatenation of the old output and the
+        # embeddings
+        output = torch.cat((output, embds), dim=-1)
+        del embds
+        return {
+            "output": output,
+            "target": batch.tgt[range_[0] + 1: range_[1]],
+        }
+
+
 def filter_shard_state(state, requires_grad=True, volatile=False):
     for k, v in state.items():
         if v is not None:

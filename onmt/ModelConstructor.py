@@ -189,11 +189,21 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
 
     # Make Generator.
     if not model_opt.copy_attn:
-        generator = nn.Sequential(
-            nn.Linear(model_opt.rnn_size, len(fields["tgt"].vocab)),
-            nn.LogSoftmax(dim=-1))
+        vocab_proj_size = model_opt.rnn_size
+        if model_opt.deep_out:
+            vocab_proj_size += model_opt.tgt_word_vec_size
+
+        gen_args = [nn.Linear(vocab_proj_size, model_opt.rnn_size)] \
+            if model_opt.deep_out else []
+
+        gen_args += [nn.Linear(model_opt.rnn_size, len(fields["tgt"].vocab)),
+                     nn.LogSoftmax(dim=-1)]
+
+        generator = nn.Sequential(*gen_args)
+
         if model_opt.share_decoder_embeddings:
-            generator[0].weight = decoder.embeddings.word_lut.weight
+            voc_proj_idx = 1 if model_opt.deep_out else 0
+            generator[voc_proj_idx].weight = decoder.embeddings.word_lut.weight
     else:
         generator = CopyGenerator(model_opt.rnn_size,
                                   fields["tgt"].vocab)

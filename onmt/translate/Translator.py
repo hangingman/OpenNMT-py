@@ -39,6 +39,7 @@ def make_translator(opt, report_score=True, out_file=None):
                         "data_type", "replace_unk", "gpu", "verbose"]}
 
     translator = Translator(model, fields, global_scorer=scorer,
+                            deep_out=model_opt.deep_out,
                             out_file=out_file, report_score=report_score,
                             copy_attn=model_opt.copy_attn, **kwargs)
     return translator
@@ -71,6 +72,7 @@ class Translator(object):
                  max_length=100,
                  global_scorer=None,
                  copy_attn=False,
+                 deep_out=False,
                  gpu=False,
                  dump_beam="",
                  min_length=0,
@@ -98,6 +100,7 @@ class Translator(object):
         self.max_length = max_length
         self.global_scorer = global_scorer
         self.copy_attn = copy_attn
+        self.deep_out = deep_out
         self.beam_size = beam_size
         self.min_length = min_length
         self.stepwise_penalty = stepwise_penalty
@@ -309,6 +312,13 @@ class Translator(object):
             dec_out = dec_out.squeeze(0)
             # dec_out: beam x rnn_size
 
+            # Concatenate everything for deep out
+            if self.deep_out:
+                inp = inp.squeeze(2)
+                embds = self.model.decoder.embeddings.word_lut(inp)
+                dec_out = torch.cat([dec_out, embds.squeeze(0)], dim=1)
+                inp = inp.unsqueeze(2)
+
             # (b) Compute a vector of batch x beam word scores.
             if not self.copy_attn:
                 out = self.model.generator.forward(dec_out).data
@@ -375,12 +385,19 @@ class Translator(object):
         #  (i.e. log likelihood) of the target under the model
         tt = torch.cuda if self.cuda else torch
         gold_scores = tt.FloatTensor(batch.batch_size).fill_(0)
-        dec_out, _, _ = self.model.decoder(
+        dec_out, _, attn = self.model.decoder(
             tgt_in, memory_bank, dec_states, memory_lengths=src_lengths)
+
+        def var(a): return Variable(a, volatile=True)
 
         tgt_pad = self.fields["tgt"].vocab.stoi[onmt.io.PAD_WORD]
         for dec, tgt in zip(dec_out, batch.tgt[1:].data):
             # Log prob of each word.
+            # FIXME ANT
+            if self.deep_out:
+                inp = var(torch.stack([tgt])
+                          .t().contiguous().view(1, -1))
+                dec = torch.cat([dec, attn, inp], dim=dec.size()[-1])
             out = self.model.generator.forward(dec)
             tgt = tgt.unsqueeze(1)
             scores = out.data.gather(1, tgt)
