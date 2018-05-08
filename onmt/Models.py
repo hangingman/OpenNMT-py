@@ -682,20 +682,22 @@ class LanguageModel(nn.Module):
         self.use_projection = opt.lm_use_projection
         self.use_residual = opt.lm_use_residual
 
-        stackedCell = onmt.modules.StackedLSTM if opt.lm_rnn_type == "LSTM"\
-            else onmt.modules.StackedGRU
+        RNNCell = nn.LSTMCell if opt.lm_rnn_type == "LSTM"\
+            else nn.GRUCell
 
-        self.rnns = []
+        self.rnns = nn.ModuleList()
+        if self.use_projection:
+            self.projections = nn.ModuleList()
+
         rnn_input_size = self.input_size
-
         for layer in range(self.layers):
-            rnn = stackedCell(1, rnn_input_size,
-                              self.hidden_size, opt.dropout)
+            rnn = RNNCell(rnn_input_size, self.hidden_size)
             self.rnns.append(rnn)
 
             rnn_input_size = self.hidden_size
             if self.use_projection:
-                self.projection = nn.Linear(self.hidden_size, self.input_size)
+                self.projections.append(nn.Linear(self.hidden_size,
+                                                  self.input_size))
                 rnn_input_size = self.input_size
 
         self.gal_dropout = opt.lm_gal_dropout
@@ -707,6 +709,8 @@ class LanguageModel(nn.Module):
         self.mask = Variable(torch.bernoulli(
                         torch.Tensor(batch_size,
                                      self.hidden_size).fill_(keep)))
+        if self.is_cuda:
+            self.mask = self.mask.cuda()
 
     def init_rnn_state(self, batch_size):
         def get_variable():
@@ -738,24 +742,29 @@ class LanguageModel(nn.Module):
         outputs = []
         for emb_t in emb.split(1):
             rnn_input = emb_t.squeeze(0)
+            h_0, c_0 = self.hidden
+            h_1, c_1 = [], []
+
+            layer_outputs = []
+
             for i, layer in enumerate(self.rnns):
 
-                ht, ct = self.hidden
-                output, new_hidden = layer(rnn_input, (ht[i], ct[i]))
+                h_1_i, c_1_i = layer(rnn_input, (h_0[i], c_0[i]))
 
-                # Update hidden and cell state of this layer
-                self.hidden[0][i].data.set_(new_hidden[0][0].data)
-                self.hidden[1][i].data.set_(new_hidden[1][0].data)
+                output = h_1_i
 
                 # Apply recurrent dropout
                 if self.gal_dropout > 0:
-                    self.hidden[0][i].data.set_(torch.mul(self.hidden[0][i],
-                                                          self.mask).data)
-                    self.hidden[0][i].data *= 1.0/(1.0 - self.gal_dropout)
+                    h_1_i = torch.mul(h_1_i, self.mask)
+                    h_1_i *= 1.0/(1.0 - self.gal_dropout)
+
+                # Update hidden and cell state of this layer
+                h_1 += [h_1_i]
+                c_1 += [c_1_i]
 
                 # Project into smaller space
                 if self.use_projection:
-                    rnn_input = F.tanh(self.projection(output))
+                    rnn_input = self.projections[i](output)
                 else:
                     rnn_input = output
 
@@ -766,7 +775,15 @@ class LanguageModel(nn.Module):
                 elif self.use_residual:
                     output_cache = rnn_input
 
-            outputs += [rnn_input]
+                layer_outputs += [rnn_input]
+
+            h_1 = torch.stack(h_1)
+            c_1 = torch.stack(c_1)
+            self.hidden = (h_1, c_1)
+
+            layer_outputs = torch.stack(layer_outputs)
+            outputs += [layer_outputs]
 
         outputs = torch.stack(outputs)
+
         return outputs

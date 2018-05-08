@@ -294,6 +294,10 @@ class LMLossCompute(NMTLossCompute):
 
     def _compute_loss(self, batch, output, target, reverse_target):
 
+        # Shape was [tgt_len, n_layers, batch_size, hidden_size], need to
+        # ignore the first layer to compute loss
+        output = output[:, -1, :, :].contiguous()
+
         if self.bidirectional:
 
             scores = self.generator(
