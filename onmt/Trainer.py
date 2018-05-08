@@ -159,7 +159,7 @@ class Trainer(object):
             # Dynamic batching
             num_batches = -1
 
-        for i, batch_ in enumerate(train_iter):
+        for i, batch in enumerate(train_iter):
             cur_dataset = train_iter.get_cur_dataset()
             self.train_loss.cur_dataset = cur_dataset
 

@@ -481,7 +481,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
         aeq(tgt_batch, input_feed_batch)
         # END Additional args check.
 
-        source_len, source_batch, _ = context.size()
+        source_len, source_batch, _ = memory_bank.size()
 
         # Initialize local and return variables.
         decoder_outputs = []
@@ -522,7 +522,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
                 # we need to do torch.sort before packing and then restoring
                 # the previous order.
                 packed_upper_bounds = pack(
-                    upper_bounds, (context_lengths - 1).view(-1).tolist(),
+                    upper_bounds, (memory_lengths - 1).view(-1).tolist(),
                     batch_first=True)
                 upper_bounds[:, :-1] = unpack(
                     packed_upper_bounds, batch_first=True, padding_value=1)[0]
@@ -541,7 +541,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             decoder_output, p_attn = self.attn(
                 rnn_output,
                 memory_bank.transpose(0, 1),
-                memory_lengths=memory_lengths            
+                memory_lengths=memory_lengths, 
                 upper_bounds=upper_bounds,
                 coverage=coverage if self._coverage else None)
 

@@ -441,4 +441,3 @@ class Translator(object):
             shell=True,
             stdin=self.out_file).decode("utf-8")
         print(res.strip())
->>>>>>> 0ecec8b4c16fdec7d8ce2646a0ea47ab6535d308

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from torch.autograd import Variable
-from onmt.modules.UtilClass import BottleLinear
+#from onmt.modules.UtilClass import BottleLinear
 from onmt.Utils import aeq, sequence_mask
 from onmt.modules.activations import Softmax, Sparsemax, ConstrainedSoftmax, \
     ConstrainedSparsemax
@@ -81,7 +81,7 @@ class GlobalAttention(nn.Module):
         self.linear_out = nn.Linear(dim*2, dim, bias=out_bias)
 
         if attn_transform == 'softmax':
-            self.sm = nn.Softmax()
+            self.sm = nn.Softmax(dim=-1)
         elif attn_transform == 'sparsemax':
             self.sm = Sparsemax()
         elif attn_transform == 'constrained_softmax':
