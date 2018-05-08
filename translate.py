@@ -1,13 +1,8 @@
 #!/usr/bin/env python
-
 from __future__ import division, unicode_literals
-import os
 import argparse
-import math
-import codecs
-import torch
 
-from itertools import count
+from onmt.translate.Translator import make_translator
 
 import onmt.io
 import onmt.translate
@@ -134,19 +129,15 @@ def main():
                 sent_number = next(counter)
                 output = trans.log(sent_number)
                 os.write(1, output.encode('utf-8'))
+=======
+import onmt.opts
+>>>>>>> 0ecec8b4c16fdec7d8ce2646a0ea47ab6535d308
 
-    _report_score('PRED', pred_score_total, pred_words_total)
-    if opt.tgt:
-        _report_score('GOLD', gold_score_total, gold_words_total)
-        if opt.report_bleu:
-            _report_bleu()
-        if opt.report_rouge:
-            _report_rouge()
 
-    if opt.dump_beam:
-        import json
-        json.dump(translator.beam_accum,
-                  codecs.open(opt.dump_beam, 'w', 'utf-8'))
+def main(opt):
+    translator = make_translator(opt, report_score=True)
+    translator.translate(opt.src_dir, opt.src, opt.tgt,
+                         opt.batch_size, opt.attn_debug)
 
     if opt.dump_attn:
         attn_matrices = [a[0][0].cpu().numpy() for a in attn_matrices]
@@ -158,4 +149,11 @@ def main():
                         'wb'))
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description='translate.py',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    onmt.opts.add_md_help_argument(parser)
+    onmt.opts.translate_opts(parser)
+
+    opt = parser.parse_args()
+    main(opt)

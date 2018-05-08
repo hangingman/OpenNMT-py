@@ -73,9 +73,9 @@ class GlobalAttention(nn.Module):
         if self.attn_type == "general":
             self.linear_in = nn.Linear(dim, dim, bias=False)
         elif self.attn_type == "mlp":
-            self.linear_context = BottleLinear(dim, dim, bias=False)
+            self.linear_context = nn.Linear(dim, dim, bias=False)
             self.linear_query = nn.Linear(dim, dim, bias=True)
-            self.v = BottleLinear(dim, 1, bias=False)
+            self.v = nn.Linear(dim, 1, bias=False)
         # mlp wants it with bias
         out_bias = self.attn_type == "mlp"
         self.linear_out = nn.Linear(dim*2, dim, bias=out_bias)
@@ -150,14 +150,14 @@ class GlobalAttention(nn.Module):
 
             return self.v(wquh.view(-1, dim)).view(tgt_batch, tgt_len, src_len)
 
-    def forward(self, input, context, context_lengths=None, coverage=None,
+    def forward(self, input, memory_bank, memory_lengths=None, coverage=None,
                 upper_bounds=None):
         """
 
         Args:
           input (`FloatTensor`): query vectors `[batch x tgt_len x dim]`
-          context (`FloatTensor`): source vectors `[batch x src_len x dim]`
-          context_lengths (`LongTensor`): the source context lengths `[batch]`
+          memory_bank (`FloatTensor`): source vectors `[batch x src_len x dim]`
+          memory_lengths (`LongTensor`): the source context lengths `[batch]`
           coverage (`FloatTensor`): None (not supported yet)
           upper_bounds (`FloatTensor`): attention bounds `[batch x src_len]`
 
@@ -176,7 +176,7 @@ class GlobalAttention(nn.Module):
         else:
             one_step = False
 
-        batch, sourceL, dim = context.size()
+        batch, sourceL, dim = memory_bank.size()
         batch_, targetL, dim_ = input.size()
         aeq(batch, batch_)
         aeq(dim, dim_)
@@ -199,11 +199,16 @@ class GlobalAttention(nn.Module):
             #context = context + self.linear_cover(cover).view_as(context)
             #context = self.tanh(context) # I don't think this tanh should be here.
 
-        # compute attention scores, as in Luong et al.
-        align = self.score(input, context, coverage=coverage)
+        if coverage is not None:
+            cover = coverage.view(-1).unsqueeze(1)
+            memory_bank += self.linear_cover(cover).view_as(memory_bank)
+            memory_bank = self.tanh(memory_bank)
 
-        if context_lengths is not None:
-            mask = sequence_mask(context_lengths)
+        # compute attention scores, as in Luong et al.
+        align = self.score(input, memory_bank, coverage=coverage)
+
+        if memory_lengths is not None:
+            mask = sequence_mask(memory_lengths)
             mask = mask.unsqueeze(1)  # Make it broadcastable.
             align.data.masked_fill_(1 - mask, -float('inf'))
 
@@ -235,7 +240,7 @@ class GlobalAttention(nn.Module):
 
         # each context vector c_t is the weighted average
         # over all the source hidden states
-        c = torch.bmm(align_vectors, context)
+        c = torch.bmm(align_vectors, memory_bank)
 
         # concatenate
         concat_c = torch.cat([c, input], 2).view(batch*targetL, dim*2)
