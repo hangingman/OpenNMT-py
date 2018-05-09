@@ -435,6 +435,8 @@ def translate_opts(parser):
 
     # Alpha and Beta values for Google Length + Coverage penalty
     # Described here: https://arxiv.org/pdf/1609.08144.pdf, Section 7
+    # min_attention value for sparse attention.
+    # Described in Malaviya, Ferreira, Martins (ACL 2018).
     group.add_argument('-stepwise_penalty', action='store_true',
                        help="""Apply penalty at every decoding step.
                        Helpful for summary penalty.""")
@@ -449,6 +451,10 @@ def translate_opts(parser):
                         (higher = longer generation)""")
     group.add_argument('-beta', type=float, default=-0.,
                        help="""Coverage penalty parameter""")
+    group.add_argument('-min_attention', type=float, default=0.,
+                       help="""Minimum attention parameter. Used to prevent
+                       log(0) coverage penalty when sparse attention is used.
+                       """)
     group.add_argument('-block_ngram_repeat', type=int, default=0,
                        help='Block repetition of ngrams during decoding.')
     group.add_argument('-ignore_when_blocking', nargs='+', type=str,

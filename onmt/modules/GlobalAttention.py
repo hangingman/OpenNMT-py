@@ -186,23 +186,14 @@ class GlobalAttention(nn.Module):
             aeq(batch, batch_)
             aeq(sourceL, sourceL_)
 
+        # This seems wrong, so I'm commenting it out. Instead of summing we need
+        # to concatenate context and cover (no need for self.linear_cover)
+        # or just pass that to the self.score function.
         #if coverage is not None:
-            #cover = coverage.view(-1).unsqueeze(1)
-            # Getting this: RuntimeError: in-place operations can be only used
-            # on variables that don't share storage with any other variables,
-            # but detected that there are 2 objects sharing it.
-            #context += self.linear_cover(cover).view_as(context)
-            #import pdb; pdb.set_trace()
-            # This is wrong, instead of summing we need to concatenate
-            # context and cover (no need for self.linear_cover)
-            # or just pass that to the self.score function.
-            #context = context + self.linear_cover(cover).view_as(context)
-            #context = self.tanh(context) # I don't think this tanh should be here.
-
-        if coverage is not None:
-            cover = coverage.view(-1).unsqueeze(1)
-            memory_bank += self.linear_cover(cover).view_as(memory_bank)
-            memory_bank = self.tanh(memory_bank)
+        #    cover = coverage.view(-1).unsqueeze(1)
+        #    memory_bank += self.linear_cover(cover).view_as(memory_bank)
+        #    # I don't think this tanh should be here.
+        #    memory_bank = self.tanh(memory_bank)
 
         # compute attention scores, as in Luong et al.
         align = self.score(input, memory_bank, coverage=coverage)

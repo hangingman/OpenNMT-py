@@ -42,7 +42,7 @@ for alpha in 0 #0 0.2 0.4 0.6 0.8 1
 do
     for beta in 0 #0 0.2 0.4 0.6 0.8 1
     do
-	python -u translate.py -model $model -src $source -output $target.pred -beam_size $beam -batch_size 1 -alpha ${alpha} -beta ${beta} ${extra_flags} -replace_unk -verbose -gpu $gpu
+	python -u translate.py -model $model -src $source -output $target.pred -beam_size $beam -batch_size 1 -alpha ${alpha} -beta ${beta} -min_attention 0.1 ${extra_flags} -replace_unk -verbose -gpu $gpu
 	sed -r 's/(@@ )|(@@ ?$)//g' $target.pred > $target.pred.merged
 	sed -r 's/(@@ )|(@@ ?$)//g' $target > $target.merged
 	echo ""

@@ -34,15 +34,19 @@ class PenaltyBuilder(object):
     Below are all the different penalty terms implemented so far
     """
 
-    def coverage_wu(self, beam, cov, beta=0.):
+    def coverage_wu(self, beam, cov, beta=0., min_attention=0.):
         """
         NMT coverage re-ranking score from
         "Google's Neural Machine Translation System" :cite:`wu2016google`.
         """
-        penalty = -torch.min(cov, cov.clone().fill_(1.0)).log().sum(1)
+        # Clip the between 1 and min_attention > 0 to avoid infinite penalty
+        # when coverage is zero (common in sparse attention).
+        penalty = -torch.max(
+            torch.min(cov, cov.clone().fill_(1.0)),
+            cov.clone().fill_(self.min_attention)).log().sum(1)
         return beta * penalty
 
-    def coverage_summary(self, beam, cov, beta=0.):
+    def coverage_summary(self, beam, cov, beta=0., min_attention=0.):
         """
         Our summary penalty.
         """
@@ -50,7 +54,7 @@ class PenaltyBuilder(object):
         penalty -= cov.size(1)
         return beta * penalty
 
-    def coverage_none(self, beam, cov, beta=0.):
+    def coverage_none(self, beam, cov, beta=0., min_attention=0.):
         """
         returns zero as penalty
         """

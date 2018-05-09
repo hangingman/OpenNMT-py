@@ -185,26 +185,14 @@ class GNMTGlobalScorer(object):
     Args:
        alpha (float): length parameter
        beta (float):  coverage parameter
+       min_attention (float): additional coverage parameter for sparse
+    attention.
     """
-    def __init__(self, alpha, beta, cov_penalty, length_penalty):
+    def __init__(self, alpha, beta, min_attention, cov_penalty, length_penalty):
         self.alpha = alpha
         self.beta = beta
-#<<<<<<< HEAD
-#        self.min_attention = 0.1
+        self.min_attention = min_attention
 
-#    def score(self, beam, logprobs):
-#        "Additional term add to log probability"
-#        cov = beam.global_state["coverage"]
-#        # Clip the between 1 and min_attention > 0 to avoid infinite penalty
-#        # when coverage is zero (common in sparse attention).
-#        pen = self.beta * torch.max(
-#            torch.min(cov, cov.clone().fill_(1.0)),
-#            cov.clone().fill_(self.min_attention)).log().sum(1)
-#       #pen = self.beta * torch.min(cov, cov.clone().fill_(1.0)).log().sum(1)
-#        l_term = (((5 + len(beam.next_ys)) ** self.alpha) /
-#                  ((5 + 1) ** self.alpha))
-#        return (logprobs / l_term) + pen
-#=======
         penalty_builder = Penalties.PenaltyBuilder(cov_penalty,
                                                    length_penalty)
         # Term will be subtracted from probability
@@ -222,7 +210,8 @@ class GNMTGlobalScorer(object):
         if not beam.stepwise_penalty:
             penalty = self.cov_penalty(beam,
                                        beam.global_state["coverage"],
-                                       self.beta)
+                                       self.beta,
+                                       self.min_attention)
             normalized_probs -= penalty
 
         return normalized_probs
@@ -235,7 +224,8 @@ class GNMTGlobalScorer(object):
             beam.scores.add_(beam.global_state["prev_penalty"])
             penalty = self.cov_penalty(beam,
                                        beam.global_state["coverage"] + attn,
-                                       self.beta)
+                                       self.beta,
+                                       self.min_attention)
             beam.scores.sub_(penalty)
 
     def update_global_state(self, beam):
@@ -252,5 +242,6 @@ class GNMTGlobalScorer(object):
 
             prev_penalty = self.cov_penalty(beam,
                                             beam.global_state["coverage"],
-                                            self.beta)
+                                            self.beta,
+                                            self.min_attention)
             beam.global_state["prev_penalty"] = prev_penalty

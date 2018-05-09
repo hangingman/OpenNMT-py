@@ -29,6 +29,7 @@ def make_translator(opt, report_score=True, out_file=None):
 
     scorer = onmt.translate.GNMTGlobalScorer(opt.alpha,
                                              opt.beta,
+                                             opt.min_attention,
                                              opt.coverage_penalty,
                                              opt.length_penalty)
 

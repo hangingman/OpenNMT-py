@@ -81,7 +81,8 @@ def main():
         sort_within_batch=True, shuffle=False)
 
     # Translator
-    scorer = onmt.translate.GNMTGlobalScorer(opt.alpha, opt.beta)
+    scorer = onmt.translate.GNMTGlobalScorer(opt.alpha, opt.beta,
+                                             opt.min_attention)
     translator = onmt.translate.Translator(
         model, fields,
         beam_size=opt.beam_size,
