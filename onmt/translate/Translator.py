@@ -36,7 +36,7 @@ def make_translator(opt, report_score=True, out_file=None):
     kwargs = {k: getattr(opt, k)
               for k in ["beam_size", "n_best", "max_length", "min_length",
                         "stepwise_penalty", "block_ngram_repeat",
-                        "ignore_when_blocking", "dump_beam",
+                        "ignore_when_blocking", "dump_beam" , "dump_attn",
                         "data_type", "replace_unk", "gpu", "verbose"]}
 
     translator = Translator(model, fields, global_scorer=scorer,
@@ -71,11 +71,12 @@ class Translator(object):
                  n_best=1,
                  max_length=100,
                  attn_transform="softmax", 
-                 dc_attn=0.0,
+                 c_attn=0.0,
                  global_scorer=None,
                  copy_attn=False,
                  gpu=False,
                  dump_beam="",
+                 dump_attn="",
                  min_length=0,
                  stepwise_penalty=False,
                  block_ngram_repeat=0,
@@ -109,6 +110,7 @@ class Translator(object):
         self.min_length = min_length
         self.stepwise_penalty = stepwise_penalty
         self.dump_beam = dump_beam
+        self.dump_attn = dump_attn
         self.block_ngram_repeat = block_ngram_repeat
         self.ignore_when_blocking = set(ignore_when_blocking)
         self.sample_rate = sample_rate
@@ -161,9 +163,13 @@ class Translator(object):
         pred_score_total, pred_words_total = 0, 0
         gold_score_total, gold_words_total = 0, 0
 
+        attn_matrices = []
+        gold_attn_matrices = []
+
         all_scores = []
         for batch in data_iter:
             batch_data = self.translate_batch(batch, data)
+            attn_matrices.append(batch_data['attention'])
             translations = builder.from_batch(batch_data)
 
             for trans in translations:
@@ -173,6 +179,7 @@ class Translator(object):
                 if tgt_path is not None:
                     gold_score_total += trans.gold_score
                     gold_words_total += len(trans.gold_sent) + 1
+                    gold_attn_matrices.append(batch_data['gold_attention'])
 
                 n_best_preds = [" ".join(pred)
                                 for pred in trans.pred_sents[:self.n_best]]
@@ -216,6 +223,17 @@ class Translator(object):
             import json
             json.dump(self.translator.beam_accum,
                       codecs.open(self.dump_beam, 'w', 'utf-8'))
+
+        if opt.dump_attn:
+            attn_matrices = [a[0][0].cpu().numpy() for a in attn_matrices]
+            gold_attn_matrices = [a['std'][:,0,:].data.cpu().numpy()
+                              for a in gold_attn_matrices]
+            import pickle
+            pickle.dump({'pred': attn_matrices, 'gold': gold_attn_matrices},
+                   open('attn_matrices_' + model_opt.attn_transform + '.out',
+                        'wb'))
+
+
         return all_scores
 
     def translate_batch(self, batch, data):
