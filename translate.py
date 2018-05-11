@@ -130,10 +130,6 @@ def main():
                 sent_number = next(counter)
                 output = trans.log(sent_number)
                 os.write(1, output.encode('utf-8'))
-=======
-import onmt.opts
->>>>>>> 0ecec8b4c16fdec7d8ce2646a0ea47ab6535d308
-
 
 def main(opt):
     translator = make_translator(opt, report_score=True)

@@ -3,7 +3,6 @@ from torch.autograd import Function
 from torch.nn import Module
 from constrained_sparsemax import constrained_sparsemax
 import numpy as np
-import pdb
 np.set_printoptions(threshold=np.nan)
 
 def project_onto_simplex(a, radius=1.0):
@@ -26,7 +25,7 @@ def project_onto_simplex(a, radius=1.0):
     return x, tau, .5*np.dot(x-a, x-a)
 
 def constrained_softmax(z, u):
-    assert round(np.sum(u), 5) >= 1.0, pdb.set_trace()
+    assert round(np.sum(u), 5) >= 1.0
     assert (u>=0).all(), "Invalid: u[i]<0 for some i"
     p = np.zeros_like(z)
     active = np.ones_like(z)
@@ -34,14 +33,10 @@ def constrained_softmax(z, u):
     z = z[nz]
     u = u[nz]
     active[nz] = 0.
-    #if np.any(np.isnan(z)) or np.any(np.isinf(z)):
-    if np.any(np.isnan(z)):
-        import pdb; pdb.set_trace()
+    assert not np.any(np.isnan(z))
     z -= np.max(z)
     e_z = np.exp(z)
     Z = e_z.sum()
-    # if Z==0:
-    #   return p, active, s
     ind = np.argsort(-e_z / u)
     s = 0.
     for i in ind:
@@ -54,8 +49,6 @@ def constrained_softmax(z, u):
             s += val
             active[nz[i]] = 1.
         p[nz[i]] = val
-    #if np.any(np.isnan(p)):
-    #    import pdb; pdb.set_trace()
     return p, active, s
 
 class SoftmaxFunction(Function):
@@ -135,20 +128,6 @@ class ConstrainedSoftmaxFunction(Function):
         self.saved_intermediate = active, s # Not sure this is safe.
         return probs
 
-        #z = input1
-        #u = input2
-        #e_z = z.exp()
-        #Z = e_z.sum(1)
-        #probs = e_z / Z.expand_as(e_z)
-        #active = (probs > u).type(probs.type())
-        #s = (active * u).sum(1)
-        #Z = ((1. - active) * e_z).sum(1) / (1-s)
-        #probs = active * u + (1. - active) * (e_z / Z.expand_as(z))
-        #output = probs
-        #self.save_for_backward(output)
-        #self.saved_intermediate = active, s # Not sure this is safe.
-        #return output
-
     def backward(self, grad_output):
         output, = self.saved_tensors
         active, s = self.saved_intermediate
@@ -164,10 +143,6 @@ class ConstrainedSoftmaxFunction(Function):
         grad_u = active * (grad_output - m.unsqueeze(1).expand_as(active))
         grad_input1 = grad_z
         grad_input2 = grad_u
-        #if np.any(np.isnan(grad_z.cpu().numpy())):
-        #    import pdb; pdb.set_trace()
-        #if np.any(np.isnan(grad_u.cpu().numpy())):
-        #    import pdb; pdb.set_trace()
         return grad_input1, grad_input2
 
 class ConstrainedSoftmax(Module):
@@ -178,13 +153,11 @@ class ConstrainedSparsemaxFunction(Function):
     def forward(self, input1, input2):
         z = input1.cpu().numpy()
         u = input2.cpu().numpy()
-        #print("z:", z)
-        #print("u:", u)
         probs = np.zeros_like(z)
         regions = np.zeros_like(z)
         for i in xrange(z.shape[0]):
             probs[i,:], regions[i,:], _, _ = constrained_sparsemax(z[i], u[i])
-            assert np.all(probs[i, :] == probs[i, :]), pdb.set_trace()
+            assert np.all(probs[i, :] == probs[i, :])
         probs = torch.from_numpy(probs)
         regions = torch.from_numpy(regions)
         if input1.is_cuda:
@@ -203,25 +176,17 @@ class ConstrainedSparsemaxFunction(Function):
         r1 = np.array(regions == 1, dtype=regions.dtype)
         r2 = np.array(regions == 2, dtype=regions.dtype)
         np_grad_output = grad_output.cpu().numpy()
-        #import pdb; pdb.set_trace()
         avg = np.sum(np_grad_output * r1, 1) / np.sum(r1, 1)
         np_grad_input1 = r1 * (np_grad_output - np.tile(avg[:,None],
                                                         [1, r1.shape[1]]))
         np_grad_input2 = r2 * (np_grad_output - np.tile(avg[:,None],
                                                         [1, r2.shape[1]]))
-        #print("grad_output:", np_grad_output)
-        #print("grad1:", np_grad_input1)
-        #print("grad2:", np_grad_input2)
         ind = np.nonzero(np.sum(r1, 1) == 0)[0]
         for i in ind:
             np_grad_input1[i, :] = 0.
             np_grad_input2[i, :] = 0.
-        #print("grad_output:", np_grad_output)
-        #print("grad1:", np_grad_input1)
-        #print("grad2:", np_grad_input2)
-        #pdb.set_trace()
-        assert np.all(np_grad_input1 == np_grad_input1), pdb.set_trace()
-        assert np.all(np_grad_input2 == np_grad_input2), pdb.set_trace()
+        assert np.all(np_grad_input1 == np_grad_input1)
+        assert np.all(np_grad_input2 == np_grad_input2)
         grad_input1 = torch.from_numpy(np_grad_input1)
         grad_input2 = torch.from_numpy(np_grad_input2)
         if grad_output.is_cuda:

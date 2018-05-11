@@ -124,12 +124,11 @@ class GlobalAttention(nn.Module):
                 h_t_ = h_t.view(tgt_batch*tgt_len, tgt_dim)
                 h_t_ = self.linear_in(h_t_)
                 h_t = h_t_.view(tgt_batch, tgt_len, tgt_dim)
-                #import pdb; pdb.set_trace()
                 if coverage is not None:
                     cover = coverage.view(-1).unsqueeze(1)
                     # Use coverage dim equal to src dim for now.
                     cc = self.linear_cover(cover).view_as(h_s)
-                    cc += h_t # 64, 16, 500
+                    cc += h_t
                     return (cc * h_s).sum(2)
 
             h_s_ = h_s.transpose(1, 2)

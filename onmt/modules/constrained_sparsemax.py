@@ -1,8 +1,6 @@
 import torch
 from torch.autograd import Variable
 import numpy as np
-import pdb
-# from activations import Softmax, Sparsemax
 
 def constrained_sparsemax(z, u):
     '''Solve the problem:
@@ -24,8 +22,6 @@ def double_constrained_sparsemax(z, l, u):
     This maps to Pardalos' canonical problem by making the transformations
     below.
     '''
-    #assert round(np.sum(u), 3) >= 1.0 , "Invalid : sum(u) < 1.0"
-    #assert round(np.sum(u), 3) >= 1.0 , pdb.set_trace()
     assert (u>=0).all(), "Invalid: u[i]<0 for some i"
 
     # Look for -inf entries in z, create due to padding and masking.
@@ -35,8 +31,6 @@ def double_constrained_sparsemax(z, l, u):
         regions = np.zeros(len(z), dtype=int)
         p[ind], regions[ind], tau, val = double_constrained_sparsemax(
             z[ind], l[ind], u[ind])
-        #import pdb; pdb.set_trace()
-        #print p, tau
         return p, regions, tau, val
 
     dtype = z.dtype
@@ -54,9 +48,6 @@ def double_constrained_sparsemax(z, l, u):
     p[ind] = l[ind]
     ind = np.nonzero(regions == 2)[0]
     p[ind] = u[ind]
-    #print 2*x + z
-    #p = 2*x + z
-    #tau = -2*tau
     p = p.astype(dtype)
     return p, regions, tau, .5*np.dot(p-z, p-z)
 
@@ -123,7 +114,7 @@ def solve_quadratic_problem(a, b, c, d):
             left = right
             right = val_b
 
-        assert not level or tau >= left, pdb.set_trace()
+        assert not level or tau >= left
         if (not level and d == tightsum) or (level and left <= tau <= right):
             # Found the right split-point!
             found = True
@@ -165,15 +156,14 @@ if __name__ == "__main__":
     lower = 1./n * np.random.rand(n) # Uniform in [0, 1/n].
     upper = 1./n + 1./n * np.random.rand(n) # Uniform in [1/n, 2/n].
     z = np.random.randn(n)
-    print 'z:', z
-    print 'Lower:', lower
-    print 'Upper:', upper
+    print('z:', z)
+    print('Lower:', lower)
+    print('Upper:', upper)
     p, _, tau, value = double_constrained_sparsemax(z, lower, upper)
-    print 'p:', p
-    print 'tau:', tau
-    print 'value:', value
+    print('p:', p)
+    print('tau:', tau)
+    print('value:', value)
     tol = 1e-12
-    # print 'sparsemax p:', Sparsemax()(Variable(torch.Tensor(z).view(1,-1)))
     assert np.all(lower <= p) and np.all(p <= upper) \
         and 1-tol <= sum(p) <= 1+tol
 

@@ -55,62 +55,45 @@ if __name__ == "__main__":
     p.backward(dp)
     dz = z.grad.data
     dz = dz.cpu().numpy()
-    print dp.cpu().numpy()
-    print dz
+    print(dp.cpu().numpy())
+    print(dz)
 
     dz_, = numeric_gradient(sf.forward,
                             dp,
                             z.data.cuda())
     dz_ = dz_.cpu().numpy()
-    print dz_
-    print np.linalg.norm(dz - dz_)
+    print(dz_)
+    print(np.linalg.norm(dz - dz_))
 
+    print()
+    print()
 
-    print
-    print
-
-
-    #sf = ConstrainedSoftmaxFunction()
     sf = ConstrainedSparsemaxFunction()
     z = Variable(torch.randn(batch_size, n).double().cuda(), requires_grad=True)
     # This makes sure that each row of u has a sum larger than 1 (otherwise
     # the problems are infeasible).
     u = Variable(1./n + 1./n * torch.rand(batch_size, n).double().cuda(),
                  requires_grad=True)
-    #z = Variable(torch.from_numpy(np.array([[1.,1.,1.,1.,1.,1.,1.,1.]])).cuda(),
-    #             requires_grad=True)
-    #u = Variable(torch.from_numpy(np.array([[.15,.167,1.,0.,1.,1.,0.,1.]])).cuda(),
-    #             requires_grad=True)
-    #p = ConstrainedSoftmax()(z, u)
-    import pdb; pdb.set_trace()
-
-    #############
-    # z_sample = np.load("z_sample")[None, :]
-    # u_sample = np.load("u_sample")[None, :]
-    # batch_size = z_sample.shape[0]
-    # n = z_sample.shape[1]
-    # z = Variable(torch.from_numpy(z_sample).double().cuda(), requires_grad=True)
-    # u = Variable(torch.from_numpy(u_sample).double().cuda(), requires_grad=True)
-    #############
 
     p = ConstrainedSparsemax()(z, u)
     print("p:", p)
     print("u:", u)
     print("u >= p", torch.le(p, u))
     all_ones = torch.ones(batch_size, n).double().cuda()
-    assert torch.equal(all_ones, torch.le(p, u).data.double().cuda()),"Probabilities are greater than the upper bounds!"
-    assert (1 - (p <= u)).cpu().data.numpy().sum() == 0, pdb.set_trace()
+    assert torch.equal(all_ones, torch.le(p, u).data.double().cuda()), \
+        "Probabilities are greater than the upper bounds!"
+    assert (1 - (p <= u)).cpu().data.numpy().sum() == 0
     dp = torch.randn(batch_size, n).double().cuda()
     p.backward(dp)
     dz = z.grad.data
     dz = dz.cpu().numpy()
     du = u.grad.data
     du = du.cpu().numpy()
-    print p.data.cpu().numpy()
-    print p.data.cpu().numpy().sum(1)
-    print dp.cpu().numpy()
-    print dz
-    print du
+    print(p.data.cpu().numpy())
+    print(p.data.cpu().numpy().sum(1))
+    print(dp.cpu().numpy())
+    print(dz)
+    print(du)
 
     dz_, du_ = numeric_gradient(sf.forward,
                                 dp,
@@ -118,8 +101,8 @@ if __name__ == "__main__":
                                 u.data.cuda())
     dz_ = dz_.cpu().numpy()
     du_ = du_.cpu().numpy()
-    print dz_
-    print du_
-    print np.linalg.norm(dz - dz_)
-    print np.linalg.norm(du - du_)
+    print(dz_)
+    print(du_)
+    print(np.linalg.norm(dz - dz_))
+    print(np.linalg.norm(du - du_))
 
