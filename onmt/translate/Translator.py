@@ -39,7 +39,7 @@ def make_translator(opt, report_score=True, out_file=None):
                         "ignore_when_blocking", "dump_beam" , "dump_attn",
                         "data_type", "replace_unk", "gpu", "verbose"]}
 
-    translator = Translator(model, fields, global_scorer=scorer,
+    translator = Translator(model, model_opt, fields, global_scorer=scorer,
                             out_file=out_file, report_score=report_score,
                             copy_attn=model_opt.copy_attn, **kwargs)
     return translator
@@ -66,6 +66,7 @@ class Translator(object):
 
     def __init__(self,
                  model,
+                 model_opt,
                  fields,
                  beam_size,
                  n_best=1,
@@ -99,6 +100,7 @@ class Translator(object):
 
 
         self.model = model
+        self.model_opt = model_opt
         self.fields = fields
         self.n_best = n_best
         self.max_length = max_length
@@ -224,13 +226,13 @@ class Translator(object):
             json.dump(self.translator.beam_accum,
                       codecs.open(self.dump_beam, 'w', 'utf-8'))
 
-        if opt.dump_attn:
+        if self.dump_attn:
             attn_matrices = [a[0][0].cpu().numpy() for a in attn_matrices]
             gold_attn_matrices = [a['std'][:,0,:].data.cpu().numpy()
                               for a in gold_attn_matrices]
             import pickle
             pickle.dump({'pred': attn_matrices, 'gold': gold_attn_matrices},
-                   open('attn_matrices_' + model_opt.attn_transform + '.out',
+                   open('attn_matrices_' + self.model_opt.attn_transform + '.out',
                         'wb'))
 
 
@@ -420,7 +422,7 @@ class Translator(object):
         #  (i.e. log likelihood) of the target under the model
         tt = torch.cuda if self.cuda else torch
         gold_scores = tt.FloatTensor(batch.batch_size).fill_(0)
-        dec_out, _, _ = self.model.decoder(
+        dec_out, _, attn = self.model.decoder(
             tgt_in, memory_bank, dec_states, memory_lengths=src_lengths)
 
         tgt_pad = self.fields["tgt"].vocab.stoi[onmt.io.PAD_WORD]

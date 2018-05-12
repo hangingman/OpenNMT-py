@@ -521,6 +521,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
                 # time which are not sorted by sentence length. To fix this,
                 # we need to do torch.sort before packing and then restoring
                 # the previous order.
+                #import pdb; pdb.set_trace()
                 packed_upper_bounds = pack(
                     upper_bounds, (memory_lengths - 1).view(-1).tolist(),
                     batch_first=True)
