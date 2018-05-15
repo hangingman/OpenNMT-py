@@ -200,6 +200,7 @@ class GlobalAttention(nn.Module):
         else:
             attn_h = attn_h.transpose(0, 1).contiguous()
             align_vectors = align_vectors.transpose(0, 1).contiguous()
+            c = c.view(batch, targetL, dim).transpose(0, 1).contiguous()
 
             # Check output sizes
             targetL_, batch_, dim_ = attn_h.size()
@@ -211,4 +212,4 @@ class GlobalAttention(nn.Module):
             aeq(batch, batch_)
             aeq(sourceL, sourceL_)
 
-        return attn_h, align_vectors
+        return attn_h, align_vectors, c

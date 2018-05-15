@@ -484,7 +484,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
         hidden = state.hidden
         coverage = state.coverage.squeeze(0) \
             if state.coverage is not None else None
-
+        attns["context"] = []
         # Input feed concatenates hidden state with
         # input at every time step.
         for i, emb_t in enumerate(emb.split(1)):
@@ -492,7 +492,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             decoder_input = torch.cat([emb_t, input_feed], 1)
 
             rnn_output, hidden = self.rnn(decoder_input, hidden)
-            decoder_output, p_attn = self.attn(
+            decoder_output, p_attn, context = self.attn(
                 rnn_output,
                 memory_bank.transpose(0, 1),
                 memory_lengths=memory_lengths)
@@ -507,6 +507,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
 
             decoder_outputs += [decoder_output]
             attns["std"] += [p_attn]
+            attns["context"] += [context]
 
             # Update the coverage attention.
             if self._coverage:
