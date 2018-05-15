@@ -342,14 +342,14 @@ def lazily_load_dataset(corpus_type):
         yield lazy_dataset_loader(pt, corpus_type)
 
 
-def load_fields(dataset, data_type, checkpoint):
+def load_fields(dataset, data_type, checkpoint, use_char=False):
     if checkpoint is not None:
         print('Loading vocab from checkpoint at %s.' % opt.train_from)
         fields = onmt.io.load_fields_from_vocab(
-            checkpoint['vocab'], data_type)
+            checkpoint['vocab'], data_type, use_char)
     else:
         fields = onmt.io.load_fields_from_vocab(
-            torch.load(opt.data + '.vocab.pt'), data_type)
+            torch.load(opt.data + '.vocab.pt'), data_type, use_char)
     fields = dict([(k, f) for (k, f) in fields.items()
                    if k in dataset.examples[0].__dict__])
 
@@ -498,7 +498,11 @@ def main():
         data_type = 'monotext'
 
     # Load fields generated from preprocess phase.
-    fields = load_fields(first_dataset, data_type, checkpoint)
+    if model_opt.lm_use_char_input:
+        use_char = True
+    else:
+        use_char = False
+    fields = load_fields(first_dataset, data_type, checkpoint, use_char)
 
     # Report src/tgt features.
     collect_report_features(fields)

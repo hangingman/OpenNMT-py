@@ -125,6 +125,23 @@ def model_opts(parser):
                        help='Train a language model intead of NMT.')
     group.add_argument('-bilm', action="store_true",
                        help='Make the language model bidirectional.')
+    group.add_argument('-lm_use_char_input', action="store_true",
+                       help='Use character embeddings to create word '
+                            'embeddings using a CNN and highway layers.')
+    group.add_argument('-lm_char_vec_size', type=int, default=16,
+                       help='Character embedding size for LM.')
+    group.add_argument('-lm_char_conv_filters', type=filters, nargs='+',
+                       default=[(1, 32), (2, 32), (3, 64), (4, 128),
+                                (5, 256), (6, 512), (7, 1024)],
+                       help='Width and number of output channels of character'
+                            ' convolution embedding layer. Needs to receive'
+                            ' the width and number of channels separated by'
+                            ' a comma and different layers separated by'
+                            ' spaces (ex.: "-lm_char_conv_filters 3,64 4,128")'
+                       )
+    group.add_argument('-lm_num_highway', type=int, default=2,
+                       help='Number of highway layers in character'
+                            'convolution embeddings.')
     group.add_argument('-tie_weights', action="store_true",
                        help='Tie the generator weights with the embeddings.')
     group.add_argument('-lm_use_projection', action="store_true",
@@ -144,12 +161,24 @@ def model_opts(parser):
                        help='The gate type to use in the RNNs')
 
 
+def filters(s):
+    try:
+        width, num = map(int, s.split(','))
+        return width, num
+    except:
+        raise argparse.ArgumentTypeError(
+            "Filters must be of shape 'width,num_out_channels'")
+
+
 def preprocess_opts(parser):
     # Data options
     group = parser.add_argument_group('Data')
     group.add_argument('-data_type', default="text",
                        help="""Type of the source input.
                        Options are [text|img|monotext].""")
+    group.add_argument('-use_char', action="store_true",
+                       help='Create character vocabulary fields as well,'
+                            ' to use in character based word embeddings')
 
     group.add_argument('-train_src',
                        help="Path to the training source data")

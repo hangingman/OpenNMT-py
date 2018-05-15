@@ -354,25 +354,41 @@ class LanguageModelTrainer(Trainer):
             cur_dataset = valid_iter.get_cur_dataset()
             self.valid_loss.cur_dataset = cur_dataset
 
-            self.model.init_rnn_state(batch.tgt.size(1))
+            self.model.init_rnn_state(batch.batch_size)
 
             if self.model.bidirectional:
-                self.model.backwards.init_rnn_state(batch.tgt.size(1))
+                self.model.backwards.init_rnn_state(batch.batch_size)
+
+            if self.model.char_convs:
+                tgt_input = onmt.io.make_features(batch, 'char_tgt')
+                max_char_tgt = tgt_input.size(3)
+                # (target_size, batch_size, max_char_tgt, n_feat)
+                tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+            else:
+                tgt_input = onmt.io.make_features(batch, 'tgt')
 
             tgt = onmt.io.make_features(batch, 'tgt')
 
             # F-prop through the model.
-            outputs = self.model(tgt)
+            outputs = self.model(tgt_input)
 
             if self.model.bidirectional:
+
                 lengths = tgt[:,
                               :,
-                              0].ne(self.train_loss.padding_idx).sum(dim=0)
+                              0].ne(self.train_loss.padding_idx
+                                    ).sum(dim=0)
                 idx = self._get_reverse_idx(lengths)
-                reversed_tgt = tgt.view(batch.batch_size*tgt.size(0),
-                                        -1)[idx, :].view(tgt.size(0),
-                                                         batch.batch_size,
-                                                         1)
+
+                reversed_tgt = tgt_input.view(
+                    batch.batch_size*tgt_input.size(0),
+                    -1)[idx, :].view(tgt_input.size(0),
+                                     batch.batch_size,
+                                     -1)
+
+                if self.model.char_convs:
+                    reversed_tgt = reversed_tgt.unsqueeze(-1)
+
                 reversed_outputs = self.model.backwards(reversed_tgt)
                 outputs = torch.cat([outputs, reversed_outputs], dim=-1)
 
@@ -402,10 +418,18 @@ class LanguageModelTrainer(Trainer):
             else:
                 trunc_size = target_size
 
-            self.model.init_rnn_state(batch.tgt.size(1))
+            self.model.init_rnn_state(batch.batch_size)
             if self.model.bidirectional:
-                self.model.backwards.init_rnn_state(batch.tgt.size(1))
+                self.model.backwards.init_rnn_state(batch.batch_size)
             attns = None
+
+            if self.model.char_convs:
+                tgt_input = onmt.io.make_features(batch, 'char_tgt')
+                max_char_tgt = tgt_input.size(3)
+                # (target_size, batch_size, max_char_tgt, n_feat)
+                tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+            else:
+                tgt_input = onmt.io.make_features(batch, 'tgt')
 
             tgt_outer = onmt.io.make_features(batch, 'tgt')
 
@@ -417,20 +441,28 @@ class LanguageModelTrainer(Trainer):
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
 
-                outputs = self.model(tgt)
+                outputs = self.model(tgt_input)
 
                 # Backwards LM F-prop
                 reversed_outputs = None
                 reversed_tgt = None
                 if self.model.bidirectional:
+
                     lengths = tgt[:,
                                   :,
-                                  0].ne(self.train_loss.padding_idx).sum(dim=0)
+                                  0].ne(self.train_loss.padding_idx
+                                        ).sum(dim=0)
                     idx = self._get_reverse_idx(lengths)
-                    reversed_tgt = tgt.view(batch.batch_size*tgt.size(0),
-                                            -1)[idx, :].view(tgt.size(0),
-                                                             batch.batch_size,
-                                                             1)
+
+                    reversed_tgt = tgt_input.view(
+                        batch.batch_size*tgt_input.size(0),
+                        -1)[idx, :].view(tgt_input.size(0),
+                                         batch.batch_size,
+                                         -1)
+
+                    if self.model.char_convs:
+                        reversed_tgt = reversed_tgt.unsqueeze(-1)
+
                     reversed_outputs = self.model.backwards(reversed_tgt)
                     outputs = torch.cat([outputs, reversed_outputs], dim=-1)
 
