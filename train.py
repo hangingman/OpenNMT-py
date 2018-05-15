@@ -356,9 +356,11 @@ def train_model(model, fields, optim, data_type, model_opt):
                 trainer.drop_checkpoint(model_opt, epoch, fields,
                                         valid_stats)
             else:
-                for valid_stat in valid_stats:
-                    trainer.drop_checkpoint(model_opt, epoch, fields,
-                                            valid_stat)
+                trainer.drop_checkpoint(model_opt, epoch, fields,
+                                        valid_stats[-1])
+                #for valid_stat in valid_stats:
+                #    trainer.drop_checkpoint(model_opt, epoch, fields,
+                #                            valid_stat)
 
 
 def check_save_model_path():
