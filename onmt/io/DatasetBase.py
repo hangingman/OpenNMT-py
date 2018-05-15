@@ -9,6 +9,11 @@ UNK_WORD = '<unk>'
 UNK = 0
 BOS_WORD = '<s>'
 EOS_WORD = '</s>'
+# Special tokens for character vocabulary
+PAD_CHAR = '<cblank>'
+UNK_CHAR = '<cunk>'
+BOW_CHAR = '<w>'
+EOW_CHAR = '</w>'
 
 
 class ONMTDatasetBase(torchtext.data.Dataset):

@@ -11,7 +11,9 @@ import torchtext
 
 from onmt.Utils import aeq
 from onmt.io.DatasetBase import (ONMTDatasetBase, UNK_WORD,
-                                 PAD_WORD, BOS_WORD, EOS_WORD)
+                                 PAD_WORD, BOS_WORD, EOS_WORD,
+                                 PAD_CHAR, BOW_CHAR, EOW_CHAR,
+                                 UNK_CHAR)
 
 
 class TextDataset(ONMTDatasetBase):
@@ -209,27 +211,55 @@ class TextDataset(ONMTDatasetBase):
                 yield example_dict, n_feats
 
     @staticmethod
-    def get_fields(n_src_features, n_tgt_features):
+    def get_fields(n_src_features, n_tgt_features, use_char=False):
         """
         Args:
             n_src_features (int): the number of source features to
                 create `torchtext.data.Field` for.
             n_tgt_features (int): the number of target features to
                 create `torchtext.data.Field` for.
+            use_char: boolean to decide if character fields are necessary
+                (only for text type)
 
         Returns:
             A dictionary whose keys are strings and whose values
             are the corresponding Field objects.
         """
         fields = {}
-        if n_src_features is not None:
-            fields["src"] = torchtext.data.Field(
-                pad_token=PAD_WORD,
-                include_lengths=True)
 
-            for j in range(n_src_features):
-                fields["src_feat_"+str(j)] = \
-                    torchtext.data.Field(pad_token=PAD_WORD)
+        fields["src"] = torchtext.data.Field(
+            pad_token=PAD_WORD,
+            include_lengths=True)
+
+        for j in range(n_src_features):
+            fields["src_feat_"+str(j)] = \
+                torchtext.data.Field(pad_token=PAD_WORD)
+
+        if use_char:
+            # Create character related fields
+            nesting_field_src = torchtext.data.Field(tokenize=list,
+                                                     pad_token=PAD_CHAR,
+                                                     init_token=BOW_CHAR,
+                                                     eos_token=EOW_CHAR,
+                                                     fix_length=50)
+
+            fields["char_src"] = torchtext.data.NestedField(
+                                    nesting_field_src,
+                                    init_token=BOS_WORD,
+                                    eos_token=EOS_WORD,
+                                    pad_token=PAD_WORD)
+
+            nesting_field_tgt = torchtext.data.Field(tokenize=list,
+                                                     pad_token=PAD_CHAR,
+                                                     init_token=BOW_CHAR,
+                                                     eos_token=EOW_CHAR,
+                                                     fix_length=50)
+
+            fields["char_tgt"] = torchtext.data.NestedField(
+                                    nesting_field_tgt,
+                                    init_token=BOS_WORD,
+                                    eos_token=EOS_WORD,
+                                    pad_token=PAD_WORD)
 
         fields["tgt"] = torchtext.data.Field(
             init_token=BOS_WORD, eos_token=EOS_WORD,
@@ -249,10 +279,9 @@ class TextDataset(ONMTDatasetBase):
                     alignment[j, i, t] = 1
             return alignment
 
-        if n_src_features is not None:
-            fields["src_map"] = torchtext.data.Field(
-                use_vocab=False, tensor_type=torch.FloatTensor,
-                postprocessing=make_src, sequential=False)
+        fields["src_map"] = torchtext.data.Field(
+            use_vocab=False, tensor_type=torch.FloatTensor,
+            postprocessing=make_src, sequential=False)
 
         def make_tgt(data, vocab, is_train):
             tgt_size = max([t.size(0) for t in data])
@@ -419,7 +448,8 @@ class ShardedTextCorpusIterator(object):
         if self.line_truncate:
             line = line[:self.line_truncate]
         words, feats, n_feats = TextDataset.extract_text_features(line)
-        example_dict = {self.side: words, "indices": index}
+        char_side = "char_" + self.side
+        example_dict = {self.side: words, "indices": index, char_side: words}
         if feats:
             # All examples must have same number of features.
             aeq(self.n_feats, n_feats)

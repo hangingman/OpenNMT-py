@@ -27,7 +27,7 @@ torchtext.vocab.Vocab.__getstate__ = _getstate
 torchtext.vocab.Vocab.__setstate__ = _setstate
 
 
-def get_fields(data_type, n_src_features, n_tgt_features):
+def get_fields(data_type, n_src_features, n_tgt_features, use_char=False):
     """
     Args:
         data_type: type of the source input. Options are [text|img|audio].
@@ -35,22 +35,24 @@ def get_fields(data_type, n_src_features, n_tgt_features):
             create `torchtext.data.Field` for.
         n_tgt_features: the number of target features to
             create `torchtext.data.Field` for.
+        use_char: boolean to decide if character fields are necessary
+            (only for text type)
 
     Returns:
         A dictionary whose keys are strings and whose values are the
         corresponding Field objects.
     """
     if data_type == 'text':
-        return TextDataset.get_fields(n_src_features, n_tgt_features)
+        return TextDataset.get_fields(n_src_features, n_tgt_features, use_char)
     elif data_type == 'monotext':
-        return TextDataset.get_fields(n_src_features, n_tgt_features)
+        return TextDataset.get_fields(n_src_features, n_tgt_features, use_char)
     elif data_type == 'img':
         return ImageDataset.get_fields(n_src_features, n_tgt_features)
     elif data_type == 'audio':
         return AudioDataset.get_fields(n_src_features, n_tgt_features)
 
 
-def load_fields_from_vocab(vocab, data_type="text"):
+def load_fields_from_vocab(vocab, data_type="text", use_char=False):
     """
     Load Field objects from `vocab.pt` file.
     """
@@ -60,11 +62,18 @@ def load_fields_from_vocab(vocab, data_type="text"):
     else:
         n_src_features = len(collect_features(vocab, 'src'))
     n_tgt_features = len(collect_features(vocab, 'tgt'))
-    fields = get_fields(data_type, n_src_features, n_tgt_features)
+    fields = get_fields(data_type, n_src_features, n_tgt_features,
+                        use_char)
     for k, v in vocab.items():
         # Hack. Can't pickle defaultdict :(
-        v.stoi = defaultdict(lambda: 0, v.stoi)
-        fields[k].vocab = v
+        if "_nested" in k:
+            # build the vocabulary for the nested character field
+            k = k[:-7]
+            v.stoi = defaultdict(lambda: 0, v.stoi)
+            fields[k].nesting_field.vocab = v
+        else:
+            v.stoi = defaultdict(lambda: 0, v.stoi)
+            fields[k].vocab = v
     return fields
 
 
@@ -77,6 +86,9 @@ def save_fields_to_vocab(fields):
         if f is not None and 'vocab' in f.__dict__:
             f.vocab.stoi = dict(f.vocab.stoi)
             vocab.append((k, f.vocab))
+            if 'nesting_field' in dir(f):
+                # If it exists, also save the nested field
+                vocab.append((k + '_nested', f.nesting_field.vocab))
     return vocab
 
 
@@ -135,7 +147,7 @@ def make_features(batch, side, data_type='text'):
         A sequence of src/tgt tensors with optional feature tensors
         of size (len x batch).
     """
-    assert side in ['src', 'tgt']
+    assert side in ['src', 'tgt', 'char_src', 'char_tgt']
     if isinstance(batch.__dict__[side], tuple):
         data = batch.__dict__[side][0]
     else:
@@ -232,12 +244,27 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_dir=None,
     return dataset
 
 
-def _build_field_vocab(field, counter, **kwargs):
+def _build_field_vocab(field, counter, char_counter=None, **kwargs):
     specials = list(OrderedDict.fromkeys(
         tok for tok in [field.unk_token, field.pad_token, field.init_token,
                         field.eos_token]
         if tok is not None))
     field.vocab = field.vocab_cls(counter, specials=specials, **kwargs)
+
+    if hasattr(field, 'nesting_field'):
+        # The current field has a nested character field, so we build
+        # a vocabulary for the nested field as well
+        char_specials = list(OrderedDict.fromkeys(
+            tok for tok in [field.nesting_field.unk_token,
+                            field.nesting_field.pad_token,
+                            field.nesting_field.init_token,
+                            field.nesting_field.eos_token]
+            if tok is not None))
+        specials += char_specials
+        field.nesting_field.vocab = field.nesting_field.vocab_cls(
+                                char_counter,
+                                specials=specials,
+                                **kwargs)
 
 
 def build_vocab(train_dataset_files, fields, data_type, share_vocab,
@@ -294,6 +321,10 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
         for ex in dataset.examples:
             for k in fields:
                 val = getattr(ex, k, None)
+
+                if val is not None and 'char' in k:
+                    val = [char for word in val for char in word[0]]
+
                 if val is not None and not fields[k].sequential:
                     val = [val]
                 elif k == 'src' and src_vocab:
@@ -307,6 +338,15 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                        min_freq=tgt_words_min_frequency)
     print(" * tgt vocab size: %d." % len(fields["tgt"].vocab))
 
+    if "char_tgt" in fields.keys():
+        # Add a Character Vocabulary
+        _build_field_vocab(fields["char_tgt"], counter["tgt"],
+                           counter["char_tgt"],
+                           max_size=tgt_vocab_size,
+                           min_freq=tgt_words_min_frequency)
+        print(" * char tgt vocab size: %d." %
+              len(fields["char_tgt"].nesting_field.vocab))
+
     # All datasets have same num of n_tgt_features,
     # getting the last one is OK.
     for j in range(dataset.n_tgt_feats):
@@ -319,6 +359,15 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                            max_size=src_vocab_size,
                            min_freq=src_words_min_frequency)
         print(" * src vocab size: %d." % len(fields["src"].vocab))
+
+        if "char_src" in fields.keys():
+            # Add a Character Vocabulary
+            _build_field_vocab(fields["char_src"], counter["src"],
+                               counter["char_src"],
+                               max_size=src_vocab_size,
+                               min_freq=src_words_min_frequency)
+            print(" * char src vocab size: %d." %
+                  len(fields["char_src"].nesting_field.vocab))
 
         # All datasets have same num of n_src_features,
         # getting the last one is OK.

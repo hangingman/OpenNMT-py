@@ -202,7 +202,8 @@ def main():
     print(" * number of target features: %d." % tgt_nfeats)
 
     print("Building `Fields` object...")
-    fields = onmt.io.get_fields(opt.data_type, src_nfeats, tgt_nfeats)
+    fields = onmt.io.get_fields(opt.data_type, src_nfeats, tgt_nfeats,
+                                opt.use_char)
 
     print("Building & saving training data...")
     train_dataset_files = build_save_dataset('train', fields, opt)
