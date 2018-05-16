@@ -260,6 +260,9 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None):
     # Make Embeddings
     tgt_dict = fields["tgt"].vocab
     feature_dicts = onmt.io.collect_feature_vocabs(fields, 'tgt')
+    # Get Padding idx in case bidirectional language model is necessary
+    padding_idx = tgt_dict.stoi[onmt.io.PAD_CHAR] if \
+        model_opt.lm_use_char_input else tgt_dict.stoi[onmt.io.PAD_WORD]
 
     if model_opt.lm_use_char_input:
         if "char_tgt" not in fields.keys():
@@ -271,7 +274,7 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None):
         # Create character embeddings
         char_embeddings = make_embeddings(model_opt, char_tgt_dict,
                                           feature_dicts, for_encoder=False)
-        # Do Convolutions, Highway Layer and Projection
+        # Initialize Convolutions, Highway Layer and Projection
         # into word embedding size
         tgt_embeddings = CharEmbeddingsCNN(model_opt, char_embeddings)
 
@@ -280,12 +283,11 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None):
                                          feature_dicts, for_encoder=False)
 
     # Make LanguageModel.
-    model = LanguageModel(model_opt, tgt_embeddings, gpu)
+    model = LanguageModel(model_opt, tgt_embeddings, gpu, padding_idx)
     model.model_type = model_opt.model_type
 
     # Save model options as a boolean in the model
     if model_opt.bilm:
-        model.backwards = LanguageModel(model_opt, tgt_embeddings, gpu)
         model.bidirectional = True
     else:
         model.bidirectional = False

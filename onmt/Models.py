@@ -668,7 +668,7 @@ class RNNDecoderState(DecoderState):
 
 
 class LanguageModel(nn.Module):
-    def __init__(self, opt, embeddings, gpu):
+    def __init__(self, opt, embeddings, gpu, padding_idx):
 
         super(LanguageModel, self).__init__()
 
@@ -681,6 +681,9 @@ class LanguageModel(nn.Module):
         self.hidden_size = opt.lm_rnn_size
         self.use_projection = opt.lm_use_projection
         self.use_residual = opt.lm_use_residual
+        self.padding_idx = padding_idx
+        self.num_directions = 2 if opt.bilm else 1
+        self.char_embeddings = opt.lm_use_char_input
 
         RNNCell = nn.LSTMCell if opt.lm_rnn_type == "LSTM"\
             else nn.GRUCell
@@ -689,16 +692,23 @@ class LanguageModel(nn.Module):
         if self.use_projection:
             self.projections = nn.ModuleList()
 
-        rnn_input_size = self.input_size
-        for layer in range(self.layers):
-            rnn = RNNCell(rnn_input_size, self.hidden_size)
-            self.rnns.append(rnn)
-
-            rnn_input_size = self.hidden_size
+        for direction in range(self.num_directions):
+            self.rnns.append(nn.ModuleList())
             if self.use_projection:
-                self.projections.append(nn.Linear(self.hidden_size,
-                                                  self.input_size))
-                rnn_input_size = self.input_size
+                self.projections.append(nn.ModuleList())
+
+            rnn_input_size = self.input_size
+            for layer in range(self.layers):
+                rnn = RNNCell(rnn_input_size, self.hidden_size)
+                self.rnns[direction].append(rnn)
+
+                rnn_input_size = self.hidden_size
+                if self.use_projection:
+                    self.projections[direction].append(nn.Linear(
+                                self.hidden_size,
+                                self.input_size))
+
+                    rnn_input_size = self.input_size
 
         self.gal_dropout = opt.lm_gal_dropout
 
@@ -714,7 +724,8 @@ class LanguageModel(nn.Module):
 
     def init_rnn_state(self, batch_size):
         def get_variable():
-            v = torch.zeros(self.layers, batch_size, self.hidden_size)
+            v = torch.zeros(self.num_directions, self.layers,
+                            batch_size, self.hidden_size)
             if self.is_cuda:
                 v = Variable(v.cuda(), requires_grad=False)
             else:
@@ -734,59 +745,108 @@ class LanguageModel(nn.Module):
 
         # Get a dropout mask for recurrent dropout that will
         # be used for every timestep
-        if self.gal_dropout > 0:
+        if self.gal_dropout > 0 and self.training:
             self.sample_mask(tgt.size(1))
 
-        tgt = tgt[:-1]  # No EOS
         emb = self.embeddings(tgt)
-        outputs = []
-        for emb_t in emb.split(1):
-            rnn_input = emb_t.squeeze(0)
-            h_0, c_0 = self.hidden
-            h_1, c_1 = [], []
 
-            layer_outputs = []
+        if self.num_directions > 1:
+            reverse_emb = self._get_reverse_emb(tgt, emb)
+            emb.unsqueeze_(0)
+            reverse_emb.unsqueeze_(0)
+            emb = torch.cat([emb, reverse_emb], dim=0)
+        else:
+            emb.unsqueeze_(0)
 
-            for i, layer in enumerate(self.rnns):
+        emb = emb[:, :-1, :, :].contiguous()  # Remove EOS/BOS embedding
 
-                h_1_i, c_1_i = layer(rnn_input, (h_0[i], c_0[i]))
+        dir_outputs = []
+        output_cache = None
+        for n_dir in range(self.num_directions):
 
-                output = h_1_i
+            outputs = []
+            for emb_t in emb[n_dir].split(1):
+                rnn_input = emb_t.squeeze(0)
+                h_0 = self.hidden[0][n_dir]
+                c_0 = self.hidden[1][n_dir]
+                h_1, c_1 = [], []
 
-                # Apply recurrent dropout
-                if self.gal_dropout > 0:
-                    h_1_i = torch.mul(h_1_i, self.mask)
-                    h_1_i *= 1.0/(1.0 - self.gal_dropout)
+                layer_outputs = []
 
-                # Update hidden and cell state of this layer
-                h_1 += [h_1_i]
-                c_1 += [c_1_i]
+                for i, layer in enumerate(self.rnns[n_dir]):
 
-                # Project into smaller space
-                if self.use_projection:
-                    rnn_input = self.projections[i](output)
-                else:
-                    rnn_input = output
+                    h_1_i, c_1_i = layer(rnn_input, (h_0[i], c_0[i]))
 
-                # Residual Connection
-                if i > 0 and self.use_residual:
-                    rnn_input.data += output_cache.data
-                # Cache  the first layer output
-                elif self.use_residual:
-                    output_cache = rnn_input
+                    output = h_1_i
 
-                layer_outputs += [rnn_input]
+                    # Apply recurrent dropout
+                    if self.gal_dropout > 0 and self.training:
+                        h_1_i = torch.mul(h_1_i, self.mask)
+                        h_1_i *= 1.0/(1.0 - self.gal_dropout)
 
-            h_1 = torch.stack(h_1)
-            c_1 = torch.stack(c_1)
-            self.hidden = (h_1, c_1)
+                    # Update hidden and cell state of this layer
+                    h_1 += [h_1_i]
+                    c_1 += [c_1_i]
 
-            layer_outputs = torch.stack(layer_outputs)
-            outputs += [layer_outputs]
+                    # Project into smaller space
+                    if self.use_projection:
+                        rnn_input = self.projections[n_dir][i](output)
+                    else:
+                        rnn_input = output
 
-        outputs = torch.stack(outputs)
+                    # Residual Connection
+                    if i > 0 and self.use_residual:
+                        rnn_input.data += output_cache.data
+                    # Cache  the first layer output
+                    elif self.use_residual:
+                        output_cache = rnn_input
 
-        return outputs
+                    layer_outputs += [rnn_input]
+
+                h_1 = torch.stack(h_1)
+                c_1 = torch.stack(c_1)
+                self.hidden[0][n_dir].data = h_1.data
+                self.hidden[1][n_dir].data = c_1.data
+
+                layer_outputs = torch.stack(layer_outputs)
+                outputs += [layer_outputs]
+
+            outputs = torch.stack(outputs)
+            dir_outputs += [outputs]
+
+        dir_outputs = torch.stack(dir_outputs)
+
+        return dir_outputs
+
+    def _get_reverse_emb(self, tgt, emb):
+
+        if self.char_embeddings:
+            # Get the first character of each word.
+            # If the word is actually padding, the first character will
+            # already be the character padding token.
+            tgt = tgt[:, :, 0]
+
+        lengths = tgt.ne(self.padding_idx).sum(dim=0)[:, 0]
+        sentence_size = int(lengths[0])
+        batch_size = len(lengths)
+
+        idx = [0]*(batch_size*sentence_size)
+
+        for i in range(batch_size*sentence_size):
+            batch_index = i % batch_size
+            sentence_index = i//batch_size
+            idx[i] = (int(lengths[batch_index])-sentence_index-1)*batch_size \
+                + batch_index
+            if idx[i] < 0:  # Padding symbol, don't change order
+                idx[i] = i
+
+        reversed_emb = emb.view(
+                        batch_size*emb.size(0),
+                        -1)[idx, :].view(emb.size(0),
+                                         batch_size,
+                                         -1)
+
+        return reversed_emb
 
 
 class CharEmbeddingsCNN(nn.Module):

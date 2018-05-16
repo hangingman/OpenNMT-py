@@ -165,7 +165,7 @@ def filters(s):
     try:
         width, num = map(int, s.split(','))
         return width, num
-    except:
+    except ValueError:
         raise argparse.ArgumentTypeError(
             "Filters must be of shape 'width,num_out_channels'")
 

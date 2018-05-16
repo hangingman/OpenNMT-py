@@ -241,6 +241,7 @@ class TextDataset(ONMTDatasetBase):
                                                      pad_token=PAD_CHAR,
                                                      init_token=BOW_CHAR,
                                                      eos_token=EOW_CHAR,
+                                                     unk_token=UNK_CHAR,
                                                      fix_length=50)
 
             fields["char_src"] = torchtext.data.NestedField(
@@ -253,6 +254,7 @@ class TextDataset(ONMTDatasetBase):
                                                      pad_token=PAD_CHAR,
                                                      init_token=BOW_CHAR,
                                                      eos_token=EOW_CHAR,
+                                                     unk_token=UNK_CHAR,
                                                      fix_length=50)
 
             fields["char_tgt"] = torchtext.data.NestedField(

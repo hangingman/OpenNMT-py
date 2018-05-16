@@ -323,7 +323,7 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                 val = getattr(ex, k, None)
 
                 if val is not None and 'char' in k:
-                    val = [char for word in val for char in word[0]]
+                    val = [char for token in val for char in token[0]]
 
                 if val is not None and not fields[k].sequential:
                     val = [val]

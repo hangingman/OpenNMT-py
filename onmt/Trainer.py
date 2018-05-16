@@ -356,41 +356,15 @@ class LanguageModelTrainer(Trainer):
 
             self.model.init_rnn_state(batch.batch_size)
 
-            if self.model.bidirectional:
-                self.model.backwards.init_rnn_state(batch.batch_size)
-
             if self.model.char_convs:
                 tgt_input = onmt.io.make_features(batch, 'char_tgt')
-                max_char_tgt = tgt_input.size(3)
                 # (target_size, batch_size, max_char_tgt, n_feat)
                 tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
             else:
                 tgt_input = onmt.io.make_features(batch, 'tgt')
 
-            tgt = onmt.io.make_features(batch, 'tgt')
-
             # F-prop through the model.
             outputs = self.model(tgt_input)
-
-            if self.model.bidirectional:
-
-                lengths = tgt[:,
-                              :,
-                              0].ne(self.train_loss.padding_idx
-                                    ).sum(dim=0)
-                idx = self._get_reverse_idx(lengths)
-
-                reversed_tgt = tgt_input.view(
-                    batch.batch_size*tgt_input.size(0),
-                    -1)[idx, :].view(tgt_input.size(0),
-                                     batch.batch_size,
-                                     -1)
-
-                if self.model.char_convs:
-                    reversed_tgt = reversed_tgt.unsqueeze(-1)
-
-                reversed_outputs = self.model.backwards(reversed_tgt)
-                outputs = torch.cat([outputs, reversed_outputs], dim=-1)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -419,59 +393,29 @@ class LanguageModelTrainer(Trainer):
                 trunc_size = target_size
 
             self.model.init_rnn_state(batch.batch_size)
-            if self.model.bidirectional:
-                self.model.backwards.init_rnn_state(batch.batch_size)
             attns = None
 
             if self.model.char_convs:
                 tgt_input = onmt.io.make_features(batch, 'char_tgt')
-                max_char_tgt = tgt_input.size(3)
                 # (target_size, batch_size, max_char_tgt, n_feat)
                 tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
             else:
                 tgt_input = onmt.io.make_features(batch, 'tgt')
 
-            tgt_outer = onmt.io.make_features(batch, 'tgt')
-
             for j in range(0, target_size-1, trunc_size):
-                # 1. Create truncated target.
-                tgt = tgt_outer[j: j + trunc_size]
 
-                # 2. F-prop all but generator.
+                # 1. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
 
                 outputs = self.model(tgt_input)
 
-                # Backwards LM F-prop
-                reversed_outputs = None
-                reversed_tgt = None
-                if self.model.bidirectional:
-
-                    lengths = tgt[:,
-                                  :,
-                                  0].ne(self.train_loss.padding_idx
-                                        ).sum(dim=0)
-                    idx = self._get_reverse_idx(lengths)
-
-                    reversed_tgt = tgt_input.view(
-                        batch.batch_size*tgt_input.size(0),
-                        -1)[idx, :].view(tgt_input.size(0),
-                                         batch.batch_size,
-                                         -1)
-
-                    if self.model.char_convs:
-                        reversed_tgt = reversed_tgt.unsqueeze(-1)
-
-                    reversed_outputs = self.model.backwards(reversed_tgt)
-                    outputs = torch.cat([outputs, reversed_outputs], dim=-1)
-
-                # 3. Compute loss in shards for memory efficiency.
+                # 2. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,
                         trunc_size, self.shard_size, normalization)
 
-                # 4. Update the parameters and statistics.
+                # 3. Update the parameters and statistics.
                 if self.grad_accum_count == 1:
                     self.optim.step()
                 total_stats.update(batch_stats)
@@ -485,19 +429,3 @@ class LanguageModelTrainer(Trainer):
 
         if self.grad_accum_count > 1:
             self.optim.step()
-
-    def _get_reverse_idx(self, lengths):
-        sentence_size = int(lengths[0])
-        batch_size = len(lengths)
-
-        idx = [0]*(batch_size*sentence_size)
-
-        for i in range(batch_size*sentence_size):
-            batch_index = i % batch_size
-            sentence_index = i//batch_size
-            idx[i] = (int(lengths[batch_index])-sentence_index-1)*batch_size \
-                + batch_index
-            if idx[i] < 0:  # Padding symbol, don't change order
-                idx[i] = i
-
-        return idx

@@ -286,28 +286,36 @@ class LMLossCompute(NMTLossCompute):
                                    -1)[idx, :].view(target_size,
                                                     batch.batch_size)
 
-        return {
-            "output": output,
-            "target": batch.tgt[range_[0] + 1: range_[1]],
-            "reverse_target": reversed_tgt[range_[0] + 1: range_[1]]
-        }
+        if self.bidirectional:
+            return {
+                "output": output[0],
+                "reverse_output": output[1],
+                "target": batch.tgt[range_[0] + 1: range_[1]],
+                "reverse_target": reversed_tgt[range_[0] + 1: range_[1]]
+            }
+        else:
+            # need to put a dummy in reverse_output, even though
+            # it will not be used
+            return {
+                "output": output[0],
+                "reverse_output": output[0],
+                "target": batch.tgt[range_[0] + 1: range_[1]],
+                "reverse_target": reversed_tgt[range_[0] + 1: range_[1]]
+            }
 
-    def _compute_loss(self, batch, output, target, reverse_target):
+    def _compute_loss(self, batch, output, reverse_output,
+                      target, reverse_target):
 
-        # Shape was [tgt_len, n_layers, batch_size, hidden_size], need to
-        # ignore the first layer to compute loss
+        # Shape was [tgt_len, n_layers, batch_size, hidden_size],
+        # need to ignore the first n-1 layers to compute loss
         output = output[:, -1, :, :].contiguous()
 
         if self.bidirectional:
-
+            reverse_output = reverse_output[:, -1, :, :].contiguous()
             scores = self.generator(
-                self._bottle(output[:,
-                                    :,
-                                    :output.size(-1)//2].contiguous()))
+                self._bottle(output))
             backward_scores = self.generator(
-                self._bottle(output[:,
-                                    :,
-                                    output.size(-1)//2:].contiguous()))
+                self._bottle(reverse_output))
 
             rev_gtruth = reverse_target.view(-1)
 
