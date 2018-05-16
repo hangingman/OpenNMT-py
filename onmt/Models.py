@@ -762,6 +762,7 @@ class LanguageModel(nn.Module):
 
         dir_outputs = []
         output_cache = None
+
         for n_dir in range(self.num_directions):
 
             outputs = []
@@ -797,6 +798,7 @@ class LanguageModel(nn.Module):
                     # Residual Connection
                     if i > 0 and self.use_residual:
                         rnn_input.data += output_cache.data
+                        output_cache = rnn_input
                     # Cache  the first layer output
                     elif self.use_residual:
                         output_cache = rnn_input
@@ -805,8 +807,12 @@ class LanguageModel(nn.Module):
 
                 h_1 = torch.stack(h_1)
                 c_1 = torch.stack(c_1)
-                self.hidden[0][n_dir].data = h_1.data
-                self.hidden[1][n_dir].data = c_1.data
+
+                # Updating the hidden state
+                self.hidden[0][n_dir].data.zero_()
+                self.hidden[1][n_dir].data.zero_()
+                self.hidden[0][n_dir].data += h_1.data
+                self.hidden[1][n_dir].data += c_1.data
 
                 layer_outputs = torch.stack(layer_outputs)
                 outputs += [layer_outputs]
