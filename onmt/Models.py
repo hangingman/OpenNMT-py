@@ -739,9 +739,9 @@ class LanguageModel(nn.Module):
         else:
             raise NotImplementedError("Not valid rnn_type: %s" % self.rnn_type)
 
-        self.hidden = state
+        return state
 
-    def forward(self, tgt):
+    def forward(self, tgt, init_hidden):
 
         # Get a dropout mask for recurrent dropout that will
         # be used for every timestep
@@ -766,10 +766,17 @@ class LanguageModel(nn.Module):
         for n_dir in range(self.num_directions):
 
             outputs = []
-            for emb_t in emb[n_dir].split(1):
+            h_0 = init_hidden[0][n_dir]
+            c_0 = init_hidden[1][n_dir]
+
+            for i, emb_t in enumerate(emb[n_dir].split(1)):
                 rnn_input = emb_t.squeeze(0)
-                h_0 = self.hidden[0][n_dir]
-                c_0 = self.hidden[1][n_dir]
+
+                # Don't update if it is the first timestep
+                if i > 0:
+                    h_0 = h_1
+                    c_0 = c_1
+
                 h_1, c_1 = [], []
 
                 layer_outputs = []
@@ -808,12 +815,6 @@ class LanguageModel(nn.Module):
                 h_1 = torch.stack(h_1)
                 c_1 = torch.stack(c_1)
 
-                # Updating the hidden state
-                self.hidden[0][n_dir].data.zero_()
-                self.hidden[1][n_dir].data.zero_()
-                self.hidden[0][n_dir].data += h_1.data
-                self.hidden[1][n_dir].data += c_1.data
-
                 layer_outputs = torch.stack(layer_outputs)
                 outputs += [layer_outputs]
 
@@ -822,7 +823,7 @@ class LanguageModel(nn.Module):
 
         dir_outputs = torch.stack(dir_outputs)
 
-        return dir_outputs
+        return dir_outputs, emb
 
     def _get_reverse_emb(self, tgt, emb):
 

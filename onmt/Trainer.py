@@ -392,7 +392,7 @@ class LanguageModelTrainer(Trainer):
             else:
                 trunc_size = target_size
 
-            self.model.init_rnn_state(batch.batch_size)
+            init_hidden = self.model.init_rnn_state(batch.batch_size)
             attns = None
 
             if self.model.char_convs:
@@ -408,7 +408,7 @@ class LanguageModelTrainer(Trainer):
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
 
-                outputs = self.model(tgt_input)
+                outputs, _ = self.model(tgt_input, init_hidden)
 
                 # 2. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
