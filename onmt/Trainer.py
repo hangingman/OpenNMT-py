@@ -354,7 +354,7 @@ class LanguageModelTrainer(Trainer):
             cur_dataset = valid_iter.get_cur_dataset()
             self.valid_loss.cur_dataset = cur_dataset
 
-            self.model.init_rnn_state(batch.batch_size)
+            init_hidden = self.model.init_rnn_state(batch.batch_size)
 
             if self.model.char_convs:
                 tgt_input = onmt.io.make_features(batch, 'char_tgt')
@@ -364,7 +364,7 @@ class LanguageModelTrainer(Trainer):
                 tgt_input = onmt.io.make_features(batch, 'tgt')
 
             # F-prop through the model.
-            outputs = self.model(tgt_input)
+            outputs, _ = self.model(tgt_input, init_hidden)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
