@@ -243,7 +243,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
     return model
 
 
-def make_language_model(model_opt, fields, gpu, checkpoint=None):
+def make_language_model(model_opt, fields, gpu, checkpoint=None,
+                        side='tgt'):
     """
     Args:
         model_opt: the option loaded from checkpoint.
@@ -258,32 +259,32 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None):
         ("Unsupported model type %s" % (model_opt.model_type))
 
     # Make Embeddings
-    tgt_dict = fields["tgt"].vocab
-    feature_dicts = onmt.io.collect_feature_vocabs(fields, 'tgt')
+    word_dict = fields[side].vocab
+    feature_dicts = onmt.io.collect_feature_vocabs(fields, side)
     # Get Padding idx in case bidirectional language model is necessary
-    padding_idx = tgt_dict.stoi[onmt.io.PAD_CHAR] if \
-        model_opt.lm_use_char_input else tgt_dict.stoi[onmt.io.PAD_WORD]
+    padding_idx = word_dict.stoi[onmt.io.PAD_CHAR] if \
+        model_opt.lm_use_char_input else word_dict.stoi[onmt.io.PAD_WORD]
 
     if model_opt.lm_use_char_input:
-        if "char_tgt" not in fields.keys():
+        if "char_"+side not in fields.keys():
             raise ValueError("There is no character vocabulary field"
                              " available. Please preprocess data with"
                              " -use_char flag.")
         # Load character vocabulary
-        char_tgt_dict = fields["char_tgt"].nesting_field.vocab
+        char_word_dict = fields["char_"+side].nesting_field.vocab
         # Create character embeddings
-        char_embeddings = make_embeddings(model_opt, char_tgt_dict,
+        char_embeddings = make_embeddings(model_opt, char_word_dict,
                                           feature_dicts, for_encoder=False)
         # Initialize Convolutions, Highway Layer and Projection
         # into word embedding size
-        tgt_embeddings = CharEmbeddingsCNN(model_opt, char_embeddings)
+        embeddings = CharEmbeddingsCNN(model_opt, char_embeddings)
 
     else:
-        tgt_embeddings = make_embeddings(model_opt, tgt_dict,
-                                         feature_dicts, for_encoder=False)
+        embeddings = make_embeddings(model_opt, word_dict,
+                                     feature_dicts, for_encoder=False)
 
     # Make LanguageModel.
-    model = LanguageModel(model_opt, tgt_embeddings, gpu, padding_idx)
+    model = LanguageModel(model_opt, embeddings, gpu, padding_idx)
     model.model_type = model_opt.model_type
 
     # Save model options as a boolean in the model
@@ -301,7 +302,7 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None):
     output_size = model_opt.lm_word_vec_size if model_opt.lm_use_projection \
         else model_opt.lm_rnn_size
     generator = nn.Sequential(
-        nn.Linear(output_size, len(fields["tgt"].vocab)),
+        nn.Linear(output_size, len(fields[side].vocab)),
         nn.LogSoftmax(dim=-1))
 
     if model_opt.tie_weights:
@@ -312,7 +313,7 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None):
                 raise ValueError(
                     'When using the tied flag, hidden size'
                     ' must be equal to embedding size.')
-            generator[0].weight = tgt_embeddings.word_lut.weight
+            generator[0].weight = embeddings.word_lut.weight
 
     # Load the model states from checkpoint or initialize them.
     if checkpoint is not None:
