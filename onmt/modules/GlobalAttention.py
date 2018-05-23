@@ -189,6 +189,7 @@ class GlobalAttention(nn.Module):
         if one_step:
             attn_h = attn_h.squeeze(1)
             align_vectors = align_vectors.squeeze(1)
+            c = c.squeeze(1)
 
             # Check output sizes
             batch_, dim_ = attn_h.size()
@@ -200,7 +201,7 @@ class GlobalAttention(nn.Module):
         else:
             attn_h = attn_h.transpose(0, 1).contiguous()
             align_vectors = align_vectors.transpose(0, 1).contiguous()
-            c = c.view(batch, targetL, dim).transpose(0, 1).contiguous()
+            c = c.transpose(0, 1).contiguous()
 
             # Check output sizes
             targetL_, batch_, dim_ = attn_h.size()
