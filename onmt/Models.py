@@ -879,7 +879,11 @@ class CharEmbeddingsCNN(nn.Module):
 
             self.convolutions.append(conv)
 
-        self.highway_layers = HighwayLayer(n_filters, opt.lm_num_highway)
+        if opt.lm_num_highway > 0:
+            self.use_highway = True
+            self.highway_layers = HighwayLayer(n_filters, opt.lm_num_highway)
+        else:
+            self.use_highway = False
 
         self.projection = nn.Linear(n_filters, opt.lm_word_vec_size)
 
@@ -905,8 +909,10 @@ class CharEmbeddingsCNN(nn.Module):
         # (sequence_length * batch_size, n_filters)
         word_embeddings = torch.cat(convs, dim=-1)
 
-        # apply the highway layers (sequence_length * batch_size, n_filters)
-        word_embeddings = self.highway_layers(word_embeddings)
+        if self.use_highway:
+            # apply the highway layers
+            # (sequence_length * batch_size, n_filters)
+            word_embeddings = self.highway_layers(word_embeddings)
 
         # final projection  (sequence_length * batch_size, embedding_dim)
         word_embeddings = self.projection(word_embeddings)
