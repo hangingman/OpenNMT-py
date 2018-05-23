@@ -709,6 +709,10 @@ class LanguageModel(nn.Module):
 
         RNNCell = nn.LSTMCell if opt.lm_rnn_type == "LSTM"\
             else nn.GRUCell
+        if opt.lm_rnn_type == "GRU":
+            self.use_gru = True
+        else:
+            self.use_gru = False
 
         self.rnns = nn.ModuleList()
         if self.use_projection:
@@ -770,7 +774,7 @@ class LanguageModel(nn.Module):
         if self.rnn_type == 'LSTM':
             state = (get_variable(), get_variable())
         elif self.rnn_type == 'GRU':
-            state = get_variable()
+            state = (get_variable(),)
         else:
             raise NotImplementedError("Not valid rnn_type: %s" % self.rnn_type)
 
@@ -815,7 +819,8 @@ class LanguageModel(nn.Module):
 
             outputs = []
             h_0 = init_hidden[0][n_dir]
-            c_0 = init_hidden[1][n_dir]
+            if not self.use_gru:
+                c_0 = init_hidden[1][n_dir]
 
             for i, emb_t in enumerate(emb[n_dir].split(1)):
                 rnn_input = emb_t.squeeze(0)
@@ -823,15 +828,21 @@ class LanguageModel(nn.Module):
                 # Don't update if it is the first timestep
                 if i > 0:
                     h_0 = h_1
-                    c_0 = c_1
+                    if not self.use_gru:
+                        c_0 = c_1
 
-                h_1, c_1 = [], []
+                h_1 = []
+                if not self.use_gru:
+                    c_1 = []
 
                 layer_outputs = []
 
                 for i, layer in enumerate(self.rnns[n_dir]):
 
-                    h_1_i, c_1_i = layer(rnn_input, (h_0[i], c_0[i]))
+                    if self.use_gru:
+                        h_1_i = layer(rnn_input, h_0[i])
+                    else:
+                        h_1_i, c_1_i = layer(rnn_input, (h_0[i], c_0[i]))
 
                     output = h_1_i
 
@@ -842,7 +853,8 @@ class LanguageModel(nn.Module):
 
                     # Update hidden and cell state of this layer
                     h_1 += [h_1_i]
-                    c_1 += [c_1_i]
+                    if not self.use_gru:
+                        c_1 += [c_1_i]
 
                     # Project into smaller space
                     if self.use_projection:
@@ -861,7 +873,8 @@ class LanguageModel(nn.Module):
                     layer_outputs += [rnn_input]
 
                 h_1 = torch.stack(h_1)
-                c_1 = torch.stack(c_1)
+                if not self.use_gru:
+                    c_1 = torch.stack(c_1)
 
                 layer_outputs = torch.stack(layer_outputs)
                 outputs += [layer_outputs]
