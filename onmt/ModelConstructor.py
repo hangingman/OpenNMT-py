@@ -262,8 +262,7 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None,
     word_dict = fields[side].vocab
     feature_dicts = onmt.io.collect_feature_vocabs(fields, side)
     # Get Padding idx in case bidirectional language model is necessary
-    padding_idx = word_dict.stoi[onmt.io.PAD_CHAR] if \
-        model_opt.lm_use_char_input else word_dict.stoi[onmt.io.PAD_WORD]
+    padding_idx = word_dict.stoi[onmt.io.PAD_WORD]
 
     if model_opt.lm_use_char_input:
         if "char_"+side not in fields.keys():

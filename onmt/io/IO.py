@@ -256,7 +256,6 @@ def _build_field_vocab(field, counter, char_counter=None, **kwargs):
         # a vocabulary for the nested field as well
         char_specials = list(OrderedDict.fromkeys(
             tok for tok in [field.nesting_field.unk_token,
-                            field.nesting_field.pad_token,
                             field.nesting_field.init_token,
                             field.nesting_field.eos_token]
             if tok is not None))

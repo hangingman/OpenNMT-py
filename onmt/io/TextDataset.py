@@ -12,8 +12,7 @@ import torchtext
 from onmt.Utils import aeq
 from onmt.io.DatasetBase import (ONMTDatasetBase, UNK_WORD,
                                  PAD_WORD, BOS_WORD, EOS_WORD,
-                                 PAD_CHAR, BOW_CHAR, EOW_CHAR,
-                                 UNK_CHAR)
+                                 BOW_CHAR, EOW_CHAR, UNK_CHAR)
 
 
 class TextDataset(ONMTDatasetBase):
@@ -238,7 +237,7 @@ class TextDataset(ONMTDatasetBase):
         if use_char:
             # Create character related fields
             nesting_field_src = torchtext.data.Field(tokenize=list,
-                                                     pad_token=PAD_CHAR,
+                                                     pad_token=PAD_WORD,
                                                      init_token=BOW_CHAR,
                                                      eos_token=EOW_CHAR,
                                                      unk_token=UNK_CHAR,
@@ -246,12 +245,10 @@ class TextDataset(ONMTDatasetBase):
 
             fields["char_src"] = torchtext.data.NestedField(
                                     nesting_field_src,
-                                    init_token=BOS_WORD,
-                                    eos_token=EOS_WORD,
                                     pad_token=PAD_WORD)
 
             nesting_field_tgt = torchtext.data.Field(tokenize=list,
-                                                     pad_token=PAD_CHAR,
+                                                     pad_token=PAD_WORD,
                                                      init_token=BOW_CHAR,
                                                      eos_token=EOW_CHAR,
                                                      unk_token=UNK_CHAR,
