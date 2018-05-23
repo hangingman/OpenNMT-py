@@ -668,6 +668,28 @@ class RNNDecoderState(DecoderState):
 
 
 class LanguageModel(nn.Module):
+    """
+    The object for training a Language Model.
+    This implementation is heavily inspired in the models
+    described in the following papers:
+    - https://arxiv.org/pdf/1802.05365.pdf
+    - https://arxiv.org/pdf/1602.02410.pdf
+    - https://arxiv.org/abs/1608.05859.pdf
+
+    Several options can be used:
+    - Embedding and generator weight tying
+    - Gal Dropout of hidden states (https://arxiv.org/pdf/1512.05287.pdf)
+    - Residual/Skip Connections between RNN layers
+    - Bidirectional LM option
+    - Projection of RNN output into the same space of the embeddings
+    - Possibility to use embeddings formed out of character convolutions
+
+    Args:
+      embeddings (:obj:`Embeddings` or
+                  `CharEmbeddingsCNN`): word or character embeddings
+      gpu (bool): if gpu is being used
+      padding idx (int): the index of the padding symbol
+    """
     def __init__(self, opt, embeddings, gpu, padding_idx):
 
         super(LanguageModel, self).__init__()
@@ -715,6 +737,11 @@ class LanguageModel(nn.Module):
         self.hidden = None
 
     def sample_mask(self, batch_size):
+        """Create a mask for recurrent dropout
+
+        Arguments:
+            batch_size(int) -- the size of the current batch
+        """
         keep = 1.0 - self.gal_dropout
         self.mask = Variable(torch.bernoulli(
                         torch.Tensor(batch_size,
@@ -723,6 +750,14 @@ class LanguageModel(nn.Module):
             self.mask = self.mask.cuda()
 
     def init_rnn_state(self, batch_size):
+        """[summary]
+
+        Arguments:
+            batch_size(int) -- the size of the current batch
+
+        Returns:
+            :obj:`Variable` -- the initial states of the LM RNNs
+        """
         def get_variable():
             v = torch.zeros(self.num_directions, self.layers,
                             batch_size, self.hidden_size)
@@ -742,6 +777,19 @@ class LanguageModel(nn.Module):
         return state
 
     def forward(self, tgt, init_hidden):
+        """Forward pass of the Language Model
+
+        Arguments:
+            tgt (:obj:`LongTensor`):
+                 a sequence of size `[tgt_len x batch]` or
+                 of size `[tgt_len x batch x num_characters]`
+                 if we are using a character embedding model
+            init_hidden(:obj:`Variable`) -- the initial states of the LM RNNs
+
+        Returns:
+            dir_outputs (Variable): the outputs from every RNN layer of the LM
+            emb (Variable): the embeddings of the LM
+        """
 
         # Get a dropout mask for recurrent dropout that will
         # be used for every timestep
@@ -826,6 +874,9 @@ class LanguageModel(nn.Module):
         return dir_outputs, emb
 
     def _get_reverse_emb(self, tgt, emb):
+        """Get the reversed sequence of embeddings
+        (used for backward LM)
+        """
 
         if self.char_embeddings:
             # Get the first character of each word.
@@ -857,6 +908,12 @@ class LanguageModel(nn.Module):
 
 
 class CharEmbeddingsCNN(nn.Module):
+    """A module to create word embeddings out of character
+    embeddings, using convolutional layers.
+
+    Arguments:
+        embeddings(Embeddings) -- character embeddings
+    """
 
     def __init__(self, opt, embeddings):
         super(CharEmbeddingsCNN, self).__init__()
@@ -934,12 +991,13 @@ class HighwayLayer(nn.Module):
     :math:`g` is an element-wise gate, computed as :math:`sigmoid(B(x))`.
     This module will apply a fixed number of highway layers to its input,
     returning the final result.
+
+    Heavily inspired on the implementation found in AllenNLP library
+    (https://github.com/allenai/allennlp)
     Parameters
     ----------
-    input_dim : ``int``
-        The dimensionality of the input representation.
-    num_layers : ``int``, optional (default=``1``)
-        The number of highway layers to apply to the input.
+    input_dim(int) -- The dimensionality of the input representation.
+    num_layers(int) -- The number of highway layers to apply to the input.
     """
     def __init__(self, input_dim, num_layers=1):
         super(HighwayLayer, self).__init__()
