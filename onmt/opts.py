@@ -179,6 +179,9 @@ def preprocess_opts(parser):
     group.add_argument('-use_char', action="store_true",
                        help='Create character vocabulary fields as well,'
                             ' to use in character based word embeddings')
+    group.add_argument('-n_chars', type=int, default=256,
+                       help='Number of characters of unicode to use.'
+                            'Default is the first 256 unicode characters.')
 
     group.add_argument('-train_src',
                        help="Path to the training source data")

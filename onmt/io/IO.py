@@ -259,7 +259,11 @@ def _build_field_vocab(field, counter, char_counter=None, **kwargs):
                             field.nesting_field.init_token,
                             field.nesting_field.eos_token]
             if tok is not None))
-        specials += char_specials
+
+        for special in char_specials:
+            if special not in specials:
+                specials.append(special)
+
         field.nesting_field.vocab = field.nesting_field.vocab_cls(
                                 char_counter,
                                 specials=specials,
@@ -268,7 +272,8 @@ def _build_field_vocab(field, counter, char_counter=None, **kwargs):
 
 def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                 src_vocab_path, src_vocab_size, src_words_min_frequency,
-                tgt_vocab_path, tgt_vocab_size, tgt_words_min_frequency):
+                tgt_vocab_path, tgt_vocab_size, tgt_words_min_frequency,
+                n_chars):
     """
     Args:
         train_dataset_files: a list of train dataset pt file.
@@ -314,6 +319,20 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                 word = line.strip().split()[0]
                 tgt_vocab.add(word)
 
+    if "char_src" in fields.keys():
+        for idx in range(n_chars):
+            # Create a counter for characters. By doing (n_chars - idx)
+            # we are preserving the Unicode order of the characters by
+            # giving the frequencies in descending order
+            counter["char_src"][chr(idx)] = n_chars - idx
+
+    if "char_tgt" in fields.keys():
+        for idx in range(n_chars):
+            # Create a counter for characters. By doing (n_chars - idx)
+            # we are preserving the Unicode order of the characters by
+            # giving the frequencies in descending order
+            counter["char_tgt"][chr(idx)] = n_chars - idx
+
     for path in train_dataset_files:
         dataset = torch.load(path)
         print(" * reloading %s." % path)
@@ -321,11 +340,10 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
             for k in fields:
                 val = getattr(ex, k, None)
 
-                if val is not None and 'char' in k:
-                    val = [char for token in val for char in token[0]]
-
                 if val is not None and not fields[k].sequential:
                     val = [val]
+                elif val is not None and 'char' in k:
+                    continue
                 elif k == 'src' and src_vocab:
                     val = [item for item in val if item in src_vocab]
                 elif k == 'tgt' and tgt_vocab:
