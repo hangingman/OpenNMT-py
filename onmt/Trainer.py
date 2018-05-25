@@ -366,6 +366,9 @@ class LanguageModelTrainer(Trainer):
             # F-prop through the model.
             outputs, _ = self.model(tgt_input, init_hidden)
 
+            # Remove EOS/BOS output
+            outputs = outputs[:, :-1, :, :, :].contiguous()
+
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
                     batch, outputs, attns)
@@ -409,6 +412,9 @@ class LanguageModelTrainer(Trainer):
                     self.model.zero_grad()
 
                 outputs, _ = self.model(tgt_input, init_hidden)
+
+                # Remove EOS/BOS output
+                outputs = outputs[:, :-1, :, :, :].contiguous()
 
                 # 2. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(

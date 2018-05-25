@@ -810,8 +810,6 @@ class LanguageModel(nn.Module):
         else:
             emb.unsqueeze_(0)
 
-        emb = emb[:, :-1, :, :].contiguous()  # Remove EOS/BOS embedding
-
         dir_outputs = []
         output_cache = None
 
