@@ -244,6 +244,8 @@ class TextDataset(ONMTDatasetBase):
 
             fields["char_src"] = torchtext.data.NestedField(
                                     nesting_field_src,
+                                    init_token=BOS_WORD,
+                                    eos_token=EOS_WORD,
                                     pad_token=PAD_WORD)
 
             nesting_field_tgt = torchtext.data.Field(tokenize=list,
