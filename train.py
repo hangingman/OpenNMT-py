@@ -251,7 +251,8 @@ def train_model(model, fields, optim, data_type, model_opt):
     else:
         trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
                                trunc_size, shard_size, data_type,
-                               norm_method, grad_accum_count)
+                               norm_method, grad_accum_count,
+                               elmo=hasattr(model_opt, "elmo"))
 
     print('\nStart training...')
     print(' * number of epochs: %d, starting from Epoch %d' %
@@ -498,7 +499,7 @@ def main():
         data_type = 'monotext'
 
     # Load fields generated from preprocess phase.
-    if model_opt.lm_use_char_input:
+    if model_opt.lm_use_char_input or hasattr(model_opt, "elmo"):
         use_char = True
     else:
         use_char = False

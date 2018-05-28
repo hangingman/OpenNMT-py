@@ -132,11 +132,11 @@ class RNNEncoder(EncoderBase):
                                     hidden_size,
                                     num_layers)
 
-    def forward(self, src, lengths=None, encoder_state=None):
+    def forward(self, src, lengths=None, encoder_state=None, char_src=None):
         "See :obj:`EncoderBase.forward()`"
         self._check_args(src, lengths, encoder_state)
 
-        emb = self.embeddings(src)
+        emb = self.embeddings(src, char_src)
         s_len, batch, emb_dim = emb.size()
 
         packed_emb = emb
@@ -559,7 +559,7 @@ class NMTModel(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, src, tgt, lengths, dec_state=None):
+    def forward(self, src, tgt, lengths, dec_state=None, char_src=None):
         """Forward propagate a `src` and `tgt` pair for training.
         Possible initialized with a beginning decoder state.
 
@@ -582,7 +582,7 @@ class NMTModel(nn.Module):
         """
         tgt = tgt[:-1]  # exclude last target from inputs
 
-        enc_final, memory_bank = self.encoder(src, lengths)
+        enc_final, memory_bank = self.encoder(src, lengths, char_src=char_src)
         enc_state = \
             self.decoder.init_decoder_state(src, memory_bank, enc_final)
         decoder_outputs, dec_state, attns = \

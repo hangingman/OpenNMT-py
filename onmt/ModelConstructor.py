@@ -14,12 +14,13 @@ from onmt.Models import NMTModel, MeanEncoder, RNNEncoder, \
                         CharEmbeddingsCNN
 from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, \
                          TransformerEncoder, TransformerDecoder, \
-                         CNNEncoder, CNNDecoder, AudioEncoder
+                         CNNEncoder, CNNDecoder, AudioEncoder, ELMo
 from onmt.Utils import use_gpu
 from torch.nn.init import xavier_uniform
 
 
-def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
+def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True,
+                    elmo=None):
     """
     Make an Embeddings instance.
     Args:
@@ -27,6 +28,7 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
         word_dict(Vocab): words dictionary.
         feature_dicts([Vocab], optional): a list of feature dictionary.
         for_encoder(bool): make Embeddings for encoder or decoder?
+        elmo(nn.Module): ELMo embedding extension.
     """
     if for_encoder:
         embedding_dim = opt.src_word_vec_size
@@ -56,7 +58,8 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
                       feat_padding_idx=feats_padding_idx,
                       word_vocab_size=num_word_embeddings,
                       feat_vocab_sizes=num_feat_embeddings,
-                      sparse=opt.optim == "sparseadam")
+                      sparse=opt.optim == "sparseadam",
+                      elmo=elmo)
 
 
 def make_encoder(opt, embeddings):
@@ -152,12 +155,25 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
     assert model_opt.model_type in ["text", "img", "audio"], \
         ("Unsupported model type %s" % (model_opt.model_type))
 
+    if hasattr(model_opt, 'elmo'):
+        lm_checkpoint = torch.load(model_opt.elmo,
+                                   map_location=lambda storage, loc: storage)
+        lm_opt = lm_checkpoint['opt']
+        language_model = make_language_model(lm_opt, fields, gpu,
+                                             lm_checkpoint,
+                                             'src',
+                                             use_generator=False)
+
+        elmo = ELMo(language_model)
+    else:
+        elmo = None
+
     # Make encoder.
     if model_opt.model_type == "text":
         src_dict = fields["src"].vocab
         feature_dicts = onmt.io.collect_feature_vocabs(fields, 'src')
         src_embeddings = make_embeddings(model_opt, src_dict,
-                                         feature_dicts)
+                                         feature_dicts, elmo=elmo)
         encoder = make_encoder(model_opt, src_embeddings)
     elif model_opt.model_type == "img":
         encoder = ImageEncoder(model_opt.enc_layers,
@@ -244,7 +260,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
 
 
 def make_language_model(model_opt, fields, gpu, checkpoint=None,
-                        side='tgt'):
+                        side='tgt', use_generator=True):
     """
     Args:
         model_opt: the option loaded from checkpoint.
@@ -300,9 +316,11 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None,
     # Make Generator.
     output_size = model_opt.lm_word_vec_size if model_opt.lm_use_projection \
         else model_opt.lm_rnn_size
-    generator = nn.Sequential(
-        nn.Linear(output_size, len(fields[side].vocab)),
-        nn.LogSoftmax(dim=-1))
+
+    if use_generator:
+        generator = nn.Sequential(
+            nn.Linear(output_size, len(fields[side].vocab)),
+            nn.LogSoftmax(dim=-1))
 
     if model_opt.tie_weights:
             if model_opt.lm_use_char_input:
@@ -318,28 +336,33 @@ def make_language_model(model_opt, fields, gpu, checkpoint=None,
     if checkpoint is not None:
         print('Loading model parameters.')
         model.load_state_dict(checkpoint['model'])
-        generator.load_state_dict(checkpoint['generator'])
+        if use_generator:
+            generator.load_state_dict(checkpoint['generator'])
     else:
         if model_opt.param_init != 0.0:
             print('Intializing model parameters.')
             for p in model.parameters():
                 p.data.uniform_(-model_opt.param_init, model_opt.param_init)
-            for p in generator.parameters():
-                p.data.uniform_(-model_opt.param_init, model_opt.param_init)
+            if use_generator:
+                for p in generator.parameters():
+                    p.data.uniform_(-model_opt.param_init,
+                                    model_opt.param_init)
         if model_opt.param_init_glorot:
             for p in model.parameters():
                 if p.dim() > 1:
                     xavier_uniform(p)
-            for p in generator.parameters():
-                if p.dim() > 1:
-                    xavier_uniform(p)
+            if use_generator:
+                for p in generator.parameters():
+                    if p.dim() > 1:
+                        xavier_uniform(p)
 
         # if hasattr(model, 'embeddings'):
         #     model.load_pretrained_vectors(
         #             model_opt.pre_word_vecs, model_opt.fix_word_vecs)
 
     # Add generator to model (this registers it as parameter of model).
-    model.generator = generator
+    if use_generator:
+        model.generator = generator
 
     # Make the whole model leverage GPU if indicated to do so.
     if gpu:

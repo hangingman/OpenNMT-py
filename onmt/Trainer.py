@@ -112,7 +112,8 @@ class Trainer(object):
 
     def __init__(self, model, train_loss, valid_loss, optim,
                  trunc_size=0, shard_size=32, data_type='text',
-                 norm_method="sents", grad_accum_count=1):
+                 norm_method="sents", grad_accum_count=1,
+                 elmo=False):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -124,6 +125,7 @@ class Trainer(object):
         self.norm_method = norm_method
         self.grad_accum_count = grad_accum_count
         self.progress_step = 0
+        self.elmo = elmo
 
         assert(grad_accum_count > 0)
         if grad_accum_count > 1:
@@ -219,10 +221,18 @@ class Trainer(object):
             else:
                 src_lengths = None
 
+            if self.elmo:
+                char_src = onmt.io.make_features(batch, 'char_src')
+                # (target_size, batch_size, max_char_src, n_feat)
+                char_src = char_src.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_src = None
+
             tgt = onmt.io.make_features(batch, 'tgt')
 
             # F-prop through the model.
-            outputs, attns, _ = self.model(src, tgt, src_lengths)
+            outputs, attns, _ = self.model(src, tgt, src_lengths,
+                                           char_src=char_src)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -293,6 +303,13 @@ class Trainer(object):
             else:
                 src_lengths = None
 
+            if self.elmo:
+                char_src = onmt.io.make_features(batch, 'char_src')
+                # (target_size, batch_size, max_char_src, n_feat)
+                char_src = char_src.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_src = None
+
             tgt_outer = onmt.io.make_features(batch, 'tgt')
 
             for j in range(0, target_size-1, trunc_size):
@@ -303,7 +320,8 @@ class Trainer(object):
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
                 outputs, attns, dec_state = \
-                    self.model(src, tgt, src_lengths, dec_state)
+                    self.model(src, tgt, src_lengths, dec_state,
+                               char_src=char_src)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(

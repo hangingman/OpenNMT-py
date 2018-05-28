@@ -94,7 +94,8 @@ class Embeddings(nn.Module):
                  feat_padding_idx=[],
                  feat_vocab_sizes=[],
                  dropout=0,
-                 sparse=False):
+                 sparse=False,
+                 elmo=None):
 
         self.word_padding_idx = word_padding_idx
 
@@ -149,6 +150,13 @@ class Embeddings(nn.Module):
             pe = PositionalEncoding(dropout, self.embedding_size)
             self.make_embedding.add_module('pe', pe)
 
+        if elmo is not None:
+            self.elmo = elmo
+            self.use_elmo = True
+            self.embedding_size += elmo.lang_model.input_size
+        else:
+            self.use_elmo = False
+
     @property
     def word_lut(self):
         return self.make_embedding[0][0]
@@ -170,7 +178,7 @@ class Embeddings(nn.Module):
             if fixed:
                 self.word_lut.weight.requires_grad = False
 
-    def forward(self, input):
+    def forward(self, input, char_input=None):
         """
         Computes the embeddings for words and features.
 
@@ -183,6 +191,10 @@ class Embeddings(nn.Module):
         aeq(nfeat, len(self.emb_luts))
 
         emb = self.make_embedding(input)
+
+        if self.use_elmo:
+            out_elmo = self.elmo(char_input)
+            emb = torch.cat([emb, out_elmo], dim=-1)
 
         out_length, out_batch, emb_size = emb.size()
         aeq(in_length, out_length)
