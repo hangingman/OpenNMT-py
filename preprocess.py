@@ -49,7 +49,7 @@ def parse_args():
 
 
 def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, fields,
-                                      corpus_type, opt):
+                                      corpus_type, opt, mt_corpus=None):
     '''
     Divide the big corpus into shards, and build dataset separately.
     This is currently only for data_type=='text'.
@@ -105,15 +105,28 @@ def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, fields,
         "tgt", opt.max_shard_size,
         assoc_iter=src_iter)
 
+    # In case we are doing the APE task
+    if mt_corpus is not None:
+        mt_iter = onmt.io.ShardedTextCorpusIterator(
+            mt_corpus, opt.mt_seq_length_trunc,
+            "mt", opt.max_shard_size,
+            assoc_iter=src_iter)
+        mt_num_features = mt_iter.num_feats
+    else:
+        mt_iter = None
+        mt_num_features = 0
+
     index = 0
     while_end_condition = False
     while not while_end_condition:
         index += 1
         dataset = onmt.io.TextDataset(
             data_type, fields, src_iter, tgt_iter,
+            mt_iter, mt_num_features,
             src_num_features, tgt_iter.num_feats,
             src_seq_length=opt.src_seq_length,
             tgt_seq_length=opt.tgt_seq_length,
+            mt_seq_length=opt.mt_seq_length,
             dynamic_dict=opt.dynamic_dict)
 
         # We save fields in vocab.pt seperately, so make it empty.
@@ -140,15 +153,23 @@ def build_save_dataset(corpus_type, fields, opt):
     if corpus_type == 'train':
         src_corpus = opt.train_src
         tgt_corpus = opt.train_tgt
+        if opt.train_mt:
+            mt_corpus = opt.train_mt
+        else:
+            mt_corpus = None
     else:
         src_corpus = opt.valid_src
         tgt_corpus = opt.valid_tgt
+        if opt.valid_mt:
+            mt_corpus = opt.valid_mt
+        else:
+            mt_corpus = None
 
     # Currently we only do preprocess sharding for corpus: data_type=='text'.
     if opt.data_type == 'text' or opt.data_type == 'monotext':
         return build_save_text_dataset_in_shards(
             src_corpus, tgt_corpus, fields,
-            corpus_type, opt)
+            corpus_type, opt, mt_corpus)
 
     # For data_type == 'img' or 'audio', currently we don't do
     # preprocess sharding. We only build a monolithic dataset.
@@ -186,6 +207,9 @@ def build_save_vocab(train_dataset, fields, opt):
                                  opt.tgt_vocab,
                                  opt.tgt_vocab_size,
                                  opt.tgt_words_min_frequency,
+                                 opt.mt_vocab,
+                                 opt.mt_vocab_size,
+                                 opt.mt_words_min_frequency,
                                  opt.n_chars)
 
     # Can't save fields, so remove/reconstruct at training time.
@@ -198,13 +222,20 @@ def main():
 
     print("Extracting features...")
     src_nfeats = onmt.io.get_num_features(opt.data_type, opt.train_src, 'src')
+    if opt.train_mt:
+        mt_nfeats = onmt.io.get_num_features(opt.data_type,
+                                             opt.train_tgt, 'mt')
+    else:
+        mt_nfeats = None
     tgt_nfeats = onmt.io.get_num_features(opt.data_type, opt.train_tgt, 'tgt')
     print(" * number of source features: %d." % src_nfeats)
+    if opt.train_mt:
+        print(" * number of mt features: %d." % mt_nfeats)
     print(" * number of target features: %d." % tgt_nfeats)
 
     print("Building `Fields` object...")
     fields = onmt.io.get_fields(opt.data_type, src_nfeats, tgt_nfeats,
-                                opt.use_char)
+                                opt.use_char, mt_nfeats)
 
     print("Building & saving training data...")
     train_dataset_files = build_save_dataset('train', fields, opt)

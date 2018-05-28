@@ -37,8 +37,9 @@ class TextDataset(ONMTDatasetBase):
                 out examples?
     """
     def __init__(self, data_type, fields, src_examples_iter, tgt_examples_iter,
+                 mt_examples_iter, num_mt_feats=0,
                  num_src_feats=0, num_tgt_feats=0,
-                 src_seq_length=0, tgt_seq_length=0,
+                 src_seq_length=0, tgt_seq_length=0, mt_seq_length=0,
                  dynamic_dict=True, use_filter_pred=True):
         self.data_type = data_type
 
@@ -49,6 +50,8 @@ class TextDataset(ONMTDatasetBase):
 
         self.n_src_feats = num_src_feats
         self.n_tgt_feats = num_tgt_feats
+        if mt_examples_iter:
+            self.n_mt_feats = num_mt_feats
 
         # Each element of an example is a dictionary whose keys represents
         # at minimum the src tokens and their indices and potentially also
@@ -56,6 +59,10 @@ class TextDataset(ONMTDatasetBase):
         if self.data_type == 'monotext':
             examples_iter = (self._join_dicts(tgt) for tgt in
                              tgt_examples_iter)
+        elif mt_examples_iter:
+            examples_iter = (self._join_dicts(src, mt, tgt) for src, mt, tgt in
+                             zip(src_examples_iter, mt_examples_iter,
+                                 tgt_examples_iter))
         elif tgt_examples_iter is not None:
             examples_iter = (self._join_dicts(src, tgt) for src, tgt in
                              zip(src_examples_iter, tgt_examples_iter))
@@ -90,8 +97,13 @@ class TextDataset(ONMTDatasetBase):
                   len(out_examples))
 
             def filter_pred(example):
-                return 0 < len(example.src) <= src_seq_length \
-                    and 0 < len(example.tgt) <= tgt_seq_length
+                if hasattr(example, 'mt'):
+                    return 0 < len(example.src) <= src_seq_length \
+                        and 0 < len(example.tgt) <= tgt_seq_length \
+                        and 0 < len(example.mt) <= mt_seq_length
+                else:
+                    return 0 < len(example.src) <= src_seq_length \
+                        and 0 < len(example.tgt) <= tgt_seq_length
 
         else:
             tgt_size = 0
@@ -210,7 +222,8 @@ class TextDataset(ONMTDatasetBase):
                 yield example_dict, n_feats
 
     @staticmethod
-    def get_fields(n_src_features, n_tgt_features, use_char=False):
+    def get_fields(n_src_features, n_tgt_features, use_char=False,
+                   n_mt_features=None):
         """
         Args:
             n_src_features (int): the number of source features to
@@ -219,6 +232,8 @@ class TextDataset(ONMTDatasetBase):
                 create `torchtext.data.Field` for.
             use_char: boolean to decide if character fields are necessary
                 (only for text type)
+            n_mt_features (int): the number of mt features to
+                create `torchtext.data.Field` for.
 
         Returns:
             A dictionary whose keys are strings and whose values
@@ -234,6 +249,11 @@ class TextDataset(ONMTDatasetBase):
             fields["src_feat_"+str(j)] = \
                 torchtext.data.Field(pad_token=PAD_WORD)
 
+        if n_mt_features is not None:
+            fields["mt"] = torchtext.data.Field(
+                pad_token=PAD_WORD,
+                include_lengths=True)
+
         if use_char:
             # Create character related fields
             nesting_field_src = torchtext.data.Field(tokenize=list,
@@ -247,6 +267,17 @@ class TextDataset(ONMTDatasetBase):
                                     init_token=BOS_WORD,
                                     eos_token=EOS_WORD,
                                     pad_token=PAD_WORD)
+
+            if n_mt_features is not None:
+                nesting_field_mt = torchtext.data.Field(tokenize=list,
+                                                        pad_token=PAD_WORD,
+                                                        init_token=BOW_CHAR,
+                                                        eos_token=EOW_CHAR,
+                                                        fix_length=50)
+
+                fields["char_mt"] = torchtext.data.NestedField(
+                                        nesting_field_mt,
+                                        pad_token=PAD_WORD)
 
             nesting_field_tgt = torchtext.data.Field(tokenize=list,
                                                      pad_token=PAD_WORD,
@@ -281,6 +312,20 @@ class TextDataset(ONMTDatasetBase):
         fields["src_map"] = torchtext.data.Field(
             use_vocab=False, tensor_type=torch.FloatTensor,
             postprocessing=make_src, sequential=False)
+
+        if n_mt_features is not None:
+            def make_mt(data, vocab, is_train):
+                mt_size = max([t.size(0) for t in data])
+                mt_vocab_size = max([t.max() for t in data]) + 1
+                alignment = torch.zeros(mt_size, len(data), mt_vocab_size)
+                for i, sent in enumerate(data):
+                    for j, t in enumerate(sent):
+                        alignment[j, i, t] = 1
+                return alignment
+
+            fields["mt_map"] = torchtext.data.Field(
+                use_vocab=False, tensor_type=torch.FloatTensor,
+                postprocessing=make_mt, sequential=False)
 
         def make_tgt(data, vocab, is_train):
             tgt_size = max([t.size(0) for t in data])

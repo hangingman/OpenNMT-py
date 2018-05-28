@@ -265,6 +265,23 @@ def preprocess_opts(parser):
     group.add_argument('-window', default='hamming',
                        help="Window type for spectrogram generation.")
 
+    # APE preprocessing options
+    group = parser.add_argument_group('APE')
+    group.add_argument('-train_mt',
+                       help="Path to the training mt data")
+    group.add_argument('-valid_mt',
+                       help="Path to the validation mt data")
+    group.add_argument('-mt_seq_length', type=int, default=50,
+                       help="Maximum mt sequence length to keep.")
+    group.add_argument('-mt_seq_length_trunc', type=int, default=0,
+                       help="Truncate mt sequence length.")
+    group.add_argument('-mt_vocab', default="",
+                       help="""Path to an existing mt vocabulary. Format:
+                       one word per line.""")
+    group.add_argument('-mt_vocab_size', type=int, default=50000,
+                       help="Size of the mt vocabulary")
+    group.add_argument('-mt_words_min_frequency', type=int, default=0)
+
 
 def train_opts(parser):
     # Model loading/saving options
