@@ -37,7 +37,7 @@ class TextDataset(ONMTDatasetBase):
                 out examples?
     """
     def __init__(self, data_type, fields, src_examples_iter, tgt_examples_iter,
-                 mt_examples_iter, num_mt_feats=0,
+                 mt_examples_iter=None, num_mt_feats=0,
                  num_src_feats=0, num_tgt_feats=0,
                  src_seq_length=0, tgt_seq_length=0, mt_seq_length=0,
                  dynamic_dict=True, use_filter_pred=True):
@@ -59,10 +59,13 @@ class TextDataset(ONMTDatasetBase):
         if self.data_type == 'monotext':
             examples_iter = (self._join_dicts(tgt) for tgt in
                              tgt_examples_iter)
-        elif mt_examples_iter:
+        elif mt_examples_iter and tgt_examples_iter is not None:
             examples_iter = (self._join_dicts(src, mt, tgt) for src, mt, tgt in
                              zip(src_examples_iter, mt_examples_iter,
                                  tgt_examples_iter))
+        elif mt_examples_iter:
+            examples_iter = (self._join_dicts(src, mt) for src, mt in
+                             zip(src_examples_iter, mt_examples_iter))
         elif tgt_examples_iter is not None:
             examples_iter = (self._join_dicts(src, tgt) for src, tgt in
                              zip(src_examples_iter, tgt_examples_iter))
@@ -175,7 +178,7 @@ class TextDataset(ONMTDatasetBase):
         Returns:
             (example_dict iterator, num_feats) tuple.
         """
-        assert side in ['src', 'tgt']
+        assert side in ['src', 'tgt', 'mt']
 
         if path is None:
             return (None, 0)

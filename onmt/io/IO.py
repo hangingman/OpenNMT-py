@@ -207,7 +207,8 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_dir=None,
                   src_seq_length_trunc=0, tgt_seq_length_trunc=0,
                   dynamic_dict=True, sample_rate=0,
                   window_size=0, window_stride=0, window=None,
-                  normalize_audio=True, use_filter_pred=True):
+                  normalize_audio=True, use_filter_pred=True,
+                  mt_path=None, mt_seq_length=0, mt_seq_length_trunc=0):
 
     # Build src/tgt examples iterator from corpus files, also extract
     # number of features.
@@ -220,6 +221,13 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_dir=None,
     else:
         src_examples_iter = num_src_feats = None
 
+    if mt_path is not None:
+        mt_examples_iter, num_mt_feats = \
+            TextDataset.make_text_examples_nfeats_tpl(
+                mt_path, mt_seq_length_trunc, "mt")
+    else:
+        mt_examples_iter = num_mt_feats = None
+
     # For all data types, the tgt side corpus is in form of text.
     tgt_examples_iter, num_tgt_feats = \
         TextDataset.make_text_examples_nfeats_tpl(
@@ -228,11 +236,13 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_dir=None,
     if data_type == 'text' or data_type == 'monotext':
         dataset = TextDataset(data_type, fields, src_examples_iter,
                               tgt_examples_iter,
+                              mt_examples_iter, num_mt_feats,
                               num_src_feats, num_tgt_feats,
                               src_seq_length=src_seq_length,
                               tgt_seq_length=tgt_seq_length,
                               dynamic_dict=dynamic_dict,
-                              use_filter_pred=use_filter_pred)
+                              use_filter_pred=use_filter_pred,
+                              mt_seq_length=mt_seq_length)
 
     elif data_type == 'img':
         dataset = ImageDataset(fields, src_examples_iter, tgt_examples_iter,
