@@ -171,6 +171,12 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
         lm_checkpoint = torch.load(model_opt.elmo,
                                    map_location=lambda storage, loc: storage)
         lm_opt = lm_checkpoint['opt']
+        if not lm_opt.lm_use_char_input:
+            raise NotImplementedError("The Language Model used in ELMo needs"
+                                      "to have character-based input")
+        if not lm_opt.bilm:
+            raise NotImplementedError("The Language Model used in ELMo needs"
+                                      "to be bidirectional")
         language_model = make_language_model(lm_opt, fields, gpu,
                                              lm_checkpoint,
                                              'src',
