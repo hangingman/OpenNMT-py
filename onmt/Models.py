@@ -1106,13 +1106,9 @@ class APEModel(nn.Module):
 
     def sort_sentences(self, sentences, lengths):
         """Sorts sentences and returns the original indices"""
-
-        np_idx_tensor = np.flip(np.argsort(lengths.numpy()), 0).copy()
-        idx_tensor = torch.from_numpy(np_idx_tensor)
+        sorted_lens, idx_tensor = torch.sort(lengths, descending=True)
         sorted_sentences = sentences[:, idx_tensor, :]
-        sorted_lens = lengths[idx_tensor]
-        original_idx = np.argsort(np_idx_tensor, 0).copy()
-        idx = torch.from_numpy(original_idx)
+        _, idx = torch.sort(idx_tensor)
 
         return sorted_sentences, sorted_lens, idx
 
