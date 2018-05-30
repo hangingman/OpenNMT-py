@@ -243,6 +243,9 @@ def train_model(model, fields, optim, data_type, model_opt):
     norm_method = opt.normalization
     grad_accum_count = opt.accum_count
 
+    # decide whether to use ELMo embeddings
+    use_elmo = True if model_opt.elmo is not None else False
+
     if model_opt.lm:
         trainer = onmt.LanguageModelTrainer(model, train_loss, valid_loss,
                                             optim, trunc_size, shard_size,
@@ -252,7 +255,7 @@ def train_model(model, fields, optim, data_type, model_opt):
         trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
                                trunc_size, shard_size, data_type,
                                norm_method, grad_accum_count,
-                               elmo=hasattr(model_opt, "elmo"))
+                               elmo=use_elmo)
 
     print('\nStart training...')
     print(' * number of epochs: %d, starting from Epoch %d' %
@@ -499,7 +502,7 @@ def main():
         data_type = 'monotext'
 
     # Load fields generated from preprocess phase.
-    if model_opt.lm_use_char_input or hasattr(model_opt, "elmo"):
+    if model_opt.lm_use_char_input or model_opt.elmo is not None:
         use_char = True
     else:
         use_char = False
