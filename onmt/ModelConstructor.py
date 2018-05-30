@@ -155,7 +155,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
     assert model_opt.model_type in ["text", "img", "audio"], \
         ("Unsupported model type %s" % (model_opt.model_type))
 
-    if hasattr(model_opt, 'elmo'):
+    if model_opt.elmo is not None:
         lm_checkpoint = torch.load(model_opt.elmo,
                                    map_location=lambda storage, loc: storage)
         lm_opt = lm_checkpoint['opt']
