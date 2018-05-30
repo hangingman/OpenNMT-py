@@ -50,7 +50,7 @@ def model_opts(parser):
     group.add_argument('-model_type', default='text',
                        help="""Type of source model to use. Allows
                        the system to incorporate non-text inputs.
-                       Options are [text|img|audio].""")
+                       Options are [text|img|audio|ape].""")
 
     group.add_argument('-encoder_type', type=str, default='rnn',
                        choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn'],

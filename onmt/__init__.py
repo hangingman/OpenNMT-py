@@ -3,7 +3,8 @@ import onmt.Models
 import onmt.Loss
 import onmt.translate
 import onmt.opts
-from onmt.Trainer import Trainer, Statistics, LanguageModelTrainer
+from onmt.Trainer import Trainer, Statistics, LanguageModelTrainer, \
+                         APETrainer
 from onmt.Optim import Optim
 
 # For flake8 compatibility

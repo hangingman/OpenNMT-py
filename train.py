@@ -251,6 +251,10 @@ def train_model(model, fields, optim, data_type, model_opt):
                                             optim, trunc_size, shard_size,
                                             data_type, norm_method,
                                             grad_accum_count)
+    elif model_opt.model_type == "ape":
+        trainer = onmt.APETrainer(model, train_loss, valid_loss, optim,
+                                  trunc_size, shard_size, data_type,
+                                  norm_method, grad_accum_count)
     else:
         trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
                                trunc_size, shard_size, data_type,

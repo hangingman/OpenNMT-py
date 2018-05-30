@@ -64,8 +64,15 @@ def load_fields_from_vocab(vocab, data_type="text", use_char=False):
     else:
         n_src_features = len(collect_features(vocab, 'src'))
     n_tgt_features = len(collect_features(vocab, 'tgt'))
+
+    # In case we are doing the APE task
+    if 'mt' in vocab.keys():
+        n_mt_features = len(collect_features(vocab, 'mt'))
+    else:
+        n_mt_features = None
+
     fields = get_fields(data_type, n_src_features, n_tgt_features,
-                        use_char)
+                        use_char, n_mt_features)
     for k, v in vocab.items():
         # Hack. Can't pickle defaultdict :(
         if "_nested" in k:
@@ -171,7 +178,7 @@ def collect_features(fields, side="src"):
     """
     Collect features from Field object.
     """
-    assert side in ["src", "tgt"]
+    assert side in ["src", "tgt", "mt"]
     feats = []
     for j in count():
         key = side + "_feat_" + str(j)
@@ -185,7 +192,7 @@ def collect_feature_vocabs(fields, side):
     """
     Collect feature Vocab objects from Field object.
     """
-    assert side in ['src', 'tgt']
+    assert side in ['src', 'tgt', 'mt']
     feature_vocabs = []
     for j in count():
         key = side + "_feat_" + str(j)

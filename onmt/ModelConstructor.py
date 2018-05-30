@@ -11,7 +11,7 @@ import onmt.Models
 import onmt.modules
 from onmt.Models import NMTModel, MeanEncoder, RNNEncoder, \
                         StdRNNDecoder, InputFeedRNNDecoder, LanguageModel, \
-                        CharEmbeddingsCNN
+                        CharEmbeddingsCNN, APEModel, APEInputFeedRNNDecoder
 from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, \
                          TransformerEncoder, TransformerDecoder, \
                          CNNEncoder, CNNDecoder, AudioEncoder, ELMo
@@ -92,6 +92,18 @@ def make_decoder(opt, embeddings):
         opt: the option in current environment.
         embeddings (Embeddings): vocab embeddings for this decoder.
     """
+    if opt.model_type == "ape":
+        if opt.decoder_type in ["transformer", "cnn"]:
+            raise NotImplementedError("Only rnn is implemented for APE task")
+        return APEInputFeedRNNDecoder(opt.rnn_type, opt.brnn,
+                                      opt.dec_layers, opt.rnn_size,
+                                      opt.global_attention,
+                                      opt.coverage_attn,
+                                      opt.context_gate,
+                                      opt.copy_attn,
+                                      opt.dropout,
+                                      embeddings,
+                                      opt.reuse_copy_attn)
     if opt.decoder_type == "transformer":
         return TransformerDecoder(opt.dec_layers, opt.rnn_size,
                                   opt.global_attention, opt.copy_attn,
@@ -152,7 +164,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
     Returns:
         the NMTModel.
     """
-    assert model_opt.model_type in ["text", "img", "audio"], \
+    assert model_opt.model_type in ["text", "img", "audio", "ape"], \
         ("Unsupported model type %s" % (model_opt.model_type))
 
     if model_opt.elmo is not None:
@@ -187,6 +199,17 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                                model_opt.dropout,
                                model_opt.sample_rate,
                                model_opt.window_size)
+    elif model_opt.model_type == 'ape':
+        src_dict = fields["src"].vocab
+        feature_dicts = onmt.io.collect_feature_vocabs(fields, 'src')
+        src_embeddings = make_embeddings(model_opt, src_dict,
+                                         feature_dicts, elmo=elmo)
+        encoder_src = make_encoder(model_opt, src_embeddings)
+        mt_dict = fields["mt"].vocab
+        feature_dicts = onmt.io.collect_feature_vocabs(fields, 'mt')
+        mt_embeddings = make_embeddings(model_opt, mt_dict,
+                                        feature_dicts, elmo=elmo)
+        encoder_mt = make_encoder(model_opt, mt_embeddings)
 
     # Make decoder.
     tgt_dict = fields["tgt"].vocab
@@ -203,10 +226,17 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
 
         tgt_embeddings.word_lut.weight = src_embeddings.word_lut.weight
 
+    # Share the embedding matrix of mt and tgt for ape models
+    if model_opt.model_type == 'ape':
+        tgt_embeddings.word_lut.weight = mt_embeddings.word_lut.weight
+
     decoder = make_decoder(model_opt, tgt_embeddings)
 
     # Make NMTModel(= encoder + decoder).
-    model = NMTModel(encoder, decoder)
+    if model_opt.model_type == 'ape':
+        model = APEModel(encoder_src, encoder_mt, decoder)
+    else:
+        model = NMTModel(encoder, decoder)
     model.model_type = model_opt.model_type
 
     # Make Generator.
@@ -240,9 +270,11 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                 if p.dim() > 1:
                     xavier_uniform(p)
 
-        if hasattr(model.encoder, 'embeddings'):
-            model.encoder.embeddings.load_pretrained_vectors(
-                    model_opt.pre_word_vecs_enc, model_opt.fix_word_vecs_enc)
+        if model_opt.model_type == 'text':
+            if hasattr(model.encoder, 'embeddings'):
+                model.encoder.embeddings.load_pretrained_vectors(
+                        model_opt.pre_word_vecs_enc,
+                        model_opt.fix_word_vecs_enc)
         if hasattr(model.decoder, 'embeddings'):
             model.decoder.embeddings.load_pretrained_vectors(
                     model_opt.pre_word_vecs_dec, model_opt.fix_word_vecs_dec)
