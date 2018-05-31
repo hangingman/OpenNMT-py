@@ -1,8 +1,5 @@
 # OpenNMT-py: Open-Source Neural Machine Translation
 
-#### This repo contains the codebase for the paper "Sparse and Constrained Attention for Neural Machine Translation". The code is written on a fork of the OpenNMT-py toolkit. Please refer to the instructions in the repo https://github.com/Unbabel/sparse_constrained_attention to reproduce results from our paper.
- 
-
 [![Build Status](https://travis-ci.org/OpenNMT/OpenNMT-py.svg?branch=master)](https://travis-ci.org/OpenNMT/OpenNMT-py)
 
 This is a [Pytorch](https://github.com/pytorch/pytorch)
