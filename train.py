@@ -420,7 +420,8 @@ def build_optim(model, checkpoint):
             adagrad_accum=opt.adagrad_accumulator_init,
             decay_method=opt.decay_method,
             warmup_steps=opt.warmup_steps,
-            model_size=opt.rnn_size)
+            model_size=opt.rnn_size,
+            l2_value=opt.l2_value)
 
     # Stage 1:
     # Essentially optim.set_parameters (re-)creates and optimizer using

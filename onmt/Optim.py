@@ -50,7 +50,8 @@ class Optim(object):
                  adagrad_accum=0.0,
                  decay_method=None,
                  warmup_steps=4000,
-                 model_size=None):
+                 model_size=None,
+                 l2_value=None):
         self.last_ppl = None
         self.lr = lr
         self.original_lr = lr
@@ -65,16 +66,23 @@ class Optim(object):
         self.decay_method = decay_method
         self.warmup_steps = warmup_steps
         self.model_size = model_size
+        self.l2_value = l2_value
 
     def set_parameters(self, params):
         self.params = []
         self.sparse_params = []
+        decay, no_decay = [], []
         for k, p in params:
             if p.requires_grad:
                 if self.method != 'sparseadam' or "embed" not in k:
-                    self.params.append(p)
+                    if 'scalar_parameters' in k:
+                        decay.append(p)
+                    else:
+                        no_decay.append(p)
                 else:
                     self.sparse_params.append(p)
+        self.params = [{'params': no_decay, 'weight_decay': 0.},
+                       {'params': decay, 'weight_decay': self.l2_value}]
         if self.method == 'sgd':
             self.optimizer = optim.SGD(self.params, lr=self.lr)
         elif self.method == 'adagrad':
@@ -122,7 +130,9 @@ class Optim(object):
                      self._step * self.warmup_steps**(-1.5))))
 
         if self.max_grad_norm:
-            clip_grad_norm(self.params, self.max_grad_norm)
+            # Clip for parameters that have and do not have weight decay
+            clip_grad_norm(self.params[0]['params'], self.max_grad_norm)
+            clip_grad_norm(self.params[1]['params'], self.max_grad_norm)
         self.optimizer.step()
 
     def update_learning_rate(self, ppl, epoch):
