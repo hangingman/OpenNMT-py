@@ -42,12 +42,15 @@ def model_opts(parser):
                        help="""If -feat_merge_size is not set, feature
                        embedding sizes will be set to N^feat_vec_exponent
                        where N is the number of values the feature takes.""")
+
     group.add_argument('-elmo', action="store_true",
                        help="""Use ELMo contextualized embeddings.""")
     group.add_argument('-bilm_src_path',
                        help="Path to the LM that ELMo src will use")
     group.add_argument('-bilm_mt_path',
                        help="Path to the LM that ELMo mt will use")
+    group.add_argument('-elmo_dropout', type=float, default=0.3,
+                       help="""The dropout of the ELMo representation.""")
 
     # Encoder-Deocder Options
     group = parser.add_argument_group('Model- Encoder-Decoder')
@@ -406,6 +409,8 @@ def train_opts(parser):
                        Set to zero to turn off label smoothing.
                        For more detailed information, see:
                        https://arxiv.org/abs/1512.00567""")
+    group.add_argument('-l2_value', type=float, default=0.001,
+                       help="The L2 regularization parameter.")
     # learning rate
     group = parser.add_argument_group('Optimization- Rate')
     group.add_argument('-learning_rate', type=float, default=1.0,

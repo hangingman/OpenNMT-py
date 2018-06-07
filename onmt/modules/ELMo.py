@@ -6,7 +6,7 @@ import onmt.io
 
 class ELMo(nn.Module):
     "An Implementation of ..."
-    def __init__(self, language_model):
+    def __init__(self, language_model, dropout):
         super(ELMo, self).__init__()
         self.lang_model = language_model
         self.pad_idx = self.lang_model.padding_idx
@@ -30,6 +30,8 @@ class ELMo(nn.Module):
                         for _ in range(n_parameters)]
         self.scalar_parameters = nn.ParameterList(layer_params)
         self.gamma = nn.Parameter(torch.FloatTensor([1.0]))
+
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, tgt):
 
@@ -83,7 +85,7 @@ class ELMo(nn.Module):
         for weight, tensor in zip(normed_weights.split(1), token_layers):
             pieces.append(weight * tensor)
 
-        return self.gamma * sum(pieces)
+        return self.dropout(self.gamma * sum(pieces))
 
     def _remove_bos_eos_tokens(self, tensor, mask):
 

@@ -186,7 +186,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                                              'src',
                                              use_generator=False)
 
-        elmo_src = ELMo(language_model)
+        elmo_src = ELMo(language_model, model_opt.elmo_dropout)
 
         if model_opt.model_type == 'ape' and model_opt.bilm_mt_path:
             lm_checkpoint = torch.load(model_opt.bilm_mt_path,
@@ -206,7 +206,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                                                  'src',
                                                  use_generator=False)
 
-            elmo_mt = ELMo(language_model)
+            elmo_mt = ELMo(language_model, model_opt.elmo_dropout)
         else:
             elmo_mt = None
     else:
