@@ -40,6 +40,9 @@ class ELMo(nn.Module):
         # Initialize the hidden state and run the forward pass of
         # the language model
         init_hidden = self.lang_model.init_rnn_state(batch_size)
+        # Set lang_model.training to false so the LM does not
+        # use the custom dropout
+        self.lang_model.training = False
         outputs, emb = self.lang_model(tgt, init_hidden)
 
         num_directions, _, n_layers, _, _ = outputs.size()
