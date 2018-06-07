@@ -1091,8 +1091,11 @@ class APEModel(nn.Module):
                                                         srt_mt_lens,
                                                         char_src=srt_char_mt)
 
-        enc_final_mt = (sorted_enc_final_mt[0][:, mt_idx],
-                        sorted_enc_final_mt[1][:, mt_idx])
+        if len(sorted_enc_final_mt) == 2:
+            enc_final_mt = (sorted_enc_final_mt[0][:, mt_idx],
+                            sorted_enc_final_mt[1][:, mt_idx])
+        else:
+            enc_final_mt = sorted_enc_final_mt[:, mt_idx]
         memory_bank_mt = sorted_memory_bank_mt[:, mt_idx]
 
         enc_state_mt = \
@@ -1240,6 +1243,10 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
         coverage = state.coverage.squeeze(0) \
             if state.coverage is not None else None
 
+        # Create a mask for gal dropout
+        if self.rnn.gal_dropout > 0 and self.training:
+            self.rnn.sample_mask(tgt_batch, emb.is_cuda)
+
         # Input feed concatenates hidden state with
         # input at every time step.
         for i, emb_t in enumerate(emb.split(1)):
@@ -1287,10 +1294,7 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
                    hidden_size, num_layers, dropout):
         assert not rnn_type == "SRU", "SRU doesn't support input feed! " \
                 "Please set -input_feed 0!"
-        if rnn_type == "LSTM":
-            stacked_cell = onmt.modules.StackedLSTM
-        else:
-            stacked_cell = onmt.modules.StackedGRU
+        stacked_cell = onmt.modules.StackedGRUWithGalDropout
         return stacked_cell(num_layers, input_size,
                             hidden_size, dropout)
 
