@@ -170,7 +170,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                                              'src',
                                              use_generator=False)
 
-        elmo = ELMo(language_model)
+        elmo = ELMo(language_model, model_opt.elmo_dropout)
     else:
         elmo = None
 

@@ -44,6 +44,8 @@ def model_opts(parser):
                        where N is the number of values the feature takes.""")
     group.add_argument('-elmo',
                        help="""Path to a trained biLM.""")
+    group.add_argument('-elmo_dropout', type=float, default=0.3,
+                       help="""The dropout of the ELMo representation.""")
 
     # Encoder-Deocder Options
     group = parser.add_argument_group('Model- Encoder-Decoder')
