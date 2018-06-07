@@ -1077,13 +1077,19 @@ class APEModel(nn.Module):
         """
         tgt = tgt[:-1]  # exclude last target from inputs
 
-        enc_final_src, memory_bank_src = self.encoder_src(src, lengths_src)
+        enc_final_src, memory_bank_src = self.encoder_src(src, lengths_src,
+                                                          char_src=char_src)
 
         sorted_mt, srt_mt_lens, mt_idx = self.sort_sentences(mt, lengths_mt)
+        if char_mt is not None:
+            srt_char_mt, _, _ = self.sort_sentences(char_mt, lengths_mt)
+        else:
+            srt_char_mt = None
 
         sorted_enc_final_mt, sorted_memory_bank_mt = self.encoder_mt(
                                                         sorted_mt,
-                                                        srt_mt_lens)
+                                                        srt_mt_lens,
+                                                        char_src=srt_char_mt)
 
         enc_final_mt = (sorted_enc_final_mt[0][:, mt_idx],
                         sorted_enc_final_mt[1][:, mt_idx])
@@ -1107,7 +1113,7 @@ class APEModel(nn.Module):
     def sort_sentences(self, sentences, lengths):
         """Sorts sentences and returns the original indices"""
         sorted_lens, idx_tensor = torch.sort(lengths, descending=True)
-        sorted_sentences = sentences[:, idx_tensor, :]
+        sorted_sentences = sentences[:, idx_tensor]
         _, idx = torch.sort(idx_tensor)
 
         return sorted_sentences, sorted_lens, idx

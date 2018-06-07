@@ -460,14 +460,15 @@ class APETrainer(Trainer):
 
     def __init__(self, model, train_loss, valid_loss, optim,
                  trunc_size=0, shard_size=32, data_type='text',
-                 norm_method="sents", grad_accum_count=1):
+                 norm_method="sents", grad_accum_count=1, elmo=False):
 
         super(APETrainer, self).__init__(model, train_loss,
                                          valid_loss, optim,
                                          trunc_size, shard_size,
                                          data_type,
                                          norm_method,
-                                         grad_accum_count)
+                                         grad_accum_count,
+                                         elmo)
 
     def validate(self, valid_iter):
         """ Validate model.
@@ -490,6 +491,18 @@ class APETrainer(Trainer):
             else:
                 src_lengths = None
 
+            if self.elmo:
+                char_src = onmt.io.make_features(batch, 'char_src')
+                # (target_size, batch_size, max_char_src, n_feat)
+                char_src = char_src.permute(1, 0, 3, 2).contiguous()
+
+                char_mt = onmt.io.make_features(batch, 'char_mt')
+                # (target_size, batch_size, max_char_mt, n_feat)
+                char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_src = None
+                char_mt = None
+
             mt = onmt.io.make_features(batch, 'mt', self.data_type)
             if self.data_type == 'text':
                 _, mt_lengths = batch.mt
@@ -500,7 +513,9 @@ class APETrainer(Trainer):
 
             # F-prop through the model.
             outputs, attns, _ = self.model(src, mt, tgt, src_lengths,
-                                           mt_lengths)
+                                           mt_lengths,
+                                           char_src=char_src,
+                                           char_mt=char_mt)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -535,6 +550,18 @@ class APETrainer(Trainer):
             else:
                 src_lengths = None
 
+            if self.elmo:
+                char_src = onmt.io.make_features(batch, 'char_src')
+                # (target_size, batch_size, max_char_src, n_feat)
+                char_src = char_src.permute(1, 0, 3, 2).contiguous()
+
+                char_mt = onmt.io.make_features(batch, 'char_mt')
+                # (target_size, batch_size, max_char_mt, n_feat)
+                char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_src = None
+                char_mt = None
+
             mt = onmt.io.make_features(batch, 'mt', self.data_type)
             if self.data_type == 'text':
                 _, mt_lengths = batch.mt
@@ -554,7 +581,9 @@ class APETrainer(Trainer):
 
                 outputs, attns, dec_state = \
                     self.model(src, mt, tgt, src_lengths, mt_lengths,
-                               dec_state)
+                               dec_state,
+                               char_src=char_src,
+                               char_mt=char_mt)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(

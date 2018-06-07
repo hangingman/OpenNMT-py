@@ -42,8 +42,12 @@ def model_opts(parser):
                        help="""If -feat_merge_size is not set, feature
                        embedding sizes will be set to N^feat_vec_exponent
                        where N is the number of values the feature takes.""")
-    group.add_argument('-elmo',
-                       help="""Path to a trained biLM.""")
+    group.add_argument('-elmo', action="store_true",
+                       help="""Use ELMo contextualized embeddings.""")
+    group.add_argument('-bilm_src_path',
+                       help="Path to the LM that ELMo src will use")
+    group.add_argument('-bilm_mt_path',
+                       help="Path to the LM that ELMo mt will use")
 
     # Encoder-Deocder Options
     group = parser.add_argument_group('Model- Encoder-Decoder')

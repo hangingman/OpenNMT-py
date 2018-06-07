@@ -567,18 +567,39 @@ class APETranslator(Translator):
         if data_type == 'text':
             _, src_lengths = batch.src
 
+        if hasattr(batch, 'char_src'):
+            char_src = onmt.io.make_features(batch, 'char_src')
+            # (target_size, batch_size, max_char_src, n_feat)
+            char_src = char_src.permute(1, 0, 3, 2).contiguous()
+        else:
+            char_src = None
+
         mt = onmt.io.make_features(batch, 'mt', data_type)
         _, mt_lengths = batch.mt
 
+        if hasattr(batch, 'char_mt'):
+            char_mt = onmt.io.make_features(batch, 'char_mt')
+            # (target_size, batch_size, max_char_mt, n_feat)
+            char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+        else:
+            char_mt = None
+
         enc_states_src, memory_bank_src = self.model.encoder_src(
-                                            src, src_lengths)
+                                            src, src_lengths,
+                                            char_src=char_src)
 
         sorted_mt, srt_mt_lens, mt_idx = self.model.sort_sentences(
                                                 mt, mt_lengths)
 
+        if char_mt is not None:
+            srt_char_mt, _, _ = self.model.sort_sentences(char_mt, mt_lengths)
+        else:
+            srt_char_mt = None
+
         sorted_enc_final_mt, sorted_memory_bank_mt = self.model.encoder_mt(
                                                         sorted_mt,
-                                                        srt_mt_lens)
+                                                        srt_mt_lens,
+                                                        char_src=srt_char_mt)
 
         enc_states_mt = (sorted_enc_final_mt[0][:, mt_idx],
                          sorted_enc_final_mt[1][:, mt_idx])
@@ -677,20 +698,43 @@ class APETranslator(Translator):
         else:
             src_lengths = None
         src = onmt.io.make_features(batch, 'src', data_type)
+
+        if hasattr(batch, 'char_src'):
+            char_src = onmt.io.make_features(batch, 'char_src')
+            # (target_size, batch_size, max_char_src, n_feat)
+            char_src = char_src.permute(1, 0, 3, 2).contiguous()
+        else:
+            char_src = None
+
         mt = onmt.io.make_features(batch, 'mt', data_type)
         _, mt_lengths = batch.mt
+
+        if hasattr(batch, 'char_mt'):
+            char_mt = onmt.io.make_features(batch, 'char_mt')
+            # (target_size, batch_size, max_char_mt, n_feat)
+            char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+        else:
+            char_mt = None
+
         tgt_in = onmt.io.make_features(batch, 'tgt')[:-1]
 
         #  (1) run the encoder on the src
         enc_states_src, memory_bank_src = self.model.encoder_src(
-                                            src, src_lengths)
+                                            src, src_lengths,
+                                            char_src=char_src)
 
         sorted_mt, srt_mt_lens, mt_idx = self.model.sort_sentences(
                                                 mt, mt_lengths)
 
+        if char_mt is not None:
+            srt_char_mt, _, _ = self.model.sort_sentences(char_mt, mt_lengths)
+        else:
+            srt_char_mt = None
+
         sorted_enc_final_mt, sorted_memory_bank_mt = self.model.encoder_mt(
                                                         sorted_mt,
-                                                        srt_mt_lens)
+                                                        srt_mt_lens,
+                                                        char_src=srt_char_mt)
 
         enc_states_mt = (sorted_enc_final_mt[0][:, mt_idx],
                          sorted_enc_final_mt[1][:, mt_idx])

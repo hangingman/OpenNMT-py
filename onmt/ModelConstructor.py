@@ -138,10 +138,13 @@ def make_decoder(opt, embeddings):
 def load_test_model(opt, dummy_opt):
     checkpoint = torch.load(opt.model,
                             map_location=lambda storage, loc: storage)
-    fields = onmt.io.load_fields_from_vocab(
-        checkpoint['vocab'], data_type=opt.data_type)
 
     model_opt = checkpoint['opt']
+
+    fields = onmt.io.load_fields_from_vocab(
+        checkpoint['vocab'], data_type=opt.data_type,
+        use_char=model_opt.elmo)
+
     for arg in dummy_opt:
         if arg not in model_opt:
             model_opt.__dict__[arg] = dummy_opt[arg]
@@ -167,8 +170,9 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
     assert model_opt.model_type in ["text", "img", "audio", "ape"], \
         ("Unsupported model type %s" % (model_opt.model_type))
 
-    if model_opt.elmo is not None:
-        lm_checkpoint = torch.load(model_opt.elmo,
+    if model_opt.elmo:
+        print('Building language model for ELMo...')
+        lm_checkpoint = torch.load(model_opt.bilm_src_path,
                                    map_location=lambda storage, loc: storage)
         lm_opt = lm_checkpoint['opt']
         if not lm_opt.lm_use_char_input:
@@ -182,16 +186,39 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                                              'src',
                                              use_generator=False)
 
-        elmo = ELMo(language_model)
+        elmo_src = ELMo(language_model)
+
+        if model_opt.model_type == 'ape' and model_opt.bilm_mt_path:
+            lm_checkpoint = torch.load(model_opt.bilm_mt_path,
+                                       map_location=lambda storage,
+                                       loc: storage)
+            lm_opt = lm_checkpoint['opt']
+            if not lm_opt.lm_use_char_input:
+                raise NotImplementedError(
+                    "The Language Model used in ELMo needs "
+                    "to have character-based input")
+            if not lm_opt.bilm:
+                raise NotImplementedError(
+                    "The Language Model used in ELMo needs "
+                    "to be bidirectional")
+            language_model = make_language_model(lm_opt, fields, gpu,
+                                                 lm_checkpoint,
+                                                 'src',
+                                                 use_generator=False)
+
+            elmo_mt = ELMo(language_model)
+        else:
+            elmo_mt = None
     else:
-        elmo = None
+        elmo_src = None
+        elmo_mt = None
 
     # Make encoder.
     if model_opt.model_type == "text":
         src_dict = fields["src"].vocab
         feature_dicts = onmt.io.collect_feature_vocabs(fields, 'src')
         src_embeddings = make_embeddings(model_opt, src_dict,
-                                         feature_dicts, elmo=elmo)
+                                         feature_dicts, elmo=elmo_src)
         encoder = make_encoder(model_opt, src_embeddings)
     elif model_opt.model_type == "img":
         encoder = ImageEncoder(model_opt.enc_layers,
@@ -209,12 +236,12 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
         src_dict = fields["src"].vocab
         feature_dicts = onmt.io.collect_feature_vocabs(fields, 'src')
         src_embeddings = make_embeddings(model_opt, src_dict,
-                                         feature_dicts, elmo=elmo)
+                                         feature_dicts, elmo=elmo_src)
         encoder_src = make_encoder(model_opt, src_embeddings)
         mt_dict = fields["mt"].vocab
         feature_dicts = onmt.io.collect_feature_vocabs(fields, 'mt')
         mt_embeddings = make_embeddings(model_opt, mt_dict,
-                                        feature_dicts, elmo=elmo)
+                                        feature_dicts, elmo=elmo_mt)
         encoder_mt = make_encoder(model_opt, mt_embeddings)
 
     # Make decoder.

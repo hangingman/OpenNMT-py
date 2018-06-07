@@ -216,8 +216,9 @@ class TextDataset(ONMTDatasetBase):
 
                 words, feats, n_feats = \
                     TextDataset.extract_text_features(line)
-
-                example_dict = {side: words, "indices": i}
+                char_side = "char_" + side
+                example_dict = {side: words, "indices": i,
+                                char_side: words}
                 if feats:
                     prefix = side + "_feat_"
                     example_dict.update((prefix + str(j), f)
@@ -280,6 +281,8 @@ class TextDataset(ONMTDatasetBase):
 
                 fields["char_mt"] = torchtext.data.NestedField(
                                         nesting_field_mt,
+                                        init_token=BOS_WORD,
+                                        eos_token=EOS_WORD,
                                         pad_token=PAD_WORD)
 
             nesting_field_tgt = torchtext.data.Field(tokenize=list,

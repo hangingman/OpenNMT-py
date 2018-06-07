@@ -243,9 +243,6 @@ def train_model(model, fields, optim, data_type, model_opt):
     norm_method = opt.normalization
     grad_accum_count = opt.accum_count
 
-    # decide whether to use ELMo embeddings
-    use_elmo = True if model_opt.elmo is not None else False
-
     if model_opt.lm:
         trainer = onmt.LanguageModelTrainer(model, train_loss, valid_loss,
                                             optim, trunc_size, shard_size,
@@ -254,12 +251,13 @@ def train_model(model, fields, optim, data_type, model_opt):
     elif model_opt.model_type == "ape":
         trainer = onmt.APETrainer(model, train_loss, valid_loss, optim,
                                   trunc_size, shard_size, data_type,
-                                  norm_method, grad_accum_count)
+                                  norm_method, grad_accum_count,
+                                  elmo=model_opt.elmo)
     else:
         trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
                                trunc_size, shard_size, data_type,
                                norm_method, grad_accum_count,
-                               elmo=use_elmo)
+                               elmo=model_opt.elmo)
 
     print('\nStart training...')
     print(' * number of epochs: %d, starting from Epoch %d' %
@@ -361,7 +359,12 @@ def load_fields(dataset, data_type, checkpoint, use_char=False):
     fields = dict([(k, f) for (k, f) in fields.items()
                    if k in dataset.examples[0].__dict__])
 
-    if data_type == 'text':
+    if 'mt' in fields.keys():
+        print(' * vocabulary size. source = %d; mt = %d; target = %d' %
+              (len(fields['src'].vocab),
+               len(fields['mt'].vocab),
+               len(fields['tgt'].vocab)))
+    elif data_type == 'text':
         print(' * vocabulary size. source = %d; target = %d' %
               (len(fields['src'].vocab), len(fields['tgt'].vocab)))
     elif data_type == 'monotext':
@@ -505,11 +508,12 @@ def main():
     if model_opt.lm:
         data_type = 'monotext'
 
-    # Load fields generated from preprocess phase.
-    if model_opt.lm_use_char_input or model_opt.elmo is not None:
+    # Check if we need to use character fields
+    if model_opt.lm_use_char_input or model_opt.elmo:
         use_char = True
     else:
         use_char = False
+    # Load fields generated from preprocess phase.
     fields = load_fields(first_dataset, data_type, checkpoint, use_char)
 
     # Report src/tgt features.
