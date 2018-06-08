@@ -111,3 +111,74 @@ class ELMo(nn.Module):
                 new_mask[:int(ii-2), jj] = 1
 
         return tensor_without_bos_eos, new_mask
+
+
+class TELMo(nn.Module):
+    def __init__(self, language_model, dropout):
+        super(TELMo, self).__init__()
+        self.lang_model = language_model
+        self.pad_idx = self.lang_model.padding_idx
+
+        # Remove the language model parameters from the parameters
+        # to be optimized
+        for param in self.lang_model.parameters():
+            param.requires_grad = False
+
+        # Start with 1 parameter - the embeddings of the language model
+        n_parameters = 1
+        num_directions = len(self.lang_model.rnns) - 1
+
+        for direction in range(num_directions):
+            n_parameters += len(self.lang_model.rnns[direction])
+
+        self.softmax = nn.Softmax(dim=0)
+        # Initialize to 0. - in the first pass the softmax will
+        # distribute the weights uniformly this way
+        layer_params = [nn.Parameter(torch.FloatTensor([0.0]))
+                        for _ in range(n_parameters)]
+        self.scalar_parameters = nn.ParameterList(layer_params)
+        self.gamma = nn.Parameter(torch.FloatTensor([1.0]))
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, tgt):
+
+        _, batch_size, _, _ = tgt.size()
+
+        # Initialize the hidden state and run the forward pass of
+        # the language model
+        init_hidden = self.lang_model.init_rnn_state(batch_size)
+        # Set lang_model.training to false so the LM does not
+        # use the custom dropout
+        self.lang_model.training = False
+        outputs, emb = self.lang_model.forward_the_forward(tgt, init_hidden)
+
+        num_directions, _, n_layers, _, _ = outputs.size()
+
+        # Mask of the actual sequences without padding
+        mask = ((tgt[:, :, 0, :] != self.pad_idx).sum(-1) > 0).long()
+
+        # The embeddings are one of the layers of ELMo
+        token_layers = [emb[0]]
+
+        # This loop is to process the layers of the output of the language
+        # model in order to make them in the correct size and shape for
+        # the ELMo computations.
+        direction = 0
+
+        dir_output = outputs[direction]
+
+        for layer in range(n_layers):
+
+            layer_output = dir_output[:, layer]
+            token_layers.append(layer_output)
+
+        # Get the normalized weights for each layer of the LM
+        normed_weights = self.softmax(torch.cat([parameter for parameter
+                                                 in self.scalar_parameters]))
+        # Multiply weights with layers and sum everything
+        pieces = []
+        for weight, tensor in zip(normed_weights.split(1), token_layers):
+            pieces.append(weight * tensor)
+
+        return self.dropout(self.gamma * sum(pieces))

@@ -275,6 +275,7 @@ def make_trainer(model, fields, model_opt, train_loss, valid_loss, optim,
                 trunc_size, shard_size, data_type,
                 norm_method, grad_accum_count,
                 elmo=model_opt.elmo,
+                telmo=model_opt.telmo,
                 start_val_after_batches=es_after_batch)
         else:
             trainer = onmt.EarlyStoppingTrainer(

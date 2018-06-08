@@ -51,6 +51,8 @@ def model_opts(parser):
                        help="Path to the LM that ELMo mt will use")
     group.add_argument('-elmo_dropout', type=float, default=0.3,
                        help="""The dropout of the ELMo representation.""")
+    group.add_argument('-telmo', action="store_true",
+                       help="""Use TELMo fusion.""")
 
     # Encoder-Deocder Options
     group = parser.add_argument_group('Model- Encoder-Decoder')

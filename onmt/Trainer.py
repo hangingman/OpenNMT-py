@@ -577,10 +577,9 @@ class LanguageModelTrainer(EarlyStoppingTrainer):
             model, train_loss,
             valid_loss, optim,
             tolerance, epochs, model_opt, fields,
-            trunc_size, shard_size,
-            data_type,
-            norm_method,
-            grad_accum_count,
+            trunc_size=trunc_size, shard_size=shard_size,
+            data_type=data_type,
+            norm_method=norm_method, grad_accum_count=grad_accum_count,
             start_val_after_batches=start_val_after_batches)
 
     def validate(self, valid_iter):
@@ -688,16 +687,20 @@ class APETrainer(EarlyStoppingTrainer):
     def __init__(self, model, train_loss, valid_loss, optim,
                  tolerance, epochs, model_opt, fields,
                  trunc_size=0, shard_size=32, data_type='text',
-                 norm_method="sents", grad_accum_count=1, elmo=False,
+                 norm_method="sents", grad_accum_count=1,
+                 elmo=False, telmo=False,
                  start_val_after_batches=1000):
 
         super(APETrainer, self).__init__(
            model, train_loss, valid_loss, optim, tolerance, epochs,
            model_opt, fields,
-           trunc_size=0, shard_size=32, data_type='text',
-           norm_method="sents", grad_accum_count=1,
-           elmo=False,
+           trunc_size=trunc_size, shard_size=shard_size,
+           data_type=data_type,
+           norm_method=norm_method, grad_accum_count=grad_accum_count,
+           elmo=elmo,
            start_val_after_batches=start_val_after_batches)
+
+        self.telmo = telmo
 
     def validate(self, valid_iter):
         """ Validate model.
@@ -728,9 +731,17 @@ class APETrainer(EarlyStoppingTrainer):
                 char_mt = onmt.io.make_features(batch, 'char_mt')
                 # (target_size, batch_size, max_char_mt, n_feat)
                 char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+
             else:
                 char_src = None
                 char_mt = None
+
+            if self.telmo:
+                char_tgt = onmt.io.make_features(batch, 'char_tgt')
+                # (target_size, batch_size, max_char_tgt, n_feat)
+                char_tgt = char_tgt.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_tgt = None
 
             mt = onmt.io.make_features(batch, 'mt', self.data_type)
             if self.data_type == 'text':
@@ -744,7 +755,8 @@ class APETrainer(EarlyStoppingTrainer):
             outputs, attns, _ = self.model(src, mt, tgt, src_lengths,
                                            mt_lengths,
                                            char_src=char_src,
-                                           char_mt=char_mt)
+                                           char_mt=char_mt,
+                                           char_tgt=char_tgt)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -787,9 +799,17 @@ class APETrainer(EarlyStoppingTrainer):
                 char_mt = onmt.io.make_features(batch, 'char_mt')
                 # (target_size, batch_size, max_char_mt, n_feat)
                 char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+
             else:
                 char_src = None
                 char_mt = None
+
+            if self.telmo:
+                char_tgt = onmt.io.make_features(batch, 'char_tgt')
+                # (target_size, batch_size, max_char_tgt, n_feat)
+                char_tgt = char_tgt.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_tgt = None
 
             mt = onmt.io.make_features(batch, 'mt', self.data_type)
             if self.data_type == 'text':
@@ -812,7 +832,8 @@ class APETrainer(EarlyStoppingTrainer):
                     self.model(src, mt, tgt, src_lengths, mt_lengths,
                                dec_state,
                                char_src=char_src,
-                               char_mt=char_mt)
+                               char_mt=char_mt,
+                               char_tgt=char_tgt)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
