@@ -233,6 +233,61 @@ def make_loss_compute(model, tgt_vocab, opt, train=True):
     return compute
 
 
+def make_trainer(model, fields, model_opt, train_loss, valid_loss, optim,
+                 trunc_size, shard_size, data_type, norm_method,
+                 grad_accum_count, *args):
+
+    if opt.earlystop_tolerance and opt.earlystop_type == "batch":
+        assert opt.earlystop_after_batches is not None and \
+               opt.earlystop_after_batches > 0, """
+            Number of batches to perform early stopping not specified or 0.
+            See earlystop_after_batches."""
+        es_after_batch = opt.earlystop_after_batches
+
+    use_simple_trainer = opt.earlystop_tolerance is None or (
+                opt.earlystop_tolerance is not None and
+                opt.earlystop_type == "epoch")
+
+    if use_simple_trainer:
+        if model_opt.lm or model_opt.model_type == "ape":
+            raise NotImplementedError("LM and APE only implemented with"
+                                      " Early Stopping.")
+        trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
+                               trunc_size, shard_size, data_type,
+                               norm_method, grad_accum_count,
+                               elmo=model_opt.elmo)
+    else:
+        # LM and APE models only work for EarlyStopping
+        if model_opt.lm:
+            trainer = onmt.LanguageModelTrainer(
+                model, train_loss, valid_loss, optim,
+                opt.earlystop_tolerance,
+                opt.epochs, model_opt, fields,
+                trunc_size, shard_size,
+                data_type, norm_method,
+                grad_accum_count,
+                start_val_after_batches=es_after_batch)
+        elif model_opt.model_type == "ape":
+            trainer = onmt.APETrainer(
+                model, train_loss, valid_loss, optim,
+                opt.earlystop_tolerance,
+                opt.epochs, model_opt, fields,
+                trunc_size, shard_size, data_type,
+                norm_method, grad_accum_count,
+                elmo=model_opt.elmo,
+                start_val_after_batches=es_after_batch)
+        else:
+            trainer = onmt.EarlyStoppingTrainer(
+                model, train_loss, valid_loss, optim, opt.earlystop_tolerance,
+                opt.epochs, model_opt, fields, trunc_size, shard_size,
+                data_type,
+                norm_method, grad_accum_count,
+                elmo=model_opt.elmo,
+                start_val_after_batches=es_after_batch)
+
+    return trainer, use_simple_trainer
+
+
 def train_model(model, fields, optim, data_type, model_opt):
     train_loss = make_loss_compute(model, fields["tgt"].vocab, opt)
     valid_loss = make_loss_compute(model, fields["tgt"].vocab, opt,
@@ -243,59 +298,114 @@ def train_model(model, fields, optim, data_type, model_opt):
     norm_method = opt.normalization
     grad_accum_count = opt.accum_count
 
-    if model_opt.lm:
-        trainer = onmt.LanguageModelTrainer(model, train_loss, valid_loss,
-                                            optim, trunc_size, shard_size,
-                                            data_type, norm_method,
-                                            grad_accum_count)
-    elif model_opt.model_type == "ape":
-        trainer = onmt.APETrainer(model, train_loss, valid_loss, optim,
-                                  trunc_size, shard_size, data_type,
-                                  norm_method, grad_accum_count,
-                                  elmo=model_opt.elmo)
-    else:
-        trainer = onmt.Trainer(model, train_loss, valid_loss, optim,
-                               trunc_size, shard_size, data_type,
-                               norm_method, grad_accum_count,
-                               elmo=model_opt.elmo)
+    trainer, use_simple_trainer = make_trainer(
+        model, fields, model_opt, train_loss, valid_loss, optim, trunc_size,
+        shard_size, data_type, norm_method, grad_accum_count)
 
     print('\nStart training...')
     print(' * number of epochs: %d, starting from Epoch %d' %
           (opt.epochs + 1 - opt.start_epoch, opt.start_epoch))
     print(' * batch size: %d' % opt.batch_size)
 
+    if opt.earlystop_tolerance and use_simple_trainer:
+        patience = onmt.EarlyStopping(opt.earlystop_tolerance, opt.epochs,
+                                      trainer)
+
+    def build_lazy_valid():
+        return make_dataset_iter(lazily_load_dataset("valid"), fields, opt,
+                                 is_train=False)
+
+    def validate():
+        valid_iterator = build_lazy_valid()
+        valid_statistics = trainer.validate(valid_iterator)
+        print('Validation perplexity: %g' % valid_statistics.ppl())
+        print('Validation accuracy: %g' % valid_statistics.accuracy())
+        return valid_statistics
+
     for epoch in range(opt.start_epoch, opt.epochs + 1):
         print('')
-
         # 1. Train for one epoch on the training set.
         train_iter = make_dataset_iter(lazily_load_dataset("train"),
                                        fields, opt)
-        train_stats = trainer.train(train_iter, epoch, report_func)
-        print('Train perplexity: %g' % train_stats.ppl())
-        print('Train accuracy: %g' % train_stats.accuracy())
 
-        # 2. Validate on the validation set.
-        valid_iter = make_dataset_iter(lazily_load_dataset("valid"),
-                                       fields, opt,
-                                       is_train=False)
-        valid_stats = trainer.validate(valid_iter)
-        print('Validation perplexity: %g' % valid_stats.ppl())
-        print('Validation accuracy: %g' % valid_stats.accuracy())
+        if use_simple_trainer:
+
+            train_stats = trainer.train(train_iter, epoch, report_func)
+            print('Train perplexity: %g' % train_stats.ppl())
+            print('Train accuracy: %g' % train_stats.accuracy())
+
+            # 2. Validate on the validation set.
+            valid_stats = validate()
+        else:
+            # 1.1 Validate on the validation set if the number of
+            # batches is achieved.
+
+            lazy_it_fn = build_lazy_valid
+            train_stats, valid_stats, patience = trainer.train(train_iter,
+                                                               epoch,
+                                                               lazy_it_fn,
+                                                               report_func)
+            if patience.has_stopped():
+                # TODO plot points nonetheless
+                break
+
+            # If for some reason the number of batches to
+            # validate is larger than the number of batches per epoch.
+            # Note this should never ever happen!
+            if len(valid_stats) == 0:
+                import warnings
+                warnings.warn("WARNING: Your number of batches to perform \
+                              validation is larger than an epoch.\n\
+                              Using default end of epoch validation.")
+                # 2. Validate on the validation set.
+                valid_stats_epoch = validate()
+                valid_stats = [valid_stats_epoch]
+                patience(valid_stats_epoch, epoch, model_opt, fields)
 
         # 3. Log to remote server.
         if opt.exp_host:
             train_stats.log("train", experiment, optim.lr)
-            valid_stats.log("valid", experiment, optim.lr)
+
+            def fn(stat, handle, lr, epoch):
+                stat.log("valid", handle, writer, lr, epoch)
+
+            if use_simple_trainer:
+                fn(valid_stats, writer, optim.lr, epoch)
+            else:
+                for val in valid_stats:
+                    fn(val, writer, optim.lr, epoch)
+
         if opt.tensorboard:
-            train_stats.log_tensorboard("train", writer, optim.lr, epoch)
-            train_stats.log_tensorboard("valid", writer, optim.lr, epoch)
+            train_stats.log_tensorboard("train", writer, optim.lr,
+                                        epoch)
+
+            def fn(stat, handle, lr, epoch):
+                stat.log_tensorboard("valid", handle, writer, lr, epoch)
+
+            if use_simple_trainer:
+                fn(valid_stats, writer, optim.lr, epoch)
+            else:
+                for val in valid_stats:
+                    fn(val, writer, optim.lr, epoch)
 
         # 4. Update the learning rate
-        trainer.epoch_step(valid_stats.ppl(), epoch)
+        if use_simple_trainer:
+            epoch_ppl = valid_stats.ppl()
+        else:
+            epoch_ppl = valid_stats[-1].ppl()
+        trainer.epoch_step(epoch_ppl, epoch)
 
-        # 5. Drop a checkpoint if needed.
-        if epoch >= opt.start_checkpoint_at:
-            trainer.drop_checkpoint(model_opt, epoch, fields, valid_stats)
+        # 5.1. Check patience
+        if opt.earlystop_tolerance and use_simple_trainer:
+            if use_simple_trainer:
+                patience(valid_stats, epoch, model_opt, fields)
+            if patience.has_stopped():
+                break
+
+        # 5.2 Drop a checkpoint if needed.
+        if epoch >= opt.start_checkpoint_at and use_simple_trainer:
+                trainer.drop_checkpoint(model_opt, epoch, fields,
+                                        valid_stats)
 
 
 def check_save_model_path():
