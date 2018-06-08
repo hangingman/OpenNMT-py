@@ -175,12 +175,19 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
         lm_checkpoint = torch.load(model_opt.bilm_src_path,
                                    map_location=lambda storage, loc: storage)
         lm_opt = lm_checkpoint['opt']
+
+        # Implementation errors
         if not lm_opt.lm_use_char_input:
             raise NotImplementedError("The Language Model used in ELMo needs"
                                       "to have character-based input")
         if not lm_opt.bilm:
             raise NotImplementedError("The Language Model used in ELMo needs"
                                       "to be bidirectional")
+        if model_opt.encoder_type != 'rnn':
+            raise NotImplementedError("ELMo is only implemented for RNN "
+                                      "Encoder.")
+
+        # Load the language model without the generator
         language_model = make_language_model(lm_opt, fields, gpu,
                                              lm_checkpoint,
                                              'src',
@@ -193,6 +200,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                                        map_location=lambda storage,
                                        loc: storage)
             lm_opt = lm_checkpoint['opt']
+
+            # Implementation errors
             if not lm_opt.lm_use_char_input:
                 raise NotImplementedError(
                     "The Language Model used in ELMo needs "
@@ -201,6 +210,10 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                 raise NotImplementedError(
                     "The Language Model used in ELMo needs "
                     "to be bidirectional")
+            if model_opt.encoder_type != 'rnn':
+                raise NotImplementedError("ELMo is only implemented for RNN "
+                                          "Encoder.")
+
             language_model = make_language_model(lm_opt, fields, gpu,
                                                  lm_checkpoint,
                                                  'src',

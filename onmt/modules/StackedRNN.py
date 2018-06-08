@@ -78,6 +78,7 @@ class StackedGRUWithGalDropout(nn.Module):
 
         Arguments:
             batch_size(int) -- the size of the current batch
+            is_cuda(bool) -- whether the network is in gpu
         """
         keep = 1.0 - self.gal_dropout
         self.mask = Variable(torch.bernoulli(

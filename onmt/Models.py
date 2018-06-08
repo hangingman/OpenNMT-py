@@ -1080,6 +1080,8 @@ class APEModel(nn.Module):
         enc_final_src, memory_bank_src = self.encoder_src(src, lengths_src,
                                                           char_src=char_src)
 
+        # Need to temporarily sort mt sentences because torch needs
+        # them sorted by length when feeding a RNN
         sorted_mt, srt_mt_lens, mt_idx = self.sort_sentences(mt, lengths_mt)
         if char_mt is not None:
             srt_char_mt, _, _ = self.sort_sentences(char_mt, lengths_mt)
