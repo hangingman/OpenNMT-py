@@ -113,7 +113,7 @@ def model_opts(parser):
 
     group.add_argument('-c_attn', type=float, default=0.0,
                        help="""c factor for increasing a by u""")
-    group.add_argument('-fertility', type=float, default=2.0,
+    group.add_argument('-fertility', type=float, default=None,
                        help="""Constant fertility value for each source word""")
     group.add_argument('-fertility_type', type=str, default=None,
                        choices=['fixed', 'guided', 'predicted', 'actual'],

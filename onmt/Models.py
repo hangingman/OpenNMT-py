@@ -508,9 +508,11 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             # Compute attention upper bounds.
             if fertility is not None:
                 max_word_coverage = Variable(fertility.data.transpose(1, 0))
-            else:
+            elif self.fertility is not None:
                 max_word_coverage = Variable(torch.Tensor(
                     [self.fertility]).repeat(source_batch, source_len)).cuda()
+            else:
+                max_word_coverage = None
             if max_word_coverage is not None:
                 if coverage is None:
                     upper_bounds = max_word_coverage
@@ -521,7 +523,6 @@ class InputFeedRNNDecoder(RNNDecoderBase):
                 # time which are not sorted by sentence length. To fix this,
                 # we need to do torch.sort before packing and then restoring
                 # the previous order.
-                #import pdb; pdb.set_trace()
                 packed_upper_bounds = pack(
                     upper_bounds, (memory_lengths - 1).view(-1).tolist(),
                     batch_first=True)

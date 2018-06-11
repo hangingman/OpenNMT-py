@@ -43,7 +43,7 @@ class PenaltyBuilder(object):
         # when coverage is zero (common in sparse attention).
         penalty = -torch.max(
             torch.min(cov, cov.clone().fill_(1.0)),
-            cov.clone().fill_(self.min_attention)).log().sum(1)
+            cov.clone().fill_(min_attention)).log().sum(1)
         return beta * penalty
 
     def coverage_summary(self, beam, cov, beta=0., min_attention=0.):
