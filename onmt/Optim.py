@@ -51,7 +51,7 @@ class Optim(object):
                  decay_method=None,
                  warmup_steps=4000,
                  model_size=None,
-                 l2_value=None):
+                 l2_value=0.0):
         self.last_ppl = None
         self.lr = lr
         self.original_lr = lr
