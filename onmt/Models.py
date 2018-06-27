@@ -885,83 +885,6 @@ class LanguageModel(nn.Module):
 
         return dir_outputs, emb
 
-    def forward_the_forward(self, tgt, init_hidden):
-
-        emb = self.embeddings(tgt)
-
-        emb.unsqueeze_(0)
-
-        dir_outputs = []
-        output_cache = None
-
-        outputs = []
-
-        # Only have forward direction
-        n_dir = 0
-
-        h_0 = init_hidden[0][n_dir]
-        if not self.use_gru:
-            c_0 = init_hidden[1][n_dir]
-
-        for i, emb_t in enumerate(emb[n_dir].split(1)):
-            rnn_input = emb_t.squeeze(0)
-
-            # Don't update if it is the first timestep
-            if i > 0:
-                h_0 = h_1
-                if not self.use_gru:
-                    c_0 = c_1
-
-            h_1 = []
-            if not self.use_gru:
-                c_1 = []
-
-            layer_outputs = []
-
-            for i, layer in enumerate(self.rnns[n_dir]):
-
-                if self.use_gru:
-                    h_1_i = layer(rnn_input, h_0[i])
-                else:
-                    h_1_i, c_1_i = layer(rnn_input, (h_0[i], c_0[i]))
-
-                output = h_1_i
-
-                # Update hidden and cell state of this layer
-                h_1 += [h_1_i]
-                if not self.use_gru:
-                    c_1 += [c_1_i]
-
-                # Project into smaller space
-                if self.use_projection:
-                    rnn_input = self.projections[n_dir][i](output)
-                else:
-                    rnn_input = output
-
-                # Residual Connection
-                if i > 0 and self.use_residual:
-                    rnn_input.data += output_cache.data
-                    output_cache = rnn_input
-                # Cache  the first layer output
-                elif self.use_residual:
-                    output_cache = rnn_input
-
-                layer_outputs += [rnn_input]
-
-            h_1 = torch.stack(h_1)
-            if not self.use_gru:
-                c_1 = torch.stack(c_1)
-
-            layer_outputs = torch.stack(layer_outputs)
-            outputs += [layer_outputs]
-
-        outputs = torch.stack(outputs)
-        dir_outputs += [outputs]
-
-        dir_outputs = torch.stack(dir_outputs)
-
-        return dir_outputs, emb
-
     def _get_reverse_emb(self, tgt, emb):
         """Get the reversed sequence of embeddings
         (used for backward LM)
@@ -1121,21 +1044,15 @@ class APEModel(nn.Module):
       decoder (:obj:`RNNDecoderBase`): a decoder object
       multi<gpu (bool): setup for multigpu support
     """
-    def __init__(self, encoder_src, encoder_mt, decoder,
-                 telmo=None, multigpu=False):
+    def __init__(self, encoder_src, encoder_mt, decoder, multigpu=False):
         self.multigpu = multigpu
         super(APEModel, self).__init__()
         self.encoder_src = encoder_src
         self.encoder_mt = encoder_mt
         self.decoder = decoder
-        self.telmo = telmo
-        telmo_size = self.telmo.lang_model.input_size
-        self.telmo_layer = torch.nn.Linear(
-            self.decoder.hidden_size + telmo_size,
-            self.decoder.hidden_size)
 
     def forward(self, src, mt, tgt, lengths_src, lengths_mt, dec_state=None,
-                char_src=None, char_mt=None, char_tgt=None):
+                char_src=None, char_mt=None):
         """Forward propagate a `src` and `tgt` pair for training.
         Possible initialized with a beginning decoder state.
 
@@ -1195,12 +1112,6 @@ class APEModel(nn.Module):
             # Not yet supported on multi-gpu
             dec_state = None
             attns = None
-
-        if char_tgt is not None:
-            telmo_output = self.telmo(char_tgt)
-            telmo_decoder_cat = torch.cat([telmo_output[:-1],
-                                           decoder_outputs], dim=-1)
-            decoder_outputs = self.telmo_layer(telmo_decoder_cat)
 
         return decoder_outputs, attns, dec_state
 

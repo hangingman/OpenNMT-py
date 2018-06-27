@@ -14,7 +14,7 @@ from onmt.Models import NMTModel, MeanEncoder, RNNEncoder, \
                         CharEmbeddingsCNN, APEModel, APEInputFeedRNNDecoder
 from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, \
                          TransformerEncoder, TransformerDecoder, \
-                         CNNEncoder, CNNDecoder, AudioEncoder, ELMo, TELMo
+                         CNNEncoder, CNNDecoder, AudioEncoder, ELMo
 from onmt.Utils import use_gpu
 from torch.nn.init import xavier_uniform
 
@@ -220,17 +220,11 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
                                                  use_generator=False)
 
             elmo_mt = ELMo(language_model, model_opt.elmo_dropout)
-
-            if model_opt.telmo:
-                telmo = TELMo(language_model, model_opt.elmo_dropout)
-            else:
-                telmo = None
         else:
             elmo_mt = None
     else:
         elmo_src = None
         elmo_mt = None
-        telmo = None
 
     # Make encoder.
     if model_opt.model_type == "text":
@@ -286,8 +280,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
 
     # Make NMTModel(= encoder + decoder).
     if model_opt.model_type == 'ape':
-        model = APEModel(encoder_src, encoder_mt, decoder,
-                         telmo=telmo)
+        model = APEModel(encoder_src, encoder_mt, decoder)
     else:
         model = NMTModel(encoder, decoder)
     model.model_type = model_opt.model_type
