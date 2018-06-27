@@ -581,7 +581,7 @@ class LanguageModelTrainer(EarlyStoppingTrainer):
             data_type,
             norm_method,
             grad_accum_count,
-            start_val_after_batches=start_val_after_batches)
+            start_val_after_batches)
 
     def validate(self, valid_iter):
         """ Validate model.
@@ -694,10 +694,10 @@ class APETrainer(EarlyStoppingTrainer):
         super(APETrainer, self).__init__(
            model, train_loss, valid_loss, optim, tolerance, epochs,
            model_opt, fields,
-           trunc_size=0, shard_size=32, data_type='text',
-           norm_method="sents", grad_accum_count=1,
-           elmo=False,
-           start_val_after_batches=start_val_after_batches)
+           trunc_size, shard_size, data_type,
+           norm_method, grad_accum_count,
+           elmo,
+           start_val_after_batches)
 
     def validate(self, valid_iter):
         """ Validate model.
