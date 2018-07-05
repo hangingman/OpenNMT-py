@@ -1093,12 +1093,12 @@ class APEModel(nn.Module):
                                                         srt_mt_lens,
                                                         char_src=srt_char_mt)
 
-        if isinstance(sorted_enc_final_mt, tuple):
+        if isinstance(sorted_enc_final_mt, tuple):  # LSTM
             enc_final_mt = (sorted_enc_final_mt[0][:, mt_idx],
                             sorted_enc_final_mt[1][:, mt_idx])
-        else:
+        else:  # GRU
             enc_final_mt = sorted_enc_final_mt[:, mt_idx]
-        import ipdb; ipdb.set_trace()
+
         memory_bank_mt = sorted_memory_bank_mt[:, mt_idx]
 
         enc_state = \
@@ -1170,6 +1170,8 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
             hidden_size, coverage=coverage_attn,
             attn_type=attn_type
         )
+
+        self.init_state_layer = nn.Linear(self.hidden_size*2, self.hidden_size)
 
     def forward(self, tgt, memory_bank_src, memory_bank_mt,
                 state, memory_lengths_src=None, memory_lengths_mt=None):
@@ -1326,5 +1328,17 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
                                    tuple([_fix_enc_hidden(enc_hid)
                                          for enc_hid in encoder_final_mt]))
         else:  # GRU
+            enc_state_final_concat = torch.cat(
+                        [_fix_enc_hidden(encoder_final_src),
+                         _fix_enc_hidden(encoder_final_mt)], dim=-1)
+            init_state = self.init_state_layer(enc_state_final_concat)
             return RNNDecoderState(self.hidden_size,
-                                   _fix_enc_hidden(encoder_final_mt))
+                                   init_state)
+
+            # h_states_concat = torch.cat(
+            #             [memory_bank_mt.sum(dim=0)/len(memory_bank_mt),
+            #              memory_bank_src.sum(dim=0)/len(memory_bank_src)],
+            #             dim=-1)
+            # init_state = self.init_state_layer(h_states_concat).unsqueeze(0)
+            # return RNNDecoderState(self.hidden_size,
+            #                        init_state)
