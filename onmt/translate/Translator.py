@@ -12,6 +12,14 @@ import onmt.translate.Beam
 import onmt.io
 import onmt.opts
 
+# ADDED -------------------------------
+import pdb
+import pickle
+from collections import defaultdict
+import numpy as np
+import time
+import itertools
+# END ---------------------------------
 
 def make_translator(opt, report_score=True, out_file=None):
     if out_file is None:
@@ -37,7 +45,10 @@ def make_translator(opt, report_score=True, out_file=None):
               for k in ["beam_size", "n_best", "max_length", "min_length",
                         "stepwise_penalty", "block_ngram_repeat",
                         "ignore_when_blocking", "dump_beam" , "dump_attn",
-                        "data_type", "replace_unk", "gpu", "verbose"]}
+                        "data_type", "replace_unk", "gpu", "verbose",
+                        "use_guided", "tp_path", "guided_n_max",
+                        "guided_weight", "guided_correct_ngrams",
+                        "guided_correct_1grams"]}
 
     translator = Translator(model, model_opt, fields, global_scorer=scorer,
                             out_file=out_file, report_score=report_score,
@@ -93,7 +104,13 @@ class Translator(object):
                  report_bleu=False,
                  report_rouge=False,
                  verbose=False,
-                 out_file=None):
+                 out_file=None,
+                 use_guided=True,
+                 tp_path,
+                 guided_n_max,
+                 guided_weight,
+                 guided_correct_ngrams,
+                 guided_correct_1grams):
 
         self.gpu = gpu
         self.cuda = gpu > -1
@@ -160,6 +177,12 @@ class Translator(object):
             data, self.fields,
             self.n_best, self.replace_unk, tgt_path)
 
+        # ADDED --------------------------------------------------------------
+        # Load the translation pieces list
+        translation_pieces = pickle.load(open(self.tp_path, 'rb'))
+        tot_time = 0
+        # END ----------------------------------------------------------------
+
         # Statistics
         counter = count(1)
         pred_score_total, pred_words_total = 0, 0
@@ -169,8 +192,16 @@ class Translator(object):
         gold_attn_matrices = []
 
         all_scores = []
-        for batch in data_iter:
-            batch_data = self.translate_batch(batch, data)
+        for ix, batch in data_iter:
+            # ADDED --------------------------------------------------------------
+            start_time = time.time()
+
+            if not self.use_guided:
+                batch_data = self.translate_batch(batch, data, dict())
+            else:
+                batch_data = self.translate_batch(batch, data, translation_pieces)
+            
+            # END ----------------------------------------------------------------
             attn_matrices.append(batch_data['attention'])
             translations = builder.from_batch(batch_data)
 
@@ -211,6 +242,15 @@ class Translator(object):
                         output += row_format.format(word, *row) + '\n'
                         row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs)
                     os.write(1, output.encode('utf-8'))
+
+            # ADDED --------------------------------------------------------------
+            duration = time.time()-start_time
+            tot_time += duration
+            tot_time_print = str(time.strftime("%H:%M:%S", time.gmtime(tot_time)))
+            print("Batch {} - Duration: {:.2f} - Total: {}".format(ix,
+                                                        duration,
+                                                        tot_time_print))
+            # END ----------------------------------------------------------------
 
         if self.report_score:
             self._report_score('PRED', pred_score_total, pred_words_total)
@@ -259,6 +299,67 @@ class Translator(object):
         batch_size = batch.batch_size
         data_type = data.data_type
         vocab = self.fields["tgt"].vocab
+
+        # ADDED ----------------------------------------------------
+        if self.use_guided:
+            # List that will have the necessary translation pieces
+            #ixs_sorted = torch.sort(batch.indices)[0]
+            t_pieces = [translation_pieces[ix] for ix in batch.indices]
+
+            # "Translate" the list into dictionaries indexed by word index
+            tp_uni = list()
+            tp_multi = list()
+            out_uni = np.zeros((batch.batch_size, len(vocab)))
+
+            for ix, list_ in enumerate(t_pieces):
+                aux_dict_uni = defaultdict(lambda: 0)
+                aux_dict_multi = defaultdict(lambda: 0)
+                for tuple_ in list_:
+                    key = str(vocab.stoi[tuple_[0][0]])
+                    if len(tuple_[0]) == 1:
+                        aux_dict_uni[key] = tuple_[1]
+                        out_uni[ix][int(key)] = tuple_[1]
+                    else:
+                        for word in tuple_[0][1:]:
+                            key += " " + str(vocab.stoi[word])
+                        aux_dict_multi[key] = tuple_[1]
+                tp_uni.append(aux_dict_uni)
+                tp_multi.append(aux_dict_multi)
+
+            # To repeat we have to make [1,2,3,1,2,3,...] because
+            # in each beam we have batch_size translations, so we
+            # want to add all the translation pieces once in each
+            # beam. Therefore, we repeat them beam_size times and
+            # then we flatten that list to get something of dimen
+            # sion equal to beam_size * batch_size            
+            #tp_uni_ = [tp_uni for _ in range(self.beam_size)]
+            #tp_uni_rep = list(itertools.chain(*tp_uni_))
+            #tp_multi_ = [tp_multi for _ in range(self.beam_size)]
+            #tp_multi_rep = list(itertools.chain(*tp_multi_))
+            
+            out_uni_ = tuple([out_uni for _ in range(self.beam_size)])
+            out_uni_rep = np.vstack(out_uni_)            
+
+        def _ngrams(n_max, seq):
+            """
+            Args:
+                n_max:
+                seq:
+        
+            Outputs:
+                final:
+            """
+            final = list()
+            
+            for n in range(2, n_max):
+                for s in range(0, len(seq)-n+1):
+                    if s+n > len(seq):
+                        break
+                    list_seq = [str(x.item()) for x in seq[s:s+n]]
+                    final.append(list_seq)
+            
+            return final
+        # END ------------------------------------------------------
 
         # Define a list of tokens to exclude from ngram-blocking
         # exclusion_list = ["<t>", "</t>", "."]
@@ -349,6 +450,63 @@ class Translator(object):
             # (b) Compute a vector of batch x beam word scores.
             if not self.copy_attn:
                 out = self.model.generator.forward(dec_out).data
+
+                # ADDED ----------------------------------------------------
+                n_max = self.guided_n_max # n-gram max
+                
+                if self.use_guided:
+                    # Deal with n-gram cases
+                    bs = batch.batch_size
+                    total_size = batch.batch_size * self.beam_size
+                    out_multi = np.zeros((total_size, len(vocab)))
+
+                    if i > 0:
+                        for j in range(len(beam)): 
+                            if not len(tp_multi[j]): 
+                                continue
+                            for k, seq in enumerate(zip(*beam[j].next_ys)):
+                                seq_ = [str(x.item()) for x in seq]
+                                for l in range(1,n_max):
+                                    if i - l < 1: 
+                                        break
+                                    if l == 1: 
+                                        if " ".join(seq_[-l:]) not in tp_uni[j]: 
+                                            break
+                                    elif " ".join(seq_[-l:]) not in tp_multi[j]: 
+                                        break
+                                    for key, value in tp_multi[j].items():
+                                        key_ = key.split()
+                                        if len(key_)!=l+1: 
+                                            continue
+                                        if key_[-l-1:-1] == seq_[-l:]:
+                                            w = int(key_[-1])
+                                            if self.guided_correct_ngrams:
+                                                if key_[-1] not in seq_:
+                                                    out_multi[k*bs+j][w] += value
+                                            else:
+                                                out_multi[k*bs+j][w] += value
+
+                        if self.guided_correct_1grams:
+                            for j in range(len(beam)):
+                                if not len(tp_uni[j]):
+                                    continue
+                                for k, seq in enumerate(zip(*beam[j].next_ys)):
+                                    seq_ = [str(x.item()) for x in seq]
+                                    for w in set(seq_):
+                                        value = tp_uni[j][w]
+                                        out_multi[k*bs+j][int(w)] -= value
+                                    try:
+                                        assert ((out_uni_rep[k*bs+j]+out_multi[k*bs+j] >= 0) == True).all()
+                                    except:
+                                        pdb.set_trace()
+
+    
+                    # Add the weights of the 1-grams
+                    weight = self.guided_weight
+                    out = np.add(out, weight*out_uni_rep)
+                    out = np.add(out, weight*out_multi)
+                # END ------------------------------------------------------
+
                 out = unbottle(out)
                 # beam x tgt_vocab
                 beam_attn = unbottle(attn["std"])

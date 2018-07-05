@@ -485,6 +485,26 @@ def translate_opts(parser):
                        choices=['fixed', 'guided', 'predicted', 'actual'],
                        help="""Fertility type.""")
 
+    # Options relevant to guided NMT
+    group.add_argument('-use_guided', action='store_true',
+                       help="""Uses Guided-NMT with translation pieces to
+                       influence the outtput layer. """)
+    group.add_argument('-tp_path', type=str, default="",
+                        help="""Path pohe inting to the translation pieces
+                        pickle. TPs should be a dictionary""")
+    group.add_argument('-guided_n_max', type=int, default=4,
+                        help="""The maximum n-grams to be affected by
+                        translation pieces. Should be at most the maximum
+                        value used to create the translation pieces""")
+    group.add_argument('-guided_weight', type=float, default=1.0,
+                        help="""The weight given to the scores from the
+                        translation pieces""")
+    group.add_argument('-guided_correct_ngrams', action='store_true',
+                        help="""Enables correction factor to n-grams, n>1""")
+    group.add_argument('-guided_correct_1grams', action='store_true',
+                        help="""Enables correction factor to 1-grams""")
+    
+    # Options related to logging
     group = parser.add_argument_group('Logging')
     group.add_argument('-verbose', action="store_true",
                        help='Print scores and predictions for each sentence')
