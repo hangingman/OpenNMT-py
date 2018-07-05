@@ -1,7 +1,7 @@
 import torch
 from torch.autograd import Function
 from torch.nn import Module
-from constrained_sparsemax import constrained_sparsemax
+from .constrained_sparsemax import constrained_sparsemax
 import numpy as np
 np.set_printoptions(threshold=np.nan)
 

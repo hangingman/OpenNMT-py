@@ -106,11 +106,11 @@ class Translator(object):
                  verbose=False,
                  out_file=None,
                  use_guided=True,
-                 tp_path,
-                 guided_n_max,
-                 guided_weight,
-                 guided_correct_ngrams,
-                 guided_correct_1grams):
+                 tp_path="",
+                 guided_n_max=4,
+                 guided_weight=1.0,
+                 guided_correct_ngrams=False,
+                 guided_correct_1grams=False):
 
         self.gpu = gpu
         self.cuda = gpu > -1
@@ -144,6 +144,12 @@ class Translator(object):
         self.report_score = report_score
         self.report_bleu = report_bleu
         self.report_rouge = report_rouge
+        self.use_guided= use_guided
+        self.tp_path = tp_path
+        self.guided_n_max = guided_n_max
+        self.guided_weight = guided_weight
+        self.guided_correct_ngrams = guided_correct_ngrams
+        self.guided_correct_1grams = guided_correct_1grams
 
         # for debugging
         self.beam_trace = self.dump_beam != ""
@@ -179,7 +185,8 @@ class Translator(object):
 
         # ADDED --------------------------------------------------------------
         # Load the translation pieces list
-        translation_pieces = pickle.load(open(self.tp_path, 'rb'))
+        if self.use_guided:
+            translation_pieces = pickle.load(open(self.tp_path, 'rb'))
         tot_time = 0
         # END ----------------------------------------------------------------
 
@@ -192,7 +199,7 @@ class Translator(object):
         gold_attn_matrices = []
 
         all_scores = []
-        for ix, batch in data_iter:
+        for ix, batch in enumerate(data_iter):
             # ADDED --------------------------------------------------------------
             start_time = time.time()
 
@@ -270,7 +277,6 @@ class Translator(object):
             attn_matrices = [a[0][0].cpu().numpy() for a in attn_matrices]
             gold_attn_matrices = [a['std'][:,0,:].data.cpu().numpy()
                               for a in gold_attn_matrices]
-            import pickle
             pickle.dump({'pred': attn_matrices, 'gold': gold_attn_matrices},
                    open('attn_matrices_' + self.model_opt.attn_transform + '.out',
                         'wb'))
@@ -278,7 +284,7 @@ class Translator(object):
 
         return all_scores
 
-    def translate_batch(self, batch, data):
+    def translate_batch(self, batch, data, translation_pieces):
         """
         Translate a batch of sentences.
 
@@ -287,6 +293,7 @@ class Translator(object):
         Args:
            batch (:obj:`Batch`): a batch from a dataset object
            data (:obj:`Dataset`): the dataset object
+           translation_pieces (dict): dictionary with the translation pieces
 
 
         Todo:
@@ -538,10 +545,10 @@ class Translator(object):
         if fertility is not None:
             cum_attn = ret['attention'][0][0].sum(0).squeeze(0).cpu().numpy()
             fert = fertility.data[:, 0].cpu().numpy()
-            for c, f in zip(cum_attn, fert):
-                print('%f (%f)' % (c, f))
-        else:
-            print ret['attention'][0][0].sum(0)
+            #for c, f in zip(cum_attn, fert):
+            #    print('%f (%f)' % (c, f))
+        #else:
+            #print(ret['attention'][0][0].sum(0))
 
         return ret
 
