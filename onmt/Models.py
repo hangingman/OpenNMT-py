@@ -1093,18 +1093,22 @@ class APEModel(nn.Module):
                                                         srt_mt_lens,
                                                         char_src=srt_char_mt)
 
-        if len(sorted_enc_final_mt) == 2:
+        if isinstance(sorted_enc_final_mt, tuple):
             enc_final_mt = (sorted_enc_final_mt[0][:, mt_idx],
                             sorted_enc_final_mt[1][:, mt_idx])
         else:
             enc_final_mt = sorted_enc_final_mt[:, mt_idx]
+        import ipdb; ipdb.set_trace()
         memory_bank_mt = sorted_memory_bank_mt[:, mt_idx]
 
-        enc_state_mt = \
-            self.decoder.init_decoder_state(mt, memory_bank_mt, enc_final_mt)
+        enc_state = \
+            self.decoder.init_decoder_state(src, memory_bank_src,
+                                            enc_final_src,
+                                            mt, memory_bank_mt, enc_final_mt)
+
         decoder_outputs, dec_state, attns = \
             self.decoder(tgt, memory_bank_src, memory_bank_mt,
-                         enc_state_mt if dec_state is None
+                         enc_state if dec_state is None
                          else dec_state,
                          memory_lengths_src=lengths_src,
                          memory_lengths_mt=lengths_mt)
@@ -1262,6 +1266,7 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
                 memory_bank_mt.transpose(0, 1),
                 memory_lengths_src=memory_lengths_src,
                 memory_lengths_mt=memory_lengths_mt)
+
             if self.context_gate is not None:
                 # TODO: context gate should be employed
                 # instead of second RNN transform.
@@ -1306,3 +1311,20 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
         Using input feed by concatenating input with attention vectors.
         """
         return self.embeddings.embedding_size + self.hidden_size
+
+    def init_decoder_state(self, src, memory_bank_src, encoder_final_src,
+                           mt, memory_bank_mt, encoder_final_mt):
+        def _fix_enc_hidden(h):
+            # The encoder hidden is  (layers*directions) x batch x dim.
+            # We need to convert it to layers x batch x (directions*dim).
+            if self.bidirectional_encoder:
+                h = torch.cat([h[0:h.size(0):2], h[1:h.size(0):2]], 2)
+            return h
+
+        if isinstance(encoder_final_mt, tuple):  # LSTM
+            return RNNDecoderState(self.hidden_size,
+                                   tuple([_fix_enc_hidden(enc_hid)
+                                         for enc_hid in encoder_final_mt]))
+        else:  # GRU
+            return RNNDecoderState(self.hidden_size,
+                                   _fix_enc_hidden(encoder_final_mt))
