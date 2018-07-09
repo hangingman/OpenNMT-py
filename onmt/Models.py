@@ -1253,8 +1253,9 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
             if state.coverage is not None else None
 
         # Create a mask for gal dropout
-        if self.rnn.gal_dropout > 0 and self.training:
-            self.rnn.sample_mask(tgt_batch, emb.is_cuda)
+        if hasattr(self.rnn, 'gal_dropout'):
+            if self.rnn.gal_dropout > 0 and self.training:
+                self.rnn.sample_mask(tgt_batch, emb.is_cuda)
 
         # Input feed concatenates hidden state with
         # input at every time step.
