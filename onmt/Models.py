@@ -1171,7 +1171,8 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
             attn_type=attn_type
         )
 
-        self.init_state_layer = nn.Linear(self.hidden_size*2, self.hidden_size)
+        # self.init_state_layer = nn.Linear(self.hidden_size*2,
+        # self.hidden_size)
 
     def forward(self, tgt, memory_bank_src, memory_bank_mt,
                 state, memory_lengths_src=None, memory_lengths_mt=None):
@@ -1299,13 +1300,13 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
         # Return result.
         return hidden, decoder_outputs, attns
 
-    def _build_rnn(self, rnn_type, input_size,
-                   hidden_size, num_layers, dropout):
-        assert not rnn_type == "SRU", "SRU doesn't support input feed! " \
-                "Please set -input_feed 0!"
-        stacked_cell = onmt.modules.StackedGRUWithGalDropout
-        return stacked_cell(num_layers, input_size,
-                            hidden_size, dropout)
+    # def _build_rnn(self, rnn_type, input_size,
+    #                hidden_size, num_layers, dropout):
+    #     assert not rnn_type == "SRU", "SRU doesn't support input feed! " \
+    #             "Please set -input_feed 0!"
+    #     stacked_cell = onmt.modules.StackedGRUWithGalDropout
+    #     return stacked_cell(num_layers, input_size,
+    #                         hidden_size, dropout)
 
     @property
     def _input_size(self):

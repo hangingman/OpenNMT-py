@@ -601,11 +601,16 @@ class APETranslator(Translator):
                                                         srt_mt_lens,
                                                         char_src=srt_char_mt)
 
-        enc_states_mt = (sorted_enc_final_mt[0][:, mt_idx],
-                         sorted_enc_final_mt[1][:, mt_idx])
+        if isinstance(sorted_enc_final_mt, tuple):  # LSTM
+            enc_states_mt = (sorted_enc_final_mt[0][:, mt_idx],
+                             sorted_enc_final_mt[1][:, mt_idx])
+        else:  # GRU
+            enc_states_mt = sorted_enc_final_mt[:, mt_idx]
+
         memory_bank_mt = sorted_memory_bank_mt[:, mt_idx]
 
         dec_states = self.model.decoder.init_decoder_state(
+            src, memory_bank_src, enc_states_src,
             mt, memory_bank_mt, enc_states_mt)
 
         if src_lengths is None:
@@ -736,11 +741,16 @@ class APETranslator(Translator):
                                                         srt_mt_lens,
                                                         char_src=srt_char_mt)
 
-        enc_states_mt = (sorted_enc_final_mt[0][:, mt_idx],
-                         sorted_enc_final_mt[1][:, mt_idx])
+        if isinstance(sorted_enc_final_mt, tuple):  # LSTM
+            enc_states_mt = (sorted_enc_final_mt[0][:, mt_idx],
+                             sorted_enc_final_mt[1][:, mt_idx])
+        else:  # GRU
+            enc_states_mt = sorted_enc_final_mt[:, mt_idx]
+
         memory_bank_mt = sorted_memory_bank_mt[:, mt_idx]
 
         dec_states = self.model.decoder.init_decoder_state(
+            src, memory_bank_src, enc_states_src,
             mt, memory_bank_mt, enc_states_mt)
 
         #  (2) if a target is specified, compute the 'goldScore'
