@@ -1308,6 +1308,17 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
     #     return stacked_cell(num_layers, input_size,
     #                         hidden_size, dropout)
 
+    def _build_rnn(self, rnn_type, input_size,
+                   hidden_size, num_layers, dropout):
+        assert not rnn_type == "SRU", "SRU doesn't support input feed! " \
+                "Please set -input_feed 0!"
+        if rnn_type == "LSTM":
+            stacked_cell = onmt.modules.StackedLSTM
+        else:
+            stacked_cell = onmt.modules.StackedGRU
+        return stacked_cell(num_layers, input_size,
+                            hidden_size, dropout)
+
     @property
     def _input_size(self):
         """
