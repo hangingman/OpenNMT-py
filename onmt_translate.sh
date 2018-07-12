@@ -7,7 +7,7 @@ DATA=extra_data
 # Specific things to translation
 MODEL_NAME=de-en-md-base_acc_79.50_ppl_2.67_e15.pt
 #MODEL_NAME=preprocessed_softmax_cattn-0_acc_43.02_ppl_69.09_e9.pt
-SRC_FILE=dev.de
+SRC_FILE=test.de
 
 # Call the OpenNMT-py script
 python3 translate.py \
@@ -15,13 +15,16 @@ python3 translate.py \
 		-src ${DATA}/${SRC_FILE} \
 		-output ${DATA}/${SRC_FILE}.pred \
 		-beam_size 10 \
-        -replace_unki \
+        -min_length 2 \
 		-use_guided \
-		-tp_path \
+		-tp_path "extra_data/translation_pieces_md_10-th0pt5.pickle"\
 		-guided_n_max 4 \
 		-guided_weight 1.0 \
+        -guided_correct_ngrams \
+        -guided_correct_1grams \
+        -replace_unk
 		#-length_penalty wu \
-        #-alpha 1.5 \
+        #-alpha 1.5
         #-log_file "extra_data/log"
 
 # Copy the predictions to the right folders
