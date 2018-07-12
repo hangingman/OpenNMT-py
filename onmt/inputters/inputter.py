@@ -44,7 +44,7 @@ def get_fields(data_type, n_src_features, n_tgt_features):
         A dictionary whose keys are strings and whose values are the
         corresponding Field objects.
     """
-    if data_type == 'text':
+    if 'text' in data_type:
         return TextDataset.get_fields(n_src_features, n_tgt_features)
     elif data_type == 'img':
         return ImageDataset.get_fields(n_src_features, n_tgt_features)
@@ -59,7 +59,10 @@ def load_fields_from_vocab(vocab, data_type="text"):
     Load Field objects from `vocab.pt` file.
     """
     vocab = dict(vocab)
-    n_src_features = len(collect_features(vocab, 'src'))
+    if data_type == "monotext":
+        n_src_features = 0
+    else:
+        n_src_features = len(collect_features(vocab, 'src'))
     n_tgt_features = len(collect_features(vocab, 'tgt'))
     fields = get_fields(data_type, n_src_features, n_tgt_features)
     for k, v in vocab.items():
@@ -112,7 +115,7 @@ def get_num_features(data_type, corpus_file, side):
     """
     assert side in ["src", "tgt"]
 
-    if data_type == 'text':
+    if 'text' in data_type:
         return TextDataset.get_num_features(corpus_file, side)
     elif data_type == 'img':
         return ImageDataset.get_num_features(corpus_file, side)
@@ -223,18 +226,22 @@ def build_dataset(fields, data_type, src_data_iter=None, src_path=None,
 
         return src_examples_iter, num_src_feats
 
-    src_examples_iter, num_src_feats = \
-        _make_examples_nfeats_tpl(data_type, src_data_iter, src_path, src_dir,
-                                  src_seq_length_trunc, sample_rate,
-                                  window_size, window_stride,
-                                  window, normalize_audio)
+    if data_type != 'monotext':
+        src_examples_iter, num_src_feats = \
+            _make_examples_nfeats_tpl(data_type, src_data_iter, src_path,
+                                      src_dir, src_seq_length_trunc,
+                                      sample_rate, window_size, window_stride,
+                                      window, normalize_audio)
+    else:
+        src_examples_iter = None
+        num_src_feats = 0
 
     # For all data types, the tgt side corpus is in form of text.
     tgt_examples_iter, num_tgt_feats = \
         TextDataset.make_text_examples_nfeats_tpl(
             tgt_data_iter, tgt_path, tgt_seq_length_trunc, "tgt")
 
-    if data_type == 'text':
+    if 'text' in data_type:
         dataset = TextDataset(fields, src_examples_iter, tgt_examples_iter,
                               num_src_feats, num_tgt_feats,
                               src_seq_length=src_seq_length,

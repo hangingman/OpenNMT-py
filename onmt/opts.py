@@ -126,6 +126,8 @@ def model_opts(parser):
     group.add_argument('-lambda_coverage', type=float, default=1,
                        help='Lambda value for coverage.')
 
+    # Language Model options
+
 
 def preprocess_opts(parser):
     """ Pre-procesing options """
@@ -135,11 +137,11 @@ def preprocess_opts(parser):
                        help="""Type of the source input.
                        Options are [text|img].""")
 
-    group.add_argument('-train_src', required=True,
+    group.add_argument('-train_src',
                        help="Path to the training source data")
     group.add_argument('-train_tgt', required=True,
                        help="Path to the training target data")
-    group.add_argument('-valid_src', required=True,
+    group.add_argument('-valid_src',
                        help="Path to the validation source data")
     group.add_argument('-valid_tgt', required=True,
                        help="Path to the validation target data")

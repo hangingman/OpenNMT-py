@@ -41,7 +41,11 @@ class TextDataset(DatasetBase):
                  num_src_feats=0, num_tgt_feats=0,
                  src_seq_length=0, tgt_seq_length=0,
                  dynamic_dict=True, use_filter_pred=True):
-        self.data_type = 'text'
+
+        if src_examples_iter is not None:
+            self.data_type = 'text'
+        else:
+            self.data_type = 'monotext'
 
         # self.src_vocabs: mutated in dynamic_dict, used in
         # collapse_copy_scores and in Translator.py
@@ -53,7 +57,10 @@ class TextDataset(DatasetBase):
         # Each element of an example is a dictionary whose keys represents
         # at minimum the src tokens and their indices and potentially also
         # the src and tgt features and alignment information.
-        if tgt_examples_iter is not None:
+        if self.data_type == 'monotext':
+            examples_iter = (self._join_dicts(tgt) for tgt in
+                             tgt_examples_iter)
+        elif tgt_examples_iter is not None:
             examples_iter = (self._join_dicts(src, tgt) for src, tgt in
                              zip(src_examples_iter, tgt_examples_iter))
         else:
@@ -73,19 +80,40 @@ class TextDataset(DatasetBase):
         # If out_examples is a generator, we need to save the filter_pred
         # function in serialization too, which would cause a problem when
         # `torch.save()`. Thus we materialize it as a list.
-        src_size = 0
+        if self.data_type == 'text':
+            src_size = 0
 
-        out_examples = []
-        for ex_values in example_values:
-            example = self._construct_example_fromlist(
-                ex_values, out_fields)
-            src_size += len(example.src)
-            out_examples.append(example)
+            out_examples = []
+            for ex_values in example_values:
+                example = self._construct_example_fromlist(
+                    ex_values, out_fields)
+                src_size += len(example.src)
+                out_examples.append(example)
 
-        def filter_pred(example):
-            """ ? """
-            return 0 < len(example.src) <= src_seq_length \
-                and 0 < len(example.tgt) <= tgt_seq_length
+            print("average src size", src_size / len(out_examples),
+                  len(out_examples))
+
+            def filter_pred(example):
+                return 0 < len(example.src) <= src_seq_length \
+                    and 0 < len(example.tgt) <= tgt_seq_length
+
+        else:
+            # Same thing as above but for tgt side, in case we are
+            # preprocessing monotext.
+            tgt_size = 0
+
+            out_examples = []
+            for ex_values in example_values:
+                example = self._construct_example_fromlist(
+                    ex_values, out_fields)
+                tgt_size += len(example.tgt)
+                out_examples.append(example)
+
+            print("average tgt size", tgt_size / len(out_examples),
+                  len(out_examples))
+
+            def filter_pred(example):
+                return 0 < len(example.tgt) <= tgt_seq_length
 
         filter_pred = filter_pred if use_filter_pred else lambda x: True
 
@@ -97,7 +125,12 @@ class TextDataset(DatasetBase):
         """ Sort using length of source sentences. """
         # Default to a balanced sort, prioritizing tgt len match.
         # TODO: make this configurable.
-        if hasattr(ex, "tgt"):
+        if not hasattr(ex, "src"):
+            # monotext
+            return len(ex.tgt)
+
+        elif hasattr(ex, "tgt"):
+            # bitext
             return len(ex.src), len(ex.tgt)
         return len(ex.src)
 
@@ -276,6 +309,10 @@ class TextDataset(DatasetBase):
         Returns:
             number of features on `side`.
         """
+        # When dealing with monotext, src side will be empty.
+        if corpus_file is None:
+            return 0
+
         with codecs.open(corpus_file, "r", "utf-8") as cf:
             f_line = cf.readline().strip().split()
             _, _, num_feats = TextDataset.extract_text_features(f_line)

@@ -40,6 +40,13 @@ def parse_args():
     opts.preprocess_opts(parser)
 
     opt = parser.parse_args()
+
+    invalid = not opt.train_src or not opt.valid_src
+    if not opt.data_type == 'monotext' and invalid:
+        sys.stderr.write("src paths (train_src and valid_src) are required,"
+                         " unless using data_type option 'monotext'\n")
+        sys.exit(1)
+
     torch.manual_seed(opt.seed)
 
     check_existing_pt_files(opt)
@@ -75,6 +82,10 @@ def build_save_in_shards(src_corpus, tgt_corpus, fields,
     output pt file size. So a shard pt file consists of examples of size
     2 * `max_shard_size`(source + target).
     """
+
+    # In case we are dealing with a single text file
+    if src_corpus is None:
+        return build_save_in_shards_mono(tgt_corpus, fields, corpus_type, opt)
 
     corpus_size = os.path.getsize(src_corpus)
     if corpus_size > 10 * (1024 ** 2) and opt.max_shard_size == 0:
@@ -120,6 +131,52 @@ def build_save_in_shards(src_corpus, tgt_corpus, fields,
     return ret_list
 
 
+def build_save_in_shards_mono(tgt_corpus, fields,
+                              corpus_type, opt):
+    """
+    Same as build_save_in_shards(), but for a
+    monotext dataset.
+    """
+
+    corpus_size = os.path.getsize(tgt_corpus)
+    if corpus_size > 10 * (1024 ** 2) and opt.max_shard_size == 0:
+        logger.info("Warning. The corpus %s is larger than 10M bytes, "
+                    "you can set '-max_shard_size' to process it by "
+                    "small shards to use less memory." % tgt_corpus)
+
+    if opt.max_shard_size != 0:
+        logger.info(' * divide corpus into shards and build dataset '
+                    'separately (shard_size = %d bytes).'
+                    % opt.max_shard_size)
+
+    ret_list = []
+    tgt_iter = inputters.ShardedTextCorpusIterator(
+        tgt_corpus, opt.tgt_seq_length_trunc,
+        "tgt", opt.max_shard_size)
+
+    index = 0
+    while not tgt_iter.hit_end():
+        index += 1
+        dataset = inputters.TextDataset(
+            fields, None, tgt_iter,
+            0, tgt_iter.num_feats,
+            tgt_seq_length=opt.tgt_seq_length,
+            dynamic_dict=opt.dynamic_dict)
+
+        # We save fields in vocab.pt separately, so make it empty.
+        dataset.fields = []
+
+        pt_file = "{:s}.{:s}.{:d}.pt".format(
+            opt.save_data, corpus_type, index)
+        logger.info(" * saving %s data shard to %s."
+                    % (corpus_type, pt_file))
+        torch.save(dataset, pt_file)
+
+        ret_list.append(pt_file)
+
+    return ret_list
+
+
 def build_save_dataset(corpus_type, fields, opt):
     """ Building and saving the dataset """
     assert corpus_type in ['train', 'valid']
@@ -131,8 +188,9 @@ def build_save_dataset(corpus_type, fields, opt):
         src_corpus = opt.valid_src
         tgt_corpus = opt.valid_tgt
 
-    # Currently we only do preprocess sharding for corpus: data_type=='text'.
-    if opt.data_type == 'text':
+    # Currently we only do preprocess sharding for corpus: data_type=='text'
+    # or data_type=='monotext'.
+    if 'text' in opt.data_type:
         return build_save_in_shards(
             src_corpus, tgt_corpus, fields,
             corpus_type, opt)
