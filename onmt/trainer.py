@@ -31,6 +31,7 @@ def build_trainer(opt, model, fields, optim, data_type, model_saver=None):
         model_saver(:obj:`onmt.models.ModelSaverBase`): the utility object
             used to save the model
     """
+
     train_loss = onmt.utils.loss.build_loss_compute(
         model, fields["tgt"].vocab, opt)
     valid_loss = onmt.utils.loss.build_loss_compute(
@@ -45,11 +46,22 @@ def build_trainer(opt, model, fields, optim, data_type, model_saver=None):
     gpu_verbose_level = opt.gpu_verbose_level
 
     report_manager = onmt.utils.build_report_manager(opt)
-    trainer = onmt.Trainer(model, train_loss, valid_loss, optim, trunc_size,
-                           shard_size, data_type, norm_method,
-                           grad_accum_count, n_gpu, gpu_rank,
-                           gpu_verbose_level, report_manager,
-                           model_saver=model_saver)
+
+    if opt.lm:
+        trainer = onmt.LanguageModelTrainer(
+            model, train_loss, valid_loss, optim,
+            trunc_size, shard_size, data_type, norm_method,
+            grad_accum_count, n_gpu, gpu_rank,
+            gpu_verbose_level, report_manager,
+            model_saver=model_saver)
+    else:
+        trainer = onmt.Trainer(
+            model, train_loss, valid_loss, optim, trunc_size,
+            shard_size, data_type, norm_method,
+            grad_accum_count, n_gpu, gpu_rank,
+            gpu_verbose_level, report_manager,
+            model_saver=model_saver)
+
     return trainer
 
 
@@ -295,8 +307,7 @@ class Trainer(object):
         # 3.bis Multi GPU gradient gather
         if self.n_gpu > 1:
             grads = [p.grad.data for p in self.model.parameters()
-                     if p.requires_grad
-                     and p.grad is not None]
+                     if p.requires_grad and p.grad is not None]
             onmt.utils.distributed.all_reduce_and_rescale_tensors(
                 grads, float(1))
 
@@ -356,3 +367,111 @@ class Trainer(object):
         """
         if self.model_saver is not None:
             self.model_saver.maybe_save(step)
+
+
+class LanguageModelTrainer(Trainer):
+
+    def __init__(self, model, train_loss, valid_loss, optim,
+                 trunc_size=0, shard_size=32, data_type='text',
+                 norm_method="sents", grad_accum_count=1, n_gpu=1, gpu_rank=1,
+                 gpu_verbose_level=0, report_manager=None, model_saver=None):
+        super(LanguageModelTrainer, self).__init__(
+                model, train_loss, valid_loss, optim, trunc_size, shard_size,
+                data_type, norm_method, grad_accum_count, n_gpu, gpu_rank,
+                gpu_verbose_level, report_manager, model_saver)
+
+    def validate(self, valid_iter):
+        """ Validate model.
+            valid_iter: validate data iterator
+        Returns:
+            :obj:`onmt.Statistics`: validation loss statistics
+        """
+        # Set model in validating mode.
+        self.model.eval()
+
+        stats = onmt.utils.Statistics()
+
+        attns = None
+
+        for batch in valid_iter:
+            cur_dataset = valid_iter.get_cur_dataset()
+            self.valid_loss.cur_dataset = cur_dataset
+
+            init_hidden = self.model.init_rnn_state(batch.batch_size)
+
+            if self.model.char_convs:
+                tgt_input = inputters.make_features(batch, 'char_tgt')
+                # (target_size, batch_size, max_char_tgt, n_feat)
+                tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+            else:
+                tgt_input = inputters.make_features(batch, 'tgt')
+
+            # F-prop through the model.
+            outputs, _ = self.model(tgt_input, init_hidden)
+
+            # Remove EOS/BOS output and get last layer
+            outputs = outputs[:, :-1, -1, :, :].contiguous()
+
+            # Compute loss.
+            batch_stats = self.valid_loss.monolithic_compute_loss(
+                    batch, outputs, attns)
+            # remove attns for lm
+
+            # Update statistics.
+            stats.update(batch_stats)
+
+        # Set model back to training mode.
+        self.model.train()
+
+        return stats
+
+    def _gradient_accumulation(self, true_batchs, normalization, total_stats,
+                               report_stats):
+        if self.grad_accum_count > 1:
+            self.model.zero_grad()
+
+        for batch in true_batchs:
+            target_size = batch.tgt.size(0)
+            # Truncated BPTT
+            if self.trunc_size:
+                trunc_size = self.trunc_size
+            else:
+                trunc_size = target_size
+
+            init_hidden = self.model.init_rnn_state(batch.batch_size)
+            attns = None
+
+            if self.model.char_convs:
+                tgt_input = inputters.make_features(batch, 'char_tgt')
+                # (target_size, batch_size, max_char_tgt, n_feat)
+                tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+            else:
+                tgt_input = inputters.make_features(batch, 'tgt')
+
+            for j in range(0, target_size-1, trunc_size):
+
+                # 1. F-prop all but generator.
+                if self.grad_accum_count == 1:
+                    self.model.zero_grad()
+
+                outputs, _ = self.model(tgt_input, init_hidden)
+
+                # Remove EOS/BOS output and get last layer
+                outputs = outputs[:, :-1, -1, :, :].contiguous()
+
+                # 2. Compute loss in shards for memory efficiency.
+                batch_stats = self.train_loss.sharded_compute_loss(
+                        batch, outputs, attns, j,
+                        trunc_size, self.shard_size, normalization)
+                total_stats.update(batch_stats)
+                report_stats.update(batch_stats)
+
+        # 3. Multi GPU gradient gather
+        if self.n_gpu > 1:
+            grads = [p.grad.data for p in self.model.parameters()
+                     if p.requires_grad and p.grad is not None]
+            onmt.utils.distributed.all_reduce_and_rescale_tensors(
+                grads, float(1))
+
+        # 4. Update the parameters and statistics.
+        self.optim.step()

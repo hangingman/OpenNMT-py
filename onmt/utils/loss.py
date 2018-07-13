@@ -24,6 +24,11 @@ def build_loss_compute(model, tgt_vocab, opt, train=True):
         compute = onmt.modules.CopyGeneratorLossCompute(
             model.generator, tgt_vocab, opt.copy_attn_force,
             opt.copy_loss_by_seqlength)
+    elif opt.lm:
+        compute = LMLossCompute(
+            model.generator, tgt_vocab,
+            label_smoothing=0.0,
+            bidirectional=opt.lm_use_bidir)
     else:
         compute = NMTLossCompute(
             model.generator, tgt_vocab,
@@ -290,8 +295,102 @@ def shards(state, shard_size, eval_only=False):
         # Assumed backprop'd
         variables = []
         for k, (v, v_split) in non_none.items():
-            if isinstance(v, torch.Tensor) and state[k].requires_grad:
+            if (isinstance(v, torch.Tensor) and
+                    state[k].requires_grad and
+                    v_split[0].grad is not None):
+
                 variables.extend(zip(torch.split(state[k], shard_size),
                                      [v_chunk.grad for v_chunk in v_split]))
+
         inputs, grads = zip(*variables)
         torch.autograd.backward(inputs, grads)
+
+
+class LMLossCompute(NMTLossCompute):
+    """
+    Standard NMT Loss Computation.
+    """
+    def __init__(self, generator, tgt_vocab,
+                 normalization="sents", label_smoothing=0.0,
+                 bidirectional=False):
+        super(LMLossCompute, self).__init__(generator, tgt_vocab,
+                                            normalization,
+                                            label_smoothing)
+
+        self.bidirectional = bidirectional
+
+    def _make_shard_state(self, batch, output, range_, attns=None):
+        target = batch.tgt
+        lengths = target.ne(self.padding_idx).sum(dim=0)
+        idx = self._get_reverse_idx(lengths)
+        target_size = int(lengths[0])
+        reversed_tgt = target.view(batch.batch_size*target_size,
+                                   -1)[idx, :].view(target_size,
+                                                    batch.batch_size)
+
+        if self.bidirectional:
+            return {
+                "output": output[0],
+                "reverse_output": output[1],
+                "target": batch.tgt[range_[0] + 1: range_[1]],
+                "reverse_target": reversed_tgt[range_[0] + 1: range_[1]]
+            }
+        else:
+            # need to put a dummy in reverse_output, even though
+            # it will not be used
+            return {
+                "output": output[0],
+                "reverse_output": output[0],
+                "target": batch.tgt[range_[0] + 1: range_[1]],
+                "reverse_target": reversed_tgt[range_[0] + 1: range_[1]]
+            }
+
+    def _compute_loss(self, batch, output, reverse_output,
+                      target, reverse_target):
+
+        if self.bidirectional:
+            scores = self.generator(
+                self._bottle(output))
+            backward_scores = self.generator(
+                self._bottle(reverse_output))
+
+            rev_gtruth = reverse_target.view(-1)
+        else:
+            scores = self.generator(self._bottle(output))
+
+        gtruth = target.view(-1)
+
+        if self.bidirectional:
+            f_loss = self.criterion(scores, gtruth)
+            b_loss = self.criterion(backward_scores, rev_gtruth)
+            loss = f_loss + b_loss
+            stat_loss = loss/2
+        else:
+            loss = stat_loss = self.criterion(scores, gtruth)
+
+        loss_data = stat_loss.data.clone()
+
+        stats = self._stats(loss_data,
+                            scores.data,
+                            target.view(-1).data)
+
+        return loss, stats
+
+    def _get_reverse_idx(self, lengths):
+        """Returns the indices needed to reverse the target sequence.
+        """
+
+        sentence_size = int(lengths[0])
+        batch_size = len(lengths)
+
+        idx = [0]*(batch_size*sentence_size)
+
+        for i in range(batch_size*sentence_size):
+            batch_index = i % batch_size
+            sentence_index = i//batch_size
+            idx[i] = (int(lengths[batch_index])-sentence_index-1)*batch_size \
+                + batch_index
+            if idx[i] < 0:  # Padding symbol, don't change order
+                idx[i] = i
+
+        return idx

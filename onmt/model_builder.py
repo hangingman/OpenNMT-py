@@ -20,7 +20,7 @@ from onmt.decoders.decoder import InputFeedRNNDecoder, StdRNNDecoder
 from onmt.decoders.transformer import TransformerDecoder
 from onmt.decoders.cnn_decoder import CNNDecoder
 
-from onmt.modules import Embeddings, CopyGenerator
+from onmt.modules import Embeddings, CopyGenerator, CharEmbeddingsCNN
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
 
@@ -36,6 +36,11 @@ def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
     """
     if for_encoder:
         embedding_dim = opt.src_word_vec_size
+    elif opt.lm:
+        if opt.use_char_input:
+            embedding_dim = opt.lm_char_vec_size
+        else:
+            embedding_dim = opt.lm_word_vec_size
     else:
         embedding_dim = opt.tgt_word_vec_size
 
@@ -239,10 +244,120 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
     return model
 
 
+def build_language_model(model_opt, fields, gpu, checkpoint=None,
+                         side='tgt'):
+    """
+    Args:
+        model_opt: the option loaded from checkpoint.
+        fields: `Field` objects for the model.
+        gpu(bool): whether to use gpu.
+        checkpoint: the model gnerated by train phase, or a resumed snapshot
+                    model from a stopped training.
+        side: which input field should we use. Default is tgt since
+            since that's what we use during training.
+    Returns:
+        the Language Model.
+    """
+    assert model_opt.model_type in ["text"], \
+        ("Unsupported model type %s" % (model_opt.model_type))
+
+    # Make Embeddings
+    word_dict = fields[side].vocab
+    feature_dicts = inputters.collect_feature_vocabs(fields, side)
+    # Get Padding idx in case bidirectional language model is necessary
+    # (padding symbol is needed to reverse sequences correctly)
+    padding_idx = word_dict.stoi[inputters.PAD_WORD]
+
+    if model_opt.use_char_input:
+        if "char_"+side not in fields.keys():
+            raise ValueError("There is no character vocabulary field"
+                             " available. Please preprocess data with"
+                             " -use_char flag.")
+        # Load character vocabulary
+        char_word_dict = fields["char_"+side].nesting_field.vocab
+        # Create character embeddings
+        char_embeddings = build_embeddings(model_opt, char_word_dict,
+                                           feature_dicts, for_encoder=False)
+        # Initialize Convolutions, Highway Layer and Projection
+        # into word embedding size
+        embeddings = CharEmbeddingsCNN(model_opt, char_embeddings)
+
+    else:
+        embeddings = build_embeddings(model_opt, word_dict,
+                                      feature_dicts, for_encoder=False)
+
+    # Make LanguageModel.
+    model = onmt.models.LanguageModel(model_opt, embeddings, gpu, padding_idx)
+    model.model_type = model_opt.model_type
+
+    # Save model options as a boolean in the model
+    if model_opt.lm_use_bidir:
+        model.bidirectional = True
+    else:
+        model.bidirectional = False
+
+    if model_opt.use_char_input:
+        model.char_convs = True
+    else:
+        model.char_convs = False
+
+    # Make Generator.
+    output_size = model_opt.lm_word_vec_size if model_opt.lm_use_projection \
+        else model_opt.lm_rnn_size
+    generator = nn.Sequential(
+        nn.Linear(output_size, len(fields[side].vocab)),
+        nn.LogSoftmax(dim=-1))
+
+    if model_opt.lm_tie_weights:
+            if model_opt.use_char_input:
+                raise ValueError('It is not possible to tie weights '
+                                 'when using character input embeddings.')
+            if output_size != model_opt.lm_word_vec_size:
+                raise ValueError(
+                    'When using the tied flag, hidden size'
+                    ' must be equal to embedding size.')
+            generator[0].weight = embeddings.word_lut.weight
+
+    # Load the model states from checkpoint or initialize them.
+    if checkpoint is not None:
+        print('Loading model parameters.')
+        model.load_state_dict(checkpoint['model'])
+        generator.load_state_dict(checkpoint['generator'])
+    else:
+        if model_opt.param_init != 0.0:
+            print('Intializing model parameters.')
+            for p in model.parameters():
+                p.data.uniform_(-model_opt.param_init, model_opt.param_init)
+            for p in generator.parameters():
+                p.data.uniform_(-model_opt.param_init, model_opt.param_init)
+        if model_opt.param_init_glorot:
+            for p in model.parameters():
+                if p.dim() > 1:
+                    xavier_uniform(p)
+            for p in generator.parameters():
+                if p.dim() > 1:
+                    xavier_uniform(p)
+
+    # Add generator to model (this registers it as parameter of model).
+    model.generator = generator
+
+    # Make the whole model leverage GPU if indicated to do so.
+    if gpu:
+        model.cuda()
+    else:
+        model.cpu()
+
+    return model
+
+
 def build_model(model_opt, opt, fields, checkpoint):
     """ Build the Model """
     logger.info('Building model...')
-    model = build_base_model(model_opt, fields,
-                             use_gpu(opt), checkpoint)
+    if model_opt.lm:
+        model = build_language_model(model_opt, fields,
+                                     use_gpu(opt), checkpoint)
+    else:
+        model = build_base_model(model_opt, fields,
+                                 use_gpu(opt), checkpoint)
     logger.info(model)
     return model

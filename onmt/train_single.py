@@ -86,6 +86,8 @@ def main(opt):
     # (All datasets have the same data_type).
     first_dataset = next(lazily_load_dataset("train", opt))
     data_type = first_dataset.data_type
+    if model_opt.lm:
+        data_type = 'monotext'
 
     use_char = True if model_opt.use_char_input else False
     # Load fields generated from preprocess phase.
@@ -93,7 +95,6 @@ def main(opt):
                           use_char)
 
     # Report src/tgt features.
-
     src_features, tgt_features = _collect_report_features(fields)
     for j, feat in enumerate(src_features):
         logger.info(' * src feature %d size = %d'

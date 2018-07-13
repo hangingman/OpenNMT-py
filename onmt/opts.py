@@ -128,9 +128,56 @@ def model_opts(parser):
 
     # Character input options
     group.add_argument('-use_char_input', action="store_true",
-                       help='Use character based input.')
+                       help="""Use character based input.
+                            (currently only implemented for Language Model)""")
 
     # Language Model options
+    group = parser.add_argument_group('Language Model')
+    group.add_argument('-lm', action="store_true",
+                       help="""Train a Language Model instead
+                            of the standard Seq2Seq models of OpenNMT-py.""")
+    group.add_argument('-lm_use_bidir', action="store_true",
+                       help='Make the language model bidirectional.')
+    group.add_argument('-lm_char_vec_size', type=int, default=16,
+                       help='Character embedding size for LM.')
+    group.add_argument('-lm_char_conv_filters', type=filters, nargs='+',
+                       default=[(1, 32), (2, 32), (3, 64), (4, 128),
+                                (5, 256), (6, 512), (7, 1024)],
+                       help='Width and number of output channels of character'
+                            ' convolution embedding layer. Needs to receive'
+                            ' the width and number of channels separated by'
+                            ' a comma and different layers separated by'
+                            ' spaces (ex.: "-lm_char_conv_filters 3,64 4,128")'
+                       )
+    group.add_argument('-lm_num_highway', type=int, default=2,
+                       help='Number of highway layers in character'
+                            ' convolution embeddings.')
+    group.add_argument('-lm_tie_weights', action="store_true",
+                       help='Tie the generator weights with the embeddings.')
+    group.add_argument('-lm_use_projection', action="store_true",
+                       help='Use projections to smaller size between layers.')
+    group.add_argument('-lm_use_residual', action="store_true",
+                       help='Use a residual connection between layers.')
+    group.add_argument('-lm_gal_dropout', type=float, default=0.,
+                       help='Dropout probability applied in the LM RNN.')
+    group.add_argument('-lm_word_vec_size', type=int, default=500,
+                       help='Word embedding size for LM.')
+    group.add_argument('-lm_rnn_size', type=int, default=500,
+                       help='Size of rnn hidden states for LM.')
+    group.add_argument('-lm_layers', type=int, default=2,
+                       help='Number of layers for each direction in LM RNN.')
+    group.add_argument('-lm_rnn_type', type=str, default='LSTM',
+                       choices=['LSTM', 'GRU'],
+                       help='The gate type to use in the RNNs')
+
+
+def filters(s):
+    try:
+        width, num = map(int, s.split(','))
+        return width, num
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "Filters must be of shape 'width,num_out_channels'")
 
 
 def preprocess_opts(parser):
