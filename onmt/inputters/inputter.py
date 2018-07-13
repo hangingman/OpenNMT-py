@@ -60,6 +60,10 @@ def load_fields_from_vocab(vocab, data_type="text", use_char=False):
     Load Field objects from `vocab.pt` file.
     """
     vocab = dict(vocab)
+    if not any(['_nested' in k for k in vocab.keys()]) and use_char:
+        raise ValueError('There are no character fields '
+                         'in the vocab file. Use -use_char '
+                         'during preprocessing to be able to use characters.')
     if data_type == "monotext":
         n_src_features = 0
     else:
