@@ -186,7 +186,7 @@ class LanguageModel(nn.Module):
         emb = self.embeddings(tgt)
 
         if self.num_directions > 1:
-            reverse_emb = self._get_reverse_emb(tgt, emb)
+            reverse_emb = self._get_reverse_seq(tgt, emb)
             emb.unsqueeze_(0)
             reverse_emb.unsqueeze_(0)
             emb = torch.cat([emb, reverse_emb], dim=0)
