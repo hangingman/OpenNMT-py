@@ -126,6 +126,10 @@ def model_opts(parser):
     group.add_argument('-lambda_coverage', type=float, default=1,
                        help='Lambda value for coverage.')
 
+    # Character input options
+    group.add_argument('-use_char_input', action="store_true",
+                       help='Use character based input.')
+
     # Language Model options
 
 

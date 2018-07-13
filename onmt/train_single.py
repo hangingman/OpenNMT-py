@@ -87,8 +87,10 @@ def main(opt):
     first_dataset = next(lazily_load_dataset("train", opt))
     data_type = first_dataset.data_type
 
+    use_char = True if model_opt.use_char_input else False
     # Load fields generated from preprocess phase.
-    fields = _load_fields(first_dataset, data_type, opt, checkpoint)
+    fields = _load_fields(first_dataset, data_type, opt, checkpoint,
+                          use_char)
 
     # Report src/tgt features.
 

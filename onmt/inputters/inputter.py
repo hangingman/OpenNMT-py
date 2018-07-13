@@ -79,10 +79,18 @@ def load_fields_from_vocab(vocab, data_type="text", use_char=False):
             k = k[:-7]
             v.stoi = defaultdict(lambda: 0, v.stoi)
             fields[k].nesting_field.vocab = v
+
         else:
             # Hack. Can't pickle defaultdict :(
             v.stoi = defaultdict(lambda: 0, v.stoi)
-            fields[k].vocab = v
+            try:
+                fields[k].vocab = v
+            except KeyError:
+                if 'char' in k:
+                    raise ValueError('If using character input,'
+                                     ' please use'
+                                     ' -use_char_input option.')
+                sys.exit()
     return fields
 
 
@@ -615,14 +623,14 @@ def lazily_load_dataset(corpus_type, opt):
         yield _lazy_dataset_loader(pt, corpus_type)
 
 
-def _load_fields(dataset, data_type, opt, checkpoint):
+def _load_fields(dataset, data_type, opt, checkpoint, use_char=False):
     if checkpoint is not None:
         logger.info('Loading vocab from checkpoint at %s.' % opt.train_from)
         fields = load_fields_from_vocab(
             checkpoint['vocab'], data_type)
     else:
         fields = load_fields_from_vocab(
-            torch.load(opt.data + '.vocab.pt'), data_type)
+            torch.load(opt.data + '.vocab.pt'), data_type, use_char)
     fields = dict([(k, f) for (k, f) in fields.items()
                    if k in dataset.examples[0].__dict__])
 
