@@ -35,8 +35,54 @@ def make_translator(opt, report_score=True, out_file=None):
     fields, model, model_opt = \
         onmt.ModelConstructor.load_test_model(opt, dummy_opt.__dict__)
 
-    pdb.set_trace()
+    extend_model = False
+    id_method = 'unk'
 
+    if extend_model:
+        # Get the fields for the in-domain model
+        base_path = "/home/ubuntu/OpenNMT-py-un/extra_data/models/"
+        id_model = base_path + "de-en-md-base_acc_79.50_ppl_2.67_e15.pt"
+        id_check = torch.load(id_model, 
+                              map_location=lambda storage, loc: storage)
+        id_fields = onmt.io.load_fields_from_vocab(id_check['vocab'],
+                                                   data_type='text')
+        
+        id_vocab = id_fields['tgt'].vocab
+        ge_vocab = fields['tgt'].vocab
+    
+        init_index = len(ge_vocab.itos)
+        added = 0
+
+        print("Updating vocab ...")
+        for idw in id_vocab.itos:
+            if idw not in ge_vocab.itos:
+                fields['tgt'].vocab.itos.append(idw)
+                fields['tgt'].vocab.stoi[idw] = init_index + added
+                added += 1
+        print("Vocab updated. Added {} new words.".format(added))
+
+        print("Updating decoder and embeddings ...")
+        id_mx = torch.empty(added, 
+                            model.generator[0].weight.shape[1],
+                            dtype=torch.float)
+
+        if id_method == 'unk':
+            unk_v = model.generator[0].weight[0]
+            for i in range(added):
+                id_mx[i] = unk_v
+
+        elif id_method == 'pred':
+            print("Warning: Not implemented")
+            pass
+
+        print("Finished updating decoder and embeddings")
+        print("Previous shape: ", model.generator[0].weight.shape)
+        model.generator[0].weight.data = torch.cat((model.generator[0].weight, id_mx), 0)
+        model.decoder.embeddings.word_lut.weight = model.generator[0].weight
+        print("Current shape: ", model.generator[0].weight.shape)
+
+        pdb.set_trace()
+                
     scorer = onmt.translate.GNMTGlobalScorer(opt.alpha,
                                              opt.beta,
                                              opt.min_attention,
