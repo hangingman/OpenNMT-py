@@ -12,6 +12,9 @@ UNK_WORD = '<unk>'
 UNK = 0
 BOS_WORD = '<s>'
 EOS_WORD = '</s>'
+# Special tokens for character vocabulary
+BOW_CHAR = '<w>'
+EOW_CHAR = '</w>'
 
 
 class DatasetBase(torchtext.data.Dataset):
@@ -113,7 +116,32 @@ class DatasetBase(torchtext.data.Dataset):
         ex = torchtext.data.Example()
         for (name, field), val in zip(fields, data):
             if field is not None:
-                setattr(ex, name, field.preprocess(val))
+                preprocessed = field.preprocess(val)
+
+                # Check if this field is character-based
+                if 'char' in name:
+                    # if we are preprocessing an example with a character
+                    # field, we want to ensure all characters are encoded
+                    # in utf-8. This way, we will turn characters that have
+                    # a unicode > 255 in several characters with unicode < 256.
+                    # This ensures we do not have unknown characters
+                    # in character-based embeddings.
+                    new_prepr = []
+                    for word in preprocessed:
+                        new_word = []
+                        for char in word:
+                            new_chr = char.encode('utf-8', 'ignore')
+                            # check if character was split into
+                            # several characters
+                            if len(new_chr) > 1:
+                                for code in new_chr:
+                                    new_word.append(code)
+                            else:
+                                new_word.append(new_chr)
+                        new_prepr.append(new_word)
+                    preprocessed = new_prepr
+
+                setattr(ex, name, preprocessed)
             else:
                 setattr(ex, name, val)
         return ex

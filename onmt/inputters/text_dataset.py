@@ -11,7 +11,8 @@ import torch
 import torchtext
 
 from onmt.inputters.dataset_base import (DatasetBase, UNK_WORD,
-                                         PAD_WORD, BOS_WORD, EOS_WORD)
+                                         PAD_WORD, BOS_WORD, EOS_WORD,
+                                         BOW_CHAR, EOW_CHAR)
 from onmt.utils.misc import aeq
 
 
@@ -231,13 +232,15 @@ class TextDataset(DatasetBase):
                 yield line
 
     @staticmethod
-    def get_fields(n_src_features, n_tgt_features):
+    def get_fields(n_src_features, n_tgt_features, use_char=False):
         """
         Args:
             n_src_features (int): the number of source features to
                 create `torchtext.data.Field` for.
             n_tgt_features (int): the number of target features to
                 create `torchtext.data.Field` for.
+            use_char (bool): boolean to decide if character fields are
+                necessary.
 
         Returns:
             A dictionary whose keys are strings and whose values
@@ -261,6 +264,32 @@ class TextDataset(DatasetBase):
             fields["tgt_feat_" + str(j)] = \
                 torchtext.data.Field(init_token=BOS_WORD, eos_token=EOS_WORD,
                                      pad_token=PAD_WORD)
+
+        if use_char:
+            # Create character related fields
+            nesting_field_src = torchtext.data.Field(tokenize=list,
+                                                     pad_token=PAD_WORD,
+                                                     init_token=BOW_CHAR,
+                                                     eos_token=EOW_CHAR,
+                                                     fix_length=50)
+
+            fields["char_src"] = torchtext.data.NestedField(
+                                    nesting_field_src,
+                                    init_token=BOS_WORD,
+                                    eos_token=EOS_WORD,
+                                    pad_token=PAD_WORD)
+
+            nesting_field_tgt = torchtext.data.Field(tokenize=list,
+                                                     pad_token=PAD_WORD,
+                                                     init_token=BOW_CHAR,
+                                                     eos_token=EOW_CHAR,
+                                                     fix_length=50)
+
+            fields["char_tgt"] = torchtext.data.NestedField(
+                                    nesting_field_tgt,
+                                    init_token=BOS_WORD,
+                                    eos_token=EOS_WORD,
+                                    pad_token=PAD_WORD)
 
         def make_src(data, vocab):
             """ ? """
@@ -450,7 +479,8 @@ class ShardedTextCorpusIterator(object):
         if self.line_truncate:
             line = line[:self.line_truncate]
         words, feats, n_feats = TextDataset.extract_text_features(line)
-        example_dict = {self.side: words, "indices": index}
+        char_side = "char_" + self.side
+        example_dict = {self.side: words, "indices": index, char_side: words}
         if feats:
             # All examples must have same number of features.
             aeq(self.n_feats, n_feats)
