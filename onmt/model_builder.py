@@ -20,7 +20,8 @@ from onmt.decoders.decoder import InputFeedRNNDecoder, StdRNNDecoder
 from onmt.decoders.transformer import TransformerDecoder
 from onmt.decoders.cnn_decoder import CNNDecoder
 
-from onmt.modules import Embeddings, CopyGenerator, CharEmbeddingsCNN
+from onmt.modules import Embeddings, CopyGenerator, CharEmbeddingsCNN,\
+                         SampledSoftmax
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
 
@@ -304,19 +305,24 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
     # Make Generator.
     output_size = model_opt.lm_word_vec_size if model_opt.lm_use_projection \
         else model_opt.lm_rnn_size
-    generator = nn.Sequential(
-        nn.Linear(output_size, len(fields[side].vocab)),
-        nn.LogSoftmax(dim=-1))
+    if not model_opt.lm_use_sampled_softmax:
+        generator = nn.Sequential(
+            nn.Linear(output_size, len(fields[side].vocab)),
+            nn.LogSoftmax(dim=-1))
+    else:
+        generator = SampledSoftmax(len(fields[side].vocab),
+                                   model_opt.lm_n_samples_softmax,
+                                   output_size)
 
     if model_opt.lm_tie_weights:
-            if model_opt.use_char_input:
-                raise ValueError('It is not possible to tie weights '
-                                 'when using character input embeddings.')
-            if output_size != model_opt.lm_word_vec_size:
-                raise ValueError(
-                    'When using the tied flag, hidden size'
-                    ' must be equal to embedding size.')
-            generator[0].weight = embeddings.word_lut.weight
+        if model_opt.use_char_input:
+            raise ValueError('It is not possible to tie weights '
+                             'when using character input embeddings.')
+        if output_size != model_opt.lm_word_vec_size:
+            raise ValueError(
+                'When using the tied flag, hidden size'
+                ' must be equal to embedding size.')
+        generator[0].weight = embeddings.word_lut.weight
 
     # Load the model states from checkpoint or initialize them.
     if checkpoint is not None:

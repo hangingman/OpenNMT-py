@@ -28,7 +28,10 @@ def build_loss_compute(model, tgt_vocab, opt, train=True):
         compute = LMLossCompute(
             model.generator, tgt_vocab,
             label_smoothing=0.0,
-            bidirectional=opt.lm_use_bidir)
+            bidirectional=opt.lm_use_bidir,
+            use_sampled_softmax=opt.lm_sampled_softmax,
+            n_samples=opt.lm_n_samples_softmax,
+            hidden_size=opt.lm_word_vec_size)
     else:
         compute = NMTLossCompute(
             model.generator, tgt_vocab,
@@ -312,12 +315,14 @@ class LMLossCompute(NMTLossCompute):
     """
     def __init__(self, generator, tgt_vocab,
                  normalization="sents", label_smoothing=0.0,
-                 bidirectional=False):
+                 bidirectional=False, use_sampled_softmax=False):
         super(LMLossCompute, self).__init__(generator, tgt_vocab,
                                             normalization,
                                             label_smoothing)
 
         self.bidirectional = bidirectional
+        if use_sampled_softmax:
+            self.use_sampled_softmax = True
 
     def _make_shard_state(self, batch, output, range_, attns=None):
         target = batch.tgt
@@ -348,17 +353,31 @@ class LMLossCompute(NMTLossCompute):
     def _compute_loss(self, batch, output, reverse_output,
                       target, reverse_target):
 
+        output = self._bottle(output)
         if self.bidirectional:
-            scores = self.generator(
-                self._bottle(output))
-            backward_scores = self.generator(
-                self._bottle(reverse_output))
+            reverse_output = self._bottle(reverse_output)
 
-            rev_gtruth = reverse_target.view(-1)
+            if self.use_sampled_softmax:
+                scores, new_target = self.generator(output, target.view(-1))
+                backward_scores, new_rev_target = self.generator(
+                                        reverse_output,
+                                        reverse_target.view(-1))
+                rev_gtruth = new_rev_target
+            else:
+                scores = self.generator(output)
+                backward_scores = self.generator(reverse_output)
+
+                rev_gtruth = reverse_target.view(-1)
         else:
-            scores = self.generator(self._bottle(output))
+            if self.use_sampled_softmax:
+                scores, new_target = self.generator(output, target.view(-1))
+            else:
+                scores = self.generator(output)
 
-        gtruth = target.view(-1)
+        if self.use_sampled_softmax:
+            gtruth = new_target
+        else:
+            gtruth = target.view(-1)
 
         if self.bidirectional:
             f_loss = self.criterion(scores, gtruth)

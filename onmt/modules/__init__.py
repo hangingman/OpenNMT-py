@@ -10,9 +10,10 @@ from onmt.modules.weight_norm import WeightNormConv2d
 from onmt.modules.average_attn import AverageAttention
 from onmt.modules.char_cnn import CharEmbeddingsCNN
 from onmt.modules.highway_layer import HighwayLayer
+from onmt.modules.sampled_softmax import SampledSoftmax
 
 __all__ = ["LayerNorm", "Elementwise", "context_gate_factory", "ContextGate",
            "GlobalAttention", "ConvMultiStepAttention", "CopyGenerator",
            "CopyGeneratorLossCompute", "MultiHeadedAttention", "Embeddings",
            "PositionalEncoding", "WeightNormConv2d", "AverageAttention",
-           "CharEmbeddingsCNN", "HighwayLayer"]
+           "CharEmbeddingsCNN", "HighwayLayer", "SampledSoftmax"]

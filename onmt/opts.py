@@ -169,6 +169,12 @@ def model_opts(parser):
     group.add_argument('-lm_rnn_type', type=str, default='LSTM',
                        choices=['LSTM', 'GRU'],
                        help='The gate type to use in the RNNs')
+    group.add_argument('-lm_use_sampled_softmax', action="store_true",
+                       help='Use a sampled softmax (efficient training'
+                            ' for big vocabulary).')
+    group.add_argument('lm_n_samples_softmax', type=int, default=8192,
+                       help='The number of samples that are sampled'
+                            ' for the softmax.')
 
 
 def filters(s):
