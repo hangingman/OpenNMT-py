@@ -35,7 +35,7 @@ def make_translator(opt, report_score=True, out_file=None):
     fields, model, model_opt = \
         onmt.ModelConstructor.load_test_model(opt, dummy_opt.__dict__)
 
-    extend_model = False
+    extend_model = True
     id_method = 'unk'
 
     if extend_model:
@@ -62,14 +62,19 @@ def make_translator(opt, report_score=True, out_file=None):
         print("Vocab updated. Added {} new words.".format(added))
 
         print("Updating decoder and embeddings ...")
-        id_mx = torch.empty(added, 
-                            model.generator[0].weight.shape[1],
-                            dtype=torch.float)
+        id_w_mx = torch.empty(added, 
+                              model.generator[0].weight.shape[1],
+                              dtype=torch.float)
+
+        id_b_mx = torch.empty(added,
+                              dtype=torch.float)
 
         if id_method == 'unk':
-            unk_v = model.generator[0].weight[0]
+            unk_w = model.generator[0].weight[0]
+            unk_b = model.generator[0].bias[0]
             for i in range(added):
-                id_mx[i] = unk_v
+                id_w_mx[i] = unk_w
+                id_b_mx[i] = unk_b
 
         elif id_method == 'pred':
             print("Warning: Not implemented")
@@ -77,7 +82,12 @@ def make_translator(opt, report_score=True, out_file=None):
 
         print("Finished updating decoder and embeddings")
         print("Previous shape: ", model.generator[0].weight.shape)
-        model.generator[0].weight.data = torch.cat((model.generator[0].weight, id_mx), 0)
+        model.generator[0].weight.data = torch.cat((model.generator[0].weight, 
+                                                    id_w_mx), 
+                                                   0)
+        model.generator[0].bias.data = torch.cat((model.generator[0].bias,
+                                                  id_b_mx),
+                                                 0)
         model.decoder.embeddings.word_lut.weight = model.generator[0].weight
         print("Current shape: ", model.generator[0].weight.shape)
 
@@ -365,7 +375,7 @@ class Translator(object):
             tp_uni = list()
             tp_multi = list()
             out_uni = np.zeros((batch.batch_size, len(vocab)))
-
+            pdb.set_trace()
             for ix, list_ in enumerate(t_pieces):
                 aux_dict_uni = defaultdict(lambda: 0)
                 aux_dict_multi = defaultdict(lambda: 0)
