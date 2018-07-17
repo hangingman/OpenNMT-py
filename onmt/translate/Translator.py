@@ -19,6 +19,7 @@ from collections import defaultdict
 import numpy as np
 import time
 import itertools
+from gensim.models import FastText
 # END ---------------------------------
 
 def make_translator(opt, report_score=True, out_file=None):
@@ -35,9 +36,22 @@ def make_translator(opt, report_score=True, out_file=None):
     fields, model, model_opt = \
         onmt.ModelConstructor.load_test_model(opt, dummy_opt.__dict__)
 
+    # ADDED --------------------------------------------------------------
     extend_model = True
     id_method = 'unk'
+    #id_method = 'pred'
 
+    def _predict(x, model_dict):
+
+        nr_layers = len(model_dict)//2
+        
+        for i in range(1, nr_layers+1):
+            w = model_dict['fc'+str(i)+'.weight']
+            b = model_dict['fc'+str(i)+'.bias']
+            x = torch.matmul(w, x) + b
+    
+        return x
+    
     if extend_model:
         # Get the fields for the in-domain model
         base_path = "/home/ubuntu/OpenNMT-py-un/extra_data/models/"
@@ -77,10 +91,33 @@ def make_translator(opt, report_score=True, out_file=None):
                 id_b_mx[i] = unk_b
 
         elif id_method == 'pred':
-            print("Warning: Not implemented")
-            pass
+            
+            # Define the paths for now
+            base_path = '/home/ubuntu/NMT-Code/attention_comparison/thesis/guided_nmt/embed_map'
+            weight_model_path = base_path + '/model_weights.ckpt'
+            bias_model_path = base_path + '/model_bias.ckpt'
+            ft_model_path = '/mnt/ft/de-en/cc.de.300.bin'
+            
+            # Load the necessary models
+            w_model = torch.load(weight_model_path)
+            b_model = torch.load(bias_model_path)
+            print("Loading ft model ...")
+            ft_model = FastText.load_fasttext_format(ft_model_path)
+            print("Finished loading the model")
 
-        print("Finished updating decoder and embeddings")
+            # Define unk weight and bias values
+            unk_w = model.generator[0].weight[0]
+            unk_b = model.generator[0].bias[0]
+
+            for i in range(added):
+                try:
+                    wv_ = torch.from_numpy(ft_model.wv[fields['tgt'].vocab.itos[init_index+i]])
+                    id_w_mx[i] = _predict(wv_, w_model)
+                    id_b_mx[i] = _predict(wv_, b_model)
+                except:
+                    id_w_mx[i] = unk_w
+                    id_b_mx[i] = unk_b
+
         print("Previous shape: ", model.generator[0].weight.shape)
         model.generator[0].weight.data = torch.cat((model.generator[0].weight, 
                                                     id_w_mx), 
@@ -90,9 +127,10 @@ def make_translator(opt, report_score=True, out_file=None):
                                                  0)
         model.decoder.embeddings.word_lut.weight = model.generator[0].weight
         print("Current shape: ", model.generator[0].weight.shape)
+        print("Finished updating decoder and embeddings")
 
-        pdb.set_trace()
-                
+    # END ----------------------------------------------------------------
+
     scorer = onmt.translate.GNMTGlobalScorer(opt.alpha,
                                              opt.beta,
                                              opt.min_attention,
@@ -375,7 +413,7 @@ class Translator(object):
             tp_uni = list()
             tp_multi = list()
             out_uni = np.zeros((batch.batch_size, len(vocab)))
-            pdb.set_trace()
+            
             for ix, list_ in enumerate(t_pieces):
                 aux_dict_uni = defaultdict(lambda: 0)
                 aux_dict_multi = defaultdict(lambda: 0)
