@@ -13,7 +13,7 @@ from __future__ import division
 
 import onmt.inputters as inputters
 import onmt.utils
-
+import torch
 from onmt.utils.logging import logger
 
 
@@ -392,33 +392,33 @@ class LanguageModelTrainer(Trainer):
         stats = onmt.utils.Statistics()
 
         attns = None
+        with torch.no_grad():
+            for batch in valid_iter:
+                cur_dataset = valid_iter.get_cur_dataset()
+                self.valid_loss.cur_dataset = cur_dataset
 
-        for batch in valid_iter:
-            cur_dataset = valid_iter.get_cur_dataset()
-            self.valid_loss.cur_dataset = cur_dataset
+                init_hidden = self.model.init_rnn_state(batch.batch_size)
 
-            init_hidden = self.model.init_rnn_state(batch.batch_size)
+                if self.model.char_convs:
+                    tgt_input = inputters.make_features(batch, 'char_tgt')
+                    # (target_size, batch_size, max_char_tgt, n_feat)
+                    tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+                else:
+                    tgt_input = inputters.make_features(batch, 'tgt')
 
-            if self.model.char_convs:
-                tgt_input = inputters.make_features(batch, 'char_tgt')
-                # (target_size, batch_size, max_char_tgt, n_feat)
-                tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
-            else:
-                tgt_input = inputters.make_features(batch, 'tgt')
+                # F-prop through the model.
+                outputs, _ = self.model(tgt_input, init_hidden)
 
-            # F-prop through the model.
-            outputs, _ = self.model(tgt_input, init_hidden)
+                # Remove EOS/BOS output and get last layer
+                outputs = outputs[:, :-1, -1, :, :].contiguous()
 
-            # Remove EOS/BOS output and get last layer
-            outputs = outputs[:, :-1, -1, :, :].contiguous()
+                # Compute loss.
+                batch_stats = self.valid_loss.monolithic_compute_loss(
+                        batch, outputs, attns)
+                # remove attns for lm
 
-            # Compute loss.
-            batch_stats = self.valid_loss.monolithic_compute_loss(
-                    batch, outputs, attns)
-            # remove attns for lm
-
-            # Update statistics.
-            stats.update(batch_stats)
+                # Update statistics.
+                stats.update(batch_stats)
 
         # Set model back to training mode.
         self.model.train()
