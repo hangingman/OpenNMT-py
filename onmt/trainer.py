@@ -407,7 +407,7 @@ class LanguageModelTrainer(Trainer):
                     tgt_input = inputters.make_features(batch, 'tgt')
 
                 # F-prop through the model.
-                outputs, _ = self.model(tgt_input, init_hidden)
+                outputs, _, _ = self.model(tgt_input, init_hidden)
 
                 # Remove EOS/BOS output and get last layer
                 outputs = outputs[:, :-1, -1, :, :].contiguous()
@@ -438,7 +438,7 @@ class LanguageModelTrainer(Trainer):
             else:
                 trunc_size = target_size
 
-            init_hidden = self.model.init_rnn_state(batch.batch_size)
+            hidden_state = self.model.init_rnn_state(batch.batch_size)
             attns = None
 
             if self.model.char_convs:
@@ -450,23 +450,33 @@ class LanguageModelTrainer(Trainer):
 
             for j in range(0, target_size-1, trunc_size):
 
-                # 1. F-prop all but generator.
+                # 1. Create truncated target.
+                tgt = tgt_input[j: j + trunc_size]
+
+                # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
 
-                outputs, _ = self.model(tgt_input, init_hidden)
+                outputs, _, hidden_state = self.model(tgt, hidden_state)
 
                 # Remove EOS/BOS output and get last layer
                 outputs = outputs[:, :-1, -1, :, :].contiguous()
 
-                # 2. Compute loss in shards for memory efficiency.
+                # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,
                         trunc_size, self.shard_size, normalization)
                 total_stats.update(batch_stats)
                 report_stats.update(batch_stats)
 
-        # 3. Multi GPU gradient gather
+                # If truncated, don't backprop fully.
+                if self.trunc_size:
+                    h_t, c_t = hidden_state
+                    h_t = h_t.detach()
+                    c_t = c_t.detach()
+                    hidden_state = (h_t, c_t)
+
+        # 4. Multi GPU gradient gather
         if self.n_gpu > 1:
             grads = [p.grad.data for p in self.model.parameters()
                      if p.requires_grad and p.grad is not None]

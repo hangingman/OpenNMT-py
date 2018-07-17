@@ -198,6 +198,10 @@ class LanguageModel(nn.Module):
         dir_outputs = []
         output_cache = None
 
+        final_h_state = []
+        if not self.use_gru:
+            final_c_state = []
+
         for n_dir in range(self.num_directions):
 
             outputs = []
@@ -264,10 +268,21 @@ class LanguageModel(nn.Module):
 
             outputs = torch.stack(outputs)
             dir_outputs += [outputs]
+            final_h_state += [h_1]
+            if not self.use_gru:
+                final_c_state += [c_1]
+
+        if self.use_gru:
+            final_state = (torch.stack(final_h_state))
+        else:
+            final_state = (
+                torch.stack(final_h_state),
+                torch.stack(final_c_state)
+            )
 
         dir_outputs = torch.stack(dir_outputs)
 
-        return dir_outputs, emb
+        return dir_outputs, emb, final_state
 
     def _get_reverse_seq(self, tgt, seq):
         """Get the reversed sequence (used for backward LM).
