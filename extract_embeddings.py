@@ -1,6 +1,7 @@
 from __future__ import division
 import torch
 import argparse
+import pdb
 import onmt
 import onmt.ModelConstructor
 import onmt.io
@@ -17,12 +18,15 @@ parser.add_argument('-gpu', type=int, default=-1,
                     help="Device to run on")
 
 
-def write_embeddings(filename, dict, embeddings):
+def write_embeddings(filename, dict, embeddings, is_bias=False):
     with open(filename, 'wb') as file:
         for i in range(min(len(embeddings), len(dict.itos))):
             str = dict.itos[i].encode("utf-8")
-            for j in range(len(embeddings[0])):
-                str = str + (" %5f" % (embeddings[i][j])).encode("utf-8")
+            if is_bias:
+                str = str + (" %5f" % (embeddings[i])).encode("utf-8")
+            else:
+                for j in range(len(embeddings[0])):
+                    str = str + (" %5f" % (embeddings[i][j])).encode("utf-8")
             file.write(str + b"\n")
 
 
@@ -55,17 +59,26 @@ def main():
         model_opt, fields, use_gpu(opt), checkpoint)
     encoder = model.encoder
     decoder = model.decoder
-
+    
     encoder_embeddings = encoder.embeddings.word_lut.weight.data.tolist()
     decoder_embeddings = decoder.embeddings.word_lut.weight.data.tolist()
+    generator_bias = model.generator[0].bias.data.tolist()
 
     print("Writing source embeddings")
-    write_embeddings(opt.output_dir + "/src_embeddings.txt", src_dict,
+    write_embeddings(opt.output_dir + "/src_embeddings.txt", 
+                     src_dict,
                      encoder_embeddings)
 
     print("Writing target embeddings")
-    write_embeddings(opt.output_dir + "/tgt_embeddings.txt", tgt_dict,
+    write_embeddings(opt.output_dir + "/tgt_embeddings.txt", 
+                     tgt_dict,
                      decoder_embeddings)
+
+    print("Writing the generator bias")
+    write_embeddings(opt.output_dir + "/gen_bias.txt", 
+                     tgt_dict,
+                     generator_bias,
+                     is_bias=True)
 
     print('... done.')
     print('Converting model...')
