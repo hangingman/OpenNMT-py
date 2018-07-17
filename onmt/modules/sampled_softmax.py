@@ -17,6 +17,7 @@ class SampledSoftmax(nn.Module):
 
         self.sampler = LogUniformSampler(self.vocab_size)
         self.params = nn.Linear(hidden_size, vocab_size)
+        self.logsoftmax = nn.LogSoftmax(-1)
 
     def forward(self, inputs, labels):
         if self.training:
@@ -69,7 +70,7 @@ class SampledSoftmax(nn.Module):
         logits = torch.cat((torch.unsqueeze(true_logits, dim=1),
                            sample_logits), dim=1)
         new_targets = Variable(torch.zeros(batch_size).long()).cuda(device_id)
-        return logits, new_targets
+        return self.logsoftmax(logits), new_targets
 
     def full(self, inputs, labels):
-        return self.params(inputs), labels
+        return self.logsoftmax(self.params(inputs)), labels

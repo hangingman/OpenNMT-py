@@ -311,11 +311,9 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
             nn.Linear(output_size, len(fields[side].vocab)),
             nn.LogSoftmax(dim=-1))
     else:
-        generator = nn.Sequential(
-                            SampledSoftmax(len(fields[side].vocab),
-                                           model_opt.lm_n_samples_softmax,
-                                           output_size),
-                            nn.LogSoftmax(dim=-1))
+        generator = SampledSoftmax(len(fields[side].vocab),
+                                   model_opt.lm_n_samples_softmax,
+                                   output_size)
 
     if model_opt.lm_tie_weights:
         if model_opt.use_char_input:
