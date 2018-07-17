@@ -469,6 +469,9 @@ class LanguageModelTrainer(Trainer):
                 total_stats.update(batch_stats)
                 report_stats.update(batch_stats)
 
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(),
+                                               1.0)
+
                 # If truncated, don't backprop fully.
                 if self.trunc_size:
                     h_t, c_t = hidden_state
