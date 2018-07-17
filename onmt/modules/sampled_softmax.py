@@ -5,7 +5,6 @@ from torch.autograd import Variable
 import math
 
 from log_uniform import LogUniformSampler
-import util
 
 
 class SampledSoftmax(nn.Module):
@@ -18,8 +17,6 @@ class SampledSoftmax(nn.Module):
 
         self.sampler = LogUniformSampler(self.vocab_size)
         self.params = nn.Linear(hidden_size, vocab_size)
-
-        util.initialize(self.params.weight)
 
     def forward(self, inputs, labels):
         if self.training:

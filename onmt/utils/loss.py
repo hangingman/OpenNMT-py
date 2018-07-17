@@ -27,11 +27,8 @@ def build_loss_compute(model, tgt_vocab, opt, train=True):
     elif opt.lm:
         compute = LMLossCompute(
             model.generator, tgt_vocab,
-            label_smoothing=0.0,
             bidirectional=opt.lm_use_bidir,
-            use_sampled_softmax=opt.lm_sampled_softmax,
-            n_samples=opt.lm_n_samples_softmax,
-            hidden_size=opt.lm_word_vec_size)
+            use_sampled_softmax=opt.lm_use_sampled_softmax)
     else:
         compute = NMTLossCompute(
             model.generator, tgt_vocab,
@@ -309,20 +306,23 @@ def shards(state, shard_size, eval_only=False):
         torch.autograd.backward(inputs, grads)
 
 
-class LMLossCompute(NMTLossCompute):
+class LMLossCompute(LossComputeBase):
     """
     Standard NMT Loss Computation.
     """
     def __init__(self, generator, tgt_vocab,
-                 normalization="sents", label_smoothing=0.0,
                  bidirectional=False, use_sampled_softmax=False):
-        super(LMLossCompute, self).__init__(generator, tgt_vocab,
-                                            normalization,
-                                            label_smoothing)
+        super(LMLossCompute, self).__init__(generator, tgt_vocab)
 
         self.bidirectional = bidirectional
         if use_sampled_softmax:
             self.use_sampled_softmax = True
+            self.criterion = nn.NLLLoss(size_average=False)
+        else:
+            self.use_sampled_softmax = False
+            weight = torch.ones(len(tgt_vocab))
+            weight[self.padding_idx] = 0
+            self.criterion = nn.NLLLoss(weight, size_average=False)
 
     def _make_shard_state(self, batch, output, range_, attns=None):
         target = batch.tgt
