@@ -143,8 +143,8 @@ def make_translator(opt, report_score=True, out_file=None):
                         "ignore_when_blocking", "dump_beam" , "dump_attn",
                         "data_type", "replace_unk", "gpu", "verbose",
                         "use_guided", "tp_path", "guided_n_max",
-                        "guided_weight", "guided_correct_ngrams",
-                        "guided_correct_1grams"]}
+                        "guided_1_weight", "guided_n_weight",
+                        "guided_correct_ngrams", "guided_correct_1grams"]}
 
     translator = Translator(model, model_opt, fields, global_scorer=scorer,
                             out_file=out_file, report_score=report_score,
@@ -204,7 +204,8 @@ class Translator(object):
                  use_guided=True,
                  tp_path="",
                  guided_n_max=4,
-                 guided_weight=1.0,
+                 guided_1_weight=1.0,
+                 guided_n_weight=1.0,
                  guided_correct_ngrams=False,
                  guided_correct_1grams=False):
 
@@ -243,7 +244,8 @@ class Translator(object):
         self.use_guided= use_guided
         self.tp_path = tp_path
         self.guided_n_max = guided_n_max
-        self.guided_weight = guided_weight
+        self.guided_1_weight = guided_1_weight
+        self.guided_n_weight = guided_n_weight
         self.guided_correct_ngrams = guided_correct_ngrams
         self.guided_correct_1grams = guided_correct_1grams
 
@@ -605,9 +607,8 @@ class Translator(object):
 
     
                     # Add the weights of the 1-grams
-                    weight = self.guided_weight
-                    out = np.add(out, weight*out_uni_rep)
-                    out = np.add(out, weight*out_multi)
+                    out = np.add(out, self.guided_1_weight*out_uni_rep)
+                    out = np.add(out, self.guided_n_weight*out_multi)
                 # END ------------------------------------------------------
 
                 out = unbottle(out)

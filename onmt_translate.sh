@@ -20,7 +20,8 @@ python3 translate.py \
 		-use_guided \
 		-tp_path "extra_data/t_pieces/translation_pieces_md_10-th0pt5.pickle"\
 		-guided_n_max 4 \
-		-guided_weight 1.0 \
+		-guided_1_weight 4.0 \
+        -guided_n_weight 15.0 \
         -guided_correct_ngrams \
         -guided_correct_1grams \
         -replace_unk
@@ -35,7 +36,7 @@ PRED_PATH=${HOME_PATH}/generate_results_de_en_domain/preds
 MT_PATH=${HOME_PATH}/generate_results_de_en_domain/mt_predictions
 
 #POS=guided_10-th0pt5-true
-POS=base-shr
+POS=base-shr-ext-pred-v5
 cp ${DATA}/${SRC_FILE}.pred ${PRED_PATH}/${SRC_FILE}.pred.${POS}
 sed -r 's/(@@ )|(@@ ?$)//g' ${PRED_PATH}/${SRC_FILE}.pred.${POS} > \
 	                                     ${MT_PATH}/${SRC_FILE}.pred.${POS}.merged

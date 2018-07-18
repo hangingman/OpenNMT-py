@@ -496,9 +496,12 @@ def translate_opts(parser):
                         help="""The maximum n-grams to be affected by
                         translation pieces. Should be at most the maximum
                         value used to create the translation pieces""")
-    group.add_argument('-guided_weight', type=float, default=1.0,
+    group.add_argument('-guided_1_weight', type=float, default=1.0,
                         help="""The weight given to the scores from the
-                        translation pieces""")
+                        translation pieces' 1-grams""")
+    group.add_argument('-guided_n_weight', type=float, default=1.0,
+                        help="""The weight given to the scores from the
+                        translation pieces' n-grams""") 
     group.add_argument('-guided_correct_ngrams', action='store_true',
                         help="""Enables correction factor to n-grams, n>1""")
     group.add_argument('-guided_correct_1grams', action='store_true',
