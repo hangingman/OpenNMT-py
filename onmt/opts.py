@@ -506,7 +506,10 @@ def translate_opts(parser):
                         help="""Enables correction factor to n-grams, n>1""")
     group.add_argument('-guided_correct_1grams', action='store_true',
                         help="""Enables correction factor to 1-grams""")
-    
+    group.add_argument('-extend_with_tp', action='store_true',
+                        help="""Extend the vocabulary with the translation pieces
+                        that are not part of the generic vocabulary""")   
+ 
     # Options related to logging
     group = parser.add_argument_group('Logging')
     group.add_argument('-verbose', action="store_true",

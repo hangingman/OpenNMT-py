@@ -37,7 +37,7 @@ def make_translator(opt, report_score=True, out_file=None):
         onmt.ModelConstructor.load_test_model(opt, dummy_opt.__dict__)
 
     # ADDED --------------------------------------------------------------
-    extend_model = True
+    extend_model = False
     id_method = 'unk'
     #id_method = 'pred'
 
@@ -144,7 +144,8 @@ def make_translator(opt, report_score=True, out_file=None):
                         "data_type", "replace_unk", "gpu", "verbose",
                         "use_guided", "tp_path", "guided_n_max",
                         "guided_1_weight", "guided_n_weight",
-                        "guided_correct_ngrams", "guided_correct_1grams"]}
+                        "guided_correct_ngrams", "guided_correct_1grams",
+                        "extend_with_tp"]}
 
     translator = Translator(model, model_opt, fields, global_scorer=scorer,
                             out_file=out_file, report_score=report_score,
@@ -207,7 +208,8 @@ class Translator(object):
                  guided_1_weight=1.0,
                  guided_n_weight=1.0,
                  guided_correct_ngrams=False,
-                 guided_correct_1grams=False):
+                 guided_correct_1grams=False,
+                 extend_with_tp=False):
 
         self.gpu = gpu
         self.cuda = gpu > -1
@@ -248,6 +250,7 @@ class Translator(object):
         self.guided_n_weight = guided_n_weight
         self.guided_correct_ngrams = guided_correct_ngrams
         self.guided_correct_1grams = guided_correct_1grams
+        self.extend_with_tp = extend_with_tp
 
         # for debugging
         self.beam_trace = self.dump_beam != ""
@@ -407,21 +410,33 @@ class Translator(object):
 
         # ADDED ----------------------------------------------------
         if self.use_guided:
+
             # List that will have the necessary translation pieces
-            #ixs_sorted = torch.sort(batch.indices)[0]
             t_pieces = [translation_pieces[ix] for ix in batch.indices]
 
             # "Translate" the list into dictionaries indexed by word index
             tp_uni = list()
             tp_multi = list()
             out_uni = np.zeros((batch.batch_size, len(vocab)))
-            
+           
+            # To extend the vocab with the translation pieces
+            added = 0
+            init_index = len(vocab.itos)
+      
             for ix, list_ in enumerate(t_pieces):
                 aux_dict_uni = defaultdict(lambda: 0)
                 aux_dict_multi = defaultdict(lambda: 0)
                 for tuple_ in list_:
                     key = str(vocab.stoi[tuple_[0][0]])
                     if len(tuple_[0]) == 1:
+                        if self.extend_with_tp:
+                            if key == '0':
+                                vocab.itos.append(tuple_[0][0])
+                                vocab.stoi[tuple_[0][0]] = init_index + added
+                                out_uni = np.concatenate((out_uni, 
+                                                          np.zeros((out_uni.shape[0], 1))),
+                                                         axis=1)
+                                added += 1
                         aux_dict_uni[key] = tuple_[1]
                         out_uni[ix][int(key)] = tuple_[1]
                     else:
@@ -430,7 +445,7 @@ class Translator(object):
                         aux_dict_multi[key] = tuple_[1]
                 tp_uni.append(aux_dict_uni)
                 tp_multi.append(aux_dict_multi)
-
+            
             # To repeat we have to make [1,2,3,1,2,3,...] because
             # in each beam we have batch_size translations, so we
             # want to add all the translation pieces once in each
@@ -444,6 +459,26 @@ class Translator(object):
             
             out_uni_ = tuple([out_uni for _ in range(self.beam_size)])
             out_uni_rep = np.vstack(out_uni_)            
+
+            if self.extend_with_tp:
+
+                # Add the extra necessary components
+                unk_w = self.model.generator[0].weight[0]
+                unk_b = self.model.generator[0].bias[0]
+
+                id_w_mx = unk_w.repeat([added, 1])
+                id_b_mx = unk_b.repeat([added])
+
+                # Concat to the model
+                model_weight = self.model.generator[0].weight
+                model_bias = self.model.generator[0].bias
+
+                self.model.generator[0].weight.data = torch.cat((model_weight,
+                                                                 id_w_mx),
+                                                                0)
+                self.model.generator[0].bias.data = torch.cat((model_bias,
+                                                               id_b_mx),
+                                                              0)
 
         def _ngrams(n_max, seq):
             """
