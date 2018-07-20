@@ -392,12 +392,12 @@ class LanguageModelTrainer(Trainer):
         stats = onmt.utils.Statistics()
 
         attns = None
+        hidden_state = None
+
         with torch.no_grad():
             for batch in valid_iter:
                 cur_dataset = valid_iter.get_cur_dataset()
                 self.valid_loss.cur_dataset = cur_dataset
-
-                init_hidden = self.model.init_rnn_state(batch.batch_size)
 
                 if self.model.char_convs:
                     tgt_input = inputters.make_features(batch, 'char_tgt')
@@ -406,11 +406,17 @@ class LanguageModelTrainer(Trainer):
                 else:
                     tgt_input = inputters.make_features(batch, 'tgt')
 
-                # F-prop through the model.
-                outputs, _, _ = self.model(tgt_input, init_hidden)
+                lengths = batch.tgt.ne(self.train_loss.padding_idx).sum(0)
 
-                # Remove EOS/BOS output and get last layer
-                outputs = outputs[:, :-1, -1, :, :].contiguous()
+                # F-prop through the model.
+                _, outputs, _ = self.model(tgt_input, lengths,
+                                           hidden_state)
+
+                # Remove EOS output and get last layer
+                if self.model.num_directions > 1:
+                    outputs = outputs[-2:, :-1, :, :].contiguous()
+                else:
+                    outputs = outputs[-1, :-1, :, :].contiguous()
 
                 # Compute loss.
                 batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -438,7 +444,7 @@ class LanguageModelTrainer(Trainer):
             else:
                 trunc_size = target_size
 
-            hidden_state = self.model.init_rnn_state(batch.batch_size)
+            hidden_state = None
             attns = None
 
             if self.model.char_convs:
@@ -447,6 +453,8 @@ class LanguageModelTrainer(Trainer):
                 tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
             else:
                 tgt_input = inputters.make_features(batch, 'tgt')
+
+            lengths = batch.tgt.ne(self.train_loss.padding_idx).sum(0)
 
             for j in range(0, target_size-1, trunc_size):
 
@@ -457,10 +465,14 @@ class LanguageModelTrainer(Trainer):
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
 
-                outputs, _, hidden_state = self.model(tgt, hidden_state)
+                _, outputs, hidden_state = self.model(tgt, lengths,
+                                                      hidden_state)
 
-                # Remove EOS/BOS output and get last layer
-                outputs = outputs[:, :-1, -1, :, :].contiguous()
+                # Remove EOS output and get last layer
+                if self.model.num_directions > 1:
+                    outputs = outputs[-2:, :-1, :, :].contiguous()
+                else:
+                    outputs = outputs[-1, :-1, :, :].contiguous()
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
@@ -471,13 +483,6 @@ class LanguageModelTrainer(Trainer):
 
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(),
                                                1.0)
-
-                # If truncated, don't backprop fully.
-                if self.trunc_size:
-                    h_t, c_t = hidden_state
-                    h_t = h_t.detach()
-                    c_t = c_t.detach()
-                    hidden_state = (h_t, c_t)
 
         # 4. Multi GPU gradient gather
         if self.n_gpu > 1:

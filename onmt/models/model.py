@@ -4,6 +4,9 @@ import torch.nn as nn
 
 from torch.autograd import Variable
 
+from torch.nn.utils.rnn import pack_padded_sequence as pack
+from torch.nn.utils.rnn import pad_packed_sequence as unpack
+
 
 class NMTModel(nn.Module):
     """
@@ -99,190 +102,160 @@ class LanguageModel(nn.Module):
         self.num_directions = 2 if opt.lm_use_bidir else 1
         self.char_embeddings = opt.use_char_input
 
-        RNNCell = nn.LSTMCell if opt.lm_rnn_type == "LSTM"\
-            else nn.GRUCell
-        if opt.lm_rnn_type == "GRU":
-            self.use_gru = True
-        else:
-            self.use_gru = False
+        RNN = getattr(nn, self.rnn_type)
 
-        self.rnns = nn.ModuleList()
+        # Initialize RNNs
+        self.forward_rnns = nn.ModuleList()
+        if self.num_directions > 1:
+            self.backward_rnns = nn.ModuleList()
+
+        # Projections of the rnn output back to the input size
         if self.use_projection:
-            self.projections = nn.ModuleList()
+            self.forward_rnn_projections = nn.ModuleList()
 
-        for direction in range(self.num_directions):
-            self.rnns.append(nn.ModuleList())
+            if self.num_directions > 1:
+                self.backward_rnn_projections = nn.ModuleList()
+
+        # RNN input size depends if we use projections or not
+        rnn_input_size = self.input_size
+
+        for layer in range(self.layers):
+            # Initialize a forward rnn
+            forward_rnn = \
+                RNN(input_size=rnn_input_size,
+                    hidden_size=self.hidden_size)
+
+            self.forward_rnns.append(forward_rnn)
+
+            if self.num_directions > 1:
+                # Initialize a backward rnn
+                backward_rnn = \
+                    RNN(input_size=rnn_input_size,
+                        hidden_size=self.hidden_size)
+
+                self.backward_rnns.append(backward_rnn)
+
+            # RNN input size is now the hidden size (output size),
+            # unless we use projections
+            rnn_input_size = self.hidden_size
+
             if self.use_projection:
-                self.projections.append(nn.ModuleList())
-
-            rnn_input_size = self.input_size
-            for layer in range(self.layers):
-                rnn = RNNCell(rnn_input_size, self.hidden_size)
-                self.rnns[direction].append(rnn)
-
-                rnn_input_size = self.hidden_size
-                if self.use_projection:
-                    self.projections[direction].append(nn.Linear(
+                # Initialize projections to input space
+                self.forward_rnn_projections.append(nn.Linear(
                                 self.hidden_size,
                                 self.input_size))
 
-                    rnn_input_size = self.input_size
+                if self.num_directions > 1:
+                    self.backward_rnn_projections.append(nn.Linear(
+                                    self.hidden_size,
+                                    self.input_size))
 
-        self.gal_dropout = opt.lm_gal_dropout
+                rnn_input_size = self.input_size
 
-        self.hidden = None
-
-    def sample_mask(self, batch_size):
-        """Create a mask for recurrent dropout
-        Arguments:
-            batch_size(int) -- the size of the current batch
-        """
-        keep = 1.0 - self.gal_dropout
-        self.mask = Variable(torch.bernoulli(
-                        torch.Tensor(batch_size,
-                                     self.hidden_size).fill_(keep)))
-        if self.is_cuda:
-            self.mask = self.mask.cuda()
-
-    def init_rnn_state(self, batch_size):
-        """Initialize RNN state.
-        Arguments:
-            batch_size(int) -- the size of the current batch
-        Returns:
-            :obj:`Variable` -- the initial states of the LM RNNs
-        """
-        def get_variable():
-            v = torch.zeros(self.num_directions, self.layers,
-                            batch_size, self.hidden_size)
-            if self.is_cuda:
-                v = v.cuda()
-            return v
-
-        if self.rnn_type == 'LSTM':
-            state = (get_variable(), get_variable())
-        elif self.rnn_type == 'GRU':
-            state = (get_variable(),)
-        else:
-            raise NotImplementedError("Not valid rnn_type: %s" % self.rnn_type)
-
-        return state
-
-    def forward(self, tgt, init_hidden):
+    def forward(self, tgt, lengths=None, hidden_state=None):
         """Forward pass of the Language Model
         Arguments:
             tgt (:obj:`LongTensor`):
                  a sequence of size `[tgt_len x batch]` or
                  of size `[tgt_len x batch x num_characters]`
                  if we are using a character embedding model
-            init_hidden(:obj:`Variable`) -- the initial states of the LM RNNs
+            hidden_state(:obj:`Variable`) -- the current states of the LM RNNs
         Returns:
             dir_outputs (Variable): the outputs from every RNN layer of the LM
             emb (Variable): the embeddings of the LM
         """
 
-        # Get a dropout mask for recurrent dropout that will
-        # be used for every timestep
-        if self.gal_dropout > 0 and self.training:
-            self.sample_mask(tgt.size(1))
+        # Go through the embedding layer
+        forward_emb = self.embeddings(tgt)
 
-        emb = self.embeddings(tgt)
-
+        # Reverse the embeddings in the case of bidirectionality
         if self.num_directions > 1:
-            reverse_emb = self._get_reverse_seq(tgt, emb)
-            emb.unsqueeze_(0)
-            reverse_emb.unsqueeze_(0)
-            emb = torch.cat([emb, reverse_emb], dim=0)
+            backward_emb = self._get_reverse_seq(tgt, forward_emb)
+
+        # Pack the embeddings if we know the lengths
+        forward_input = forward_emb
+        if lengths is not None:
+            # Lengths data is wrapped inside a Tensor.
+            lengths = lengths.view(-1).tolist()
+            forward_input = pack(forward_emb, lengths)
+            if self.num_directions > 1:
+                backward_input = pack(backward_emb, lengths)
+
+        layers_outputs = []
+        forward_final_states = []
+        backward_final_states = []
+
+        forward_output_cache = None
+        backward_output_cache = None
+
+        if hidden_state is not None:
+            forward_hidden_state = hidden_state[0]
+            if self.num_directions > 1:
+                backward_hidden_state = hidden_state[1]
         else:
-            emb.unsqueeze_(0)
+            forward_hidden_state = [None for layer in range(self.layers)]
+            backward_hidden_state = [None for layer in range(self.layers)]
 
-        dir_outputs = []
-        output_cache = None
+        for layer in range(self.layers):
 
-        final_h_state = []
-        if not self.use_gru:
-            final_c_state = []
+            forward_outputs, forward_layer_final_state = \
+                        self.forward_rnns[layer](forward_input,
+                                                 forward_hidden_state[layer])
 
-        for n_dir in range(self.num_directions):
+            forward_outputs, _ = unpack(forward_outputs)
 
-            outputs = []
-            h_0 = init_hidden[0][n_dir]
-            if not self.use_gru:
-                c_0 = init_hidden[1][n_dir]
+            if self.num_directions > 1:
+                backward_outputs, backward_layer_final_state = \
+                        self.backward_rnns[layer](backward_input,
+                                                  backward_hidden_state[layer])
 
-            for i, emb_t in enumerate(emb[n_dir].split(1)):
-                rnn_input = emb_t.squeeze(0)
+                backward_outputs, _ = unpack(backward_outputs)
 
-                # Don't update if it is the first timestep
-                if i > 0:
-                    h_0 = h_1
-                    if not self.use_gru:
-                        c_0 = c_1
+            if self.use_projection:
+                forward_input = self.forward_rnn_projections[
+                                    layer](
+                                    forward_outputs)
 
-                h_1 = []
-                if not self.use_gru:
-                    c_1 = []
+                if self.num_directions > 1:
+                    backward_input = self.backward_rnn_projections[
+                                    layer](
+                                    backward_outputs)
+            else:
+                forward_input = forward_outputs
+                if self.num_directions > 1:
+                    backward_input = backward_outputs
 
-                layer_outputs = []
+            # Residual Connection
+            if layer > 0 and self.use_residual:
+                forward_input += forward_output_cache
+                forward_output_cache = forward_input
+                if self.num_directions > 1:
+                    backward_input += backward_output_cache
+                    backward_output_cache = backward_input
+            # Cache  the first layer output
+            elif self.use_residual:
+                forward_output_cache = forward_input
+                if self.num_directions > 1:
+                    backward_output_cache = backward_input
 
-                for i, layer in enumerate(self.rnns[n_dir]):
+            layers_outputs.append(forward_input)
+            if self.num_directions > 1:
+                layers_outputs.append(backward_input)
 
-                    if self.use_gru:
-                        h_1_i = layer(rnn_input, h_0[i])
-                    else:
-                        h_1_i, c_1_i = layer(rnn_input, (h_0[i], c_0[i]))
+            forward_final_states.append(forward_layer_final_state)
+            if self.num_directions > 1:
+                backward_final_states.append(backward_layer_final_state)
 
-                    output = h_1_i
+            if lengths is not None:
+                forward_input = pack(forward_input, lengths)
+                if self.num_directions > 1:
+                    backward_input = pack(backward_input, lengths)
 
-                    # Apply recurrent dropout
-                    if self.gal_dropout > 0 and self.training:
-                        h_1_i = torch.mul(h_1_i, self.mask)
-                        h_1_i *= 1.0/(1.0 - self.gal_dropout)
+        layers_outputs = torch.stack(layers_outputs)
+        final_states = [forward_final_states,
+                        backward_final_states]
 
-                    # Update hidden and cell state of this layer
-                    h_1 += [h_1_i]
-                    if not self.use_gru:
-                        c_1 += [c_1_i]
-
-                    # Project into smaller space
-                    if self.use_projection:
-                        rnn_input = self.projections[n_dir][i](output)
-                    else:
-                        rnn_input = output
-
-                    # Residual Connection
-                    if i > 0 and self.use_residual:
-                        rnn_input.data += output_cache.data
-                        output_cache = rnn_input
-                    # Cache  the first layer output
-                    elif self.use_residual:
-                        output_cache = rnn_input
-
-                    layer_outputs += [rnn_input]
-
-                h_1 = torch.stack(h_1)
-                if not self.use_gru:
-                    c_1 = torch.stack(c_1)
-
-                layer_outputs = torch.stack(layer_outputs)
-                outputs += [layer_outputs]
-
-            outputs = torch.stack(outputs)
-            dir_outputs += [outputs]
-            final_h_state += [h_1]
-            if not self.use_gru:
-                final_c_state += [c_1]
-
-        if self.use_gru:
-            final_state = (torch.stack(final_h_state))
-        else:
-            final_state = (
-                torch.stack(final_h_state),
-                torch.stack(final_c_state)
-            )
-
-        dir_outputs = torch.stack(dir_outputs)
-
-        return dir_outputs, emb, final_state
+        return forward_emb, layers_outputs, final_states
 
     def _get_reverse_seq(self, tgt, seq):
         """Get the reversed sequence (used for backward LM).
