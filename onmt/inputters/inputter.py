@@ -6,13 +6,14 @@ import glob
 import os
 from collections import Counter, defaultdict, OrderedDict
 from itertools import count
+import math
 
 import torch
 import torchtext.data
 import torchtext.vocab
 
 from onmt.inputters.dataset_base import UNK_WORD, PAD_WORD, BOS_WORD, EOS_WORD
-from onmt.inputters.text_dataset import TextDataset
+from onmt.inputters.text_dataset import TextDataset, MonotextDataset
 from onmt.inputters.image_dataset import ImageDataset
 from onmt.inputters.audio_dataset import AudioDataset
 from onmt.utils.logging import logger
@@ -45,8 +46,10 @@ def get_fields(data_type, n_src_features, n_tgt_features, use_char=False):
         A dictionary whose keys are strings and whose values are the
         corresponding Field objects.
     """
-    if 'text' in data_type:
+    if data_type == 'text':
         return TextDataset.get_fields(n_src_features, n_tgt_features, use_char)
+    elif data_type == 'monotext':
+        return MonotextDataset.get_fields(n_tgt_features, use_char)
     elif data_type == 'img':
         return ImageDataset.get_fields(n_src_features, n_tgt_features)
     elif data_type == 'audio':
@@ -146,8 +149,11 @@ def get_num_features(data_type, corpus_file, side):
     """
     assert side in ["src", "tgt"]
 
-    if 'text' in data_type:
+    if data_type == 'text':
         return TextDataset.get_num_features(corpus_file, side)
+    elif data_type == 'monotext':
+        # no features used in language modelling
+        return 0
     elif data_type == 'img':
         return ImageDataset.get_num_features(corpus_file, side)
     elif data_type == 'audio':
@@ -348,6 +354,11 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
     Returns:
         Dict of Fields
     """
+
+    if data_type == 'monotext':
+        return build_vocab_mono(train_dataset_files, fields,
+                                tgt_vocab_path, tgt_vocab_size,
+                                tgt_words_min_frequency)
     counter = {}
     for k in fields:
         counter[k] = Counter()
@@ -474,6 +485,108 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
     return fields
 
 
+def _build_field_vocab_mono(field, counter, char_counter=None, **kwargs):
+    specials = list(OrderedDict.fromkeys(
+        tok for tok in [field.unk_token, field.init_token,
+                        field.eos_token]
+        if tok is not None))
+    field.vocab = field.vocab_cls(counter, specials=specials, **kwargs)
+
+    # Check if this field has an associated nested field for characters
+    if hasattr(field, 'nesting_field'):
+        # The current field has a nested character field, so we build
+        # a vocabulary for the nested field as well
+        char_specials = list(OrderedDict.fromkeys(
+            tok for tok in [field.nesting_field.unk_token,
+                            field.nesting_field.init_token,
+                            field.nesting_field.eos_token,
+                            field.nesting_field.pad_token]
+            if tok is not None))
+        # Make sure special tokens are not repeated
+        for special in char_specials:
+            if special not in specials:
+                specials.append(special)
+        # Create the vocab for the nested field
+        field.nesting_field.vocab = field.nesting_field.vocab_cls(
+                                char_counter,
+                                specials=specials,
+                                **kwargs)
+
+
+def build_vocab_mono(train_dataset_files, fields,
+                     tgt_vocab_path, tgt_vocab_size, tgt_words_min_frequency):
+    """
+    Args:
+        train_dataset_files: a list of train dataset pt file.
+        fields (dict): fields to build vocab for.
+        tgt_vocab_path(string): Path to tgt vocabulary file.
+        tgt_vocab_size(int): size of the target vocabulary.
+        tgt_words_min_frequency(int): the minimum frequency needed to
+                include a target word in the vocabulary.
+
+    Returns:
+        Dict of Fields
+    """
+    counter = {}
+    for k in fields:
+        counter[k] = Counter()
+
+    # Load vocabulary
+    tgt_vocab = None
+    # if len(tgt_vocab_path) > 0:
+    if tgt_vocab_path:
+        tgt_vocab = set([])
+        logger.info('Loading target vocab from %s' % tgt_vocab_path)
+        assert os.path.exists(tgt_vocab_path), \
+            'tgt vocab %s not found!' % tgt_vocab_path
+        with open(tgt_vocab_path) as f:
+            for line in f:
+                if len(line.strip()) == 0:
+                    continue
+                word = line.strip().split()[0]
+                tgt_vocab.add(word)
+
+    if "char_tgt" in fields.keys():
+        n_chars = 256
+        for idx in range(n_chars):
+            # Create a counter for characters. By doing (n_chars - idx)
+            # we are preserving the Unicode order of the characters by
+            # giving the frequencies in descending order
+            counter["char_tgt"][chr(idx)] = n_chars - idx
+
+    for path in train_dataset_files:
+        dataset = torch.load(path)
+        logger.info(" * reloading %s." % path)
+        for ex in dataset.examples:
+            for k in fields:
+                val = getattr(ex, k, None)
+                if val is not None and not fields[k].sequential:
+                    val = [val]
+                elif val is not None and 'char' in k:
+                    # ignore character fields, these were already
+                    # initialized to be all unicode characters from 0 to 255.
+                    continue
+                elif k == 'tgt' and tgt_vocab:
+                    val = [item for item in val if item in tgt_vocab]
+                counter[k].update(val)
+
+    _build_field_vocab_mono(fields["tgt"], counter["tgt"],
+                            max_size=tgt_vocab_size,
+                            min_freq=tgt_words_min_frequency)
+    logger.info(" * tgt vocab size: %d." % len(fields["tgt"].vocab))
+
+    if "char_tgt" in fields.keys():
+        # Add a Character Vocabulary
+        _build_field_vocab_mono(fields["char_tgt"], counter["tgt"],
+                                counter["char_tgt"],
+                                max_size=tgt_vocab_size,
+                                min_freq=tgt_words_min_frequency)
+        logger.info(" * char tgt vocab size: %d." %
+                    len(fields["char_tgt"].nesting_field.vocab))
+
+    return fields
+
+
 class OrderedIterator(torchtext.data.Iterator):
     """ Ordered Iterator Class """
 
@@ -495,6 +608,84 @@ class OrderedIterator(torchtext.data.Iterator):
                 self.batches.append(sorted(b, key=self.sort_key))
 
 
+class LMIterator(torchtext.data.Iterator):
+    """Defines an iterator for language modeling tasks that use BPTT.
+
+    Provides contiguous streams of examples together with targets that are
+    one timestep further forward, for language modeling training with
+    backpropagation through time (BPTT). Expects a Dataset with a single
+    example and a single field called 'text' and produces Batches with text and
+    target attributes.
+
+    Attributes:
+        dataset: The Dataset object to load Examples from.
+        batch_size: Batch size.
+        bptt_len: Length of sequences for backpropagation through time.
+        sort_key: A key to use for sorting examples in order to batch together
+            examples with similar lengths and minimize padding. The sort_key
+            provided to the Iterator constructor overrides the sort_key
+            attribute of the Dataset, or defers to it if None.
+        train: Whether the iterator represents a train set.
+        repeat: Whether to repeat the iterator for multiple epochs.
+        shuffle: Whether to shuffle examples between epochs.
+        sort: Whether to sort examples according to self.sort_key.
+            Note that repeat, shuffle, and sort default to train, train, and
+            (not train).
+        device (str or torch.device): A string or instance of `torch.device`
+            specifying which device the Variables are going to be created on.
+            If left as default, the tensors will be created on cpu.
+            Default: None.
+    """
+
+    def __init__(self, dataset, batch_size, bptt_len, **kwargs):
+        self.bptt_len = bptt_len
+        super(LMIterator, self).__init__(dataset, batch_size, **kwargs)
+
+    def __len__(self):
+        return math.ceil((len(self.dataset[0].text) / self.batch_size - 1) /
+                         self.bptt_len)
+
+    def __iter__(self):
+        text = self.dataset[0].tgt
+        TEXT = self.dataset.fields['tgt']
+        n_examples = int(len(text)/self.bptt_len)
+        text = text[:n_examples*self.bptt_len]
+        data = TEXT.numericalize(
+            [text], device=self.device)
+        data = data.view(n_examples, self.bptt_len).t().contiguous()
+        if hasattr(self.dataset[0], 'char_tgt'):
+            char_text = self.dataset[0].char_tgt
+            char_text = char_text[:n_examples*self.bptt_len]
+            CHR_TEXT = self.dataset.fields['char_tgt']
+            padded_char_text = CHR_TEXT.nesting_field.pad(char_text)
+            char_data = CHR_TEXT.numericalize(
+                [padded_char_text], device=self.device)[0]
+            char_data = char_data.view(
+                self.bptt_len, n_examples, -1).contiguous()
+            dataset = torchtext.data.Dataset(examples=self.dataset.examples,
+                                             fields=[('tgt', TEXT),
+                                                     ('char_tgt', CHR_TEXT)])
+        else:
+            dataset = torchtext.data.Dataset(
+                        examples=self.dataset.examples,
+                        fields=[('tgt', TEXT)])
+        while True:
+            for i in range(0, data.shape[1], self.batch_size):
+                self.iterations += 1
+                tgt = data[:, i:i + self.batch_size].contiguous()
+                if hasattr(dataset, 'char_tgt'):
+                    yield torchtext.data.Batch.fromvars(
+                        dataset, batch_size=tgt.shape[1],
+                        tgt=tgt,
+                        char_tgt=char_data[:, i:i + self.batch_size])
+                else:
+                    yield torchtext.data.Batch.fromvars(
+                        dataset, batch_size=tgt.shape[1],
+                        tgt=tgt)
+            if not self.repeat:
+                return
+
+
 class DatasetLazyIter(object):
     """ An Ordered Dataset Iterator, supporting multiple datasets,
         and lazy loading.
@@ -509,13 +700,19 @@ class DatasetLazyIter(object):
     """
 
     def __init__(self, datasets, fields, batch_size, batch_size_fn,
-                 device, is_train):
+                 device, is_train, lm_bptt_len=None):
         self.datasets = datasets
         self.fields = fields
         self.batch_size = batch_size
         self.batch_size_fn = batch_size_fn
         self.device = device
         self.is_train = is_train
+
+        if lm_bptt_len != -1:
+            self.bptt_len = lm_bptt_len
+            self.use_lm_iterator = True
+        else:
+            self.use_lm_iterator = False
 
         self.cur_iter = self._next_dataset_iterator(datasets)
         # We have at least one dataset.
@@ -550,12 +747,20 @@ class DatasetLazyIter(object):
 
         # Sort batch by decreasing lengths of sentence required by pytorch.
         # sort=False means "Use dataset's sortkey instead of iterator's".
-        return OrderedIterator(
-            dataset=self.cur_dataset, batch_size=self.batch_size,
-            batch_size_fn=self.batch_size_fn,
-            device=self.device, train=self.is_train,
-            sort=False, sort_within_batch=True,
-            repeat=False)
+        if self.use_lm_iterator:
+            return LMIterator(
+                dataset=self.cur_dataset, batch_size=self.batch_size,
+                batch_size_fn=self.batch_size_fn,
+                device=self.device, train=self.is_train,
+                sort=False, sort_within_batch=True,
+                repeat=False, bptt_len=self.bptt_len)
+        else:
+            return OrderedIterator(
+                dataset=self.cur_dataset, batch_size=self.batch_size,
+                batch_size_fn=self.batch_size_fn,
+                device=self.device, train=self.is_train,
+                sort=False, sort_within_batch=True,
+                repeat=False)
 
 
 def build_dataset_iter(datasets, fields, opt, is_train=True):
@@ -595,7 +800,7 @@ def build_dataset_iter(datasets, fields, opt, is_train=True):
         device = "cpu"
 
     return DatasetLazyIter(datasets, fields, batch_size, batch_size_fn,
-                           device, is_train)
+                           device, is_train, opt.lm_bptt_len)
 
 
 def lazily_load_dataset(corpus_type, opt):

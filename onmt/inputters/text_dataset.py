@@ -43,10 +43,7 @@ class TextDataset(DatasetBase):
                  src_seq_length=0, tgt_seq_length=0,
                  dynamic_dict=True, use_filter_pred=True):
 
-        if src_examples_iter is not None:
-            self.data_type = 'text'
-        else:
-            self.data_type = 'monotext'
+        self.data_type = 'text'
 
         # self.src_vocabs: mutated in dynamic_dict, used in
         # collapse_copy_scores and in Translator.py
@@ -58,10 +55,7 @@ class TextDataset(DatasetBase):
         # Each element of an example is a dictionary whose keys represents
         # at minimum the src tokens and their indices and potentially also
         # the src and tgt features and alignment information.
-        if self.data_type == 'monotext':
-            examples_iter = (self._join_dicts(tgt) for tgt in
-                             tgt_examples_iter)
-        elif tgt_examples_iter is not None:
+        if tgt_examples_iter is not None:
             examples_iter = (self._join_dicts(src, tgt) for src, tgt in
                              zip(src_examples_iter, tgt_examples_iter))
         else:
@@ -81,40 +75,21 @@ class TextDataset(DatasetBase):
         # If out_examples is a generator, we need to save the filter_pred
         # function in serialization too, which would cause a problem when
         # `torch.save()`. Thus we materialize it as a list.
-        if self.data_type == 'text':
-            src_size = 0
+        src_size = 0
 
-            out_examples = []
-            for ex_values in example_values:
-                example = self._construct_example_fromlist(
-                    ex_values, out_fields)
-                src_size += len(example.src)
-                out_examples.append(example)
+        out_examples = []
+        for ex_values in example_values:
+            example = self._construct_example_fromlist(
+                ex_values, out_fields)
+            src_size += len(example.src)
+            out_examples.append(example)
 
-            print("average src size", src_size / len(out_examples),
-                  len(out_examples))
+        print("average src size", src_size / len(out_examples),
+              len(out_examples))
 
-            def filter_pred(example):
-                return 0 < len(example.src) <= src_seq_length \
-                    and 0 < len(example.tgt) <= tgt_seq_length
-
-        else:
-            # Same thing as above but for tgt side, in case we are
-            # preprocessing monotext.
-            tgt_size = 0
-
-            out_examples = []
-            for ex_values in example_values:
-                example = self._construct_example_fromlist(
-                    ex_values, out_fields)
-                tgt_size += len(example.tgt)
-                out_examples.append(example)
-
-            print("average tgt size", tgt_size / len(out_examples),
-                  len(out_examples))
-
-            def filter_pred(example):
-                return 0 < len(example.tgt) <= tgt_seq_length
+        def filter_pred(example):
+            return 0 < len(example.src) <= src_seq_length \
+                and 0 < len(example.tgt) <= tgt_seq_length
 
         filter_pred = filter_pred if use_filter_pred else lambda x: True
 
@@ -126,12 +101,7 @@ class TextDataset(DatasetBase):
         """ Sort using length of source sentences. """
         # Default to a balanced sort, prioritizing tgt len match.
         # TODO: make this configurable.
-        if not hasattr(ex, "src"):
-            # monotext
-            return len(ex.tgt)
-
-        elif hasattr(ex, "tgt"):
-            # bitext
+        if hasattr(ex, "tgt"):
             return len(ex.src), len(ex.tgt)
         return len(ex.src)
 
@@ -338,10 +308,6 @@ class TextDataset(DatasetBase):
         Returns:
             number of features on `side`.
         """
-        # When dealing with monotext, src side will be empty.
-        if corpus_file is None:
-            return 0
-
         with codecs.open(corpus_file, "r", "utf-8") as cf:
             f_line = cf.readline().strip().split()
             _, _, num_feats = TextDataset.extract_text_features(f_line)
@@ -365,6 +331,224 @@ class TextDataset(DatasetBase):
                     [0] + [src_vocab.stoi[w] for w in tgt] + [0])
                 example["alignment"] = mask
             yield example
+
+
+class MonotextDataset(DatasetBase):
+    """ Dataset for data_type=='text'
+
+        Build `Example` objects, `Field` objects, and filter_pred function
+        from text corpus.
+
+        Args:
+            fields (dict): a dictionary of `torchtext.data.Field`.
+                Keys are like 'char_text' and 'text'.
+            tgt_examples_iter (dict iter): preprocessed target example
+                dictionary iterator.
+            tgt_seq_length (int): maximum target sequence length.
+            use_filter_pred (bool): use a custom filter predicate to filter
+                out examples?
+    """
+
+    def __init__(self, fields, tgt_examples_iter):
+
+        self.data_type = 'monotext'
+
+        # Each element of an example is a dictionary
+        examples_iter = (self._join_dicts(tgt) for tgt in
+                         tgt_examples_iter)
+
+        # Peek at the first to see which fields are used.
+        ex, examples_iter = self._peek(examples_iter)
+        keys = ex.keys()
+
+        out_fields = [(k, fields[k]) if k in fields else (k, None)
+                      for k in keys]
+        example_values = ([ex[k] for k in keys] for ex in examples_iter)
+
+        example, n_tokens = self._construct_example_fromlist(
+                example_values, out_fields)
+        out_examples = [example]
+
+        print("Number of tokens in shard: ", n_tokens)
+
+        super(MonotextDataset, self).__init__(out_examples, out_fields)
+
+    def _construct_example_fromlist(self, data, fields):
+        """
+        Args:
+            data: the data to be set as the value of the attributes of
+                the to-be-created `Example`, associating with respective
+                `Field` objects with same key.
+            fields: a dict of `torchtext.data.Field` objects. The keys
+                are attributes of the to-be-created `Example`.
+
+        Returns:
+            the created `Example` object.
+        """
+        ex = torchtext.data.Example()
+        char_tgt = []
+        text = tuple()
+        idx_val = None
+
+        for line_tgt in data:
+            for (name, field), val in zip(fields, line_tgt):
+                if field is None:
+                    continue
+                elif 'char' in name:
+                    char_tgt += self._construct_char_line(val, field)
+                elif name == 'indices':
+                    if idx_val is None:
+                        idx_val = field.preprocess(val)
+                    continue
+                else:
+                    preprocessed = tuple([field.init_token]) +\
+                        field.preprocess(val) +\
+                        tuple([field.eos_token])
+                    text += preprocessed
+
+        for name, field in fields:
+            if field is not None:
+                if 'char' in name:
+                    setattr(ex, name, char_tgt)
+                elif name == 'indices':
+                    setattr(ex, name, idx_val)
+                else:
+                    setattr(ex, name, text)
+
+        return ex, len(text)
+
+    def _construct_char_line(self, val, field):
+        preprocessed = field.preprocess(val)
+        # if we are preprocessing an example with a character
+        # field, we want to ensure all characters are encoded
+        # in utf-8. This way, we will turn characters that have
+        # a unicode > 255 in several characters with
+        # unicode < 256.
+        # This ensures we do not have unknown characters
+        # in character-based embeddings.
+        new_prepr = [[field.init_token]]
+        # new_prepr = []
+        for word in preprocessed:
+            new_word = []
+            for char in word:
+                new_chr = char.encode('utf-8', 'ignore')
+                # check if character was split into
+                # several characters
+                for code in new_chr:
+                    new_word.append(chr(code))
+            new_prepr.append(new_word)
+        preprocessed = new_prepr + [[field.eos_token]]
+        return preprocessed
+
+    def sort_key(self, ex):
+        """ Sort using length of source sentences. """
+        return len(ex.tgt)
+
+    @staticmethod
+    def make_text_examples_nfeats_tpl(text_iter, text_path, truncate, side):
+        """
+        Args:
+            text_iter(iterator): an iterator (or None) that we can loop over
+                to read examples.
+                It may be an openned file, a string list etc...
+            text_path(str): path to file or None
+            path (str): location of a src or tgt file.
+            truncate (int): maximum sequence length (0 for unlimited).
+            side (str): "src" or "tgt".
+
+        Returns:
+            (example_dict iterator, num_feats) tuple.
+        """
+        assert side in ['src', 'tgt']
+
+        if text_iter is None:
+            if text_path is not None:
+                text_iter = TextDataset.make_text_iterator_from_file(text_path)
+            else:
+                return (None, 0)
+
+        # All examples have same number of features, so we peek first one
+        # to get the num_feats.
+        examples_nfeats_iter = \
+            TextDataset.make_examples(text_iter, truncate, side)
+
+        first_ex = next(examples_nfeats_iter)
+        num_feats = first_ex[1]
+
+        # Chain back the first element - we only want to peek it.
+        examples_nfeats_iter = chain([first_ex], examples_nfeats_iter)
+        examples_iter = (ex for ex, nfeats in examples_nfeats_iter)
+
+        return (examples_iter, num_feats)
+
+    @staticmethod
+    def make_examples(text_iter, truncate, side):
+        """
+        Args:
+            text_iter (iterator): iterator of text sequences
+            truncate (int): maximum sequence length (0 for unlimited).
+            side (str): "src" or "tgt".
+
+        Yields:
+            (word, features, nfeat) triples for each line.
+        """
+        for i, line in enumerate(text_iter):
+            line = line.strip().split()
+            if truncate:
+                line = line[:truncate]
+
+            words, feats, n_feats = \
+                TextDataset.extract_text_features(line)
+
+            example_dict = {side: words, "indices": i}
+            if feats:
+                prefix = side + "_feat_"
+                example_dict.update((prefix + str(j), f)
+                                    for j, f in enumerate(feats))
+            yield example_dict, n_feats
+
+    @staticmethod
+    def make_text_iterator_from_file(path):
+        with codecs.open(path, "r", "utf-8") as corpus_file:
+            for line in corpus_file:
+                yield line
+
+    @staticmethod
+    def get_fields(n_tgt_features, use_char=False):
+        """
+        Args:
+            n_tgt_features (int): the number of target features to
+                create `torchtext.data.Field` for.
+            use_char (bool): boolean to decide if character fields are
+                necessary.
+
+        Returns:
+            A dictionary whose keys are strings and whose values
+            are the corresponding Field objects.
+        """
+        fields = {}
+
+        fields["tgt"] = torchtext.data.Field(
+            init_token=BOS_WORD, eos_token=EOS_WORD)
+
+        if use_char:
+            # Create character related fields
+            nesting_field_tgt = torchtext.data.Field(tokenize=list,
+                                                     pad_token=PAD_WORD,
+                                                     init_token=BOW_CHAR,
+                                                     eos_token=EOW_CHAR,
+                                                     fix_length=50)
+
+            fields["char_tgt"] = torchtext.data.NestedField(
+                                    nesting_field_tgt,
+                                    init_token=BOS_WORD,
+                                    eos_token=EOS_WORD)
+
+        fields["indices"] = torchtext.data.Field(
+            use_vocab=False, dtype=torch.long,
+            sequential=False)
+
+        return fields
 
 
 class ShardedTextCorpusIterator(object):
