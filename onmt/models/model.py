@@ -85,11 +85,9 @@ class LanguageModel(nn.Module):
       gpu (bool): if gpu is being used
       padding idx (int): the index of the padding symbol
     """
-    def __init__(self, opt, embeddings, gpu, padding_idx):
+    def __init__(self, opt, embeddings):
 
         super(LanguageModel, self).__init__()
-
-        self.is_cuda = True if gpu else False
 
         self.input_size = opt.lm_word_vec_size
         self.layers = opt.lm_layers
@@ -98,7 +96,6 @@ class LanguageModel(nn.Module):
         self.hidden_size = opt.lm_rnn_size
         self.use_projection = opt.lm_use_projection
         self.use_residual = opt.lm_use_residual
-        self.padding_idx = padding_idx
         self.num_directions = 2 if opt.lm_use_bidir else 1
         self.char_embeddings = opt.use_char_input
 
@@ -170,7 +167,7 @@ class LanguageModel(nn.Module):
 
         # Reverse the embeddings in the case of bidirectionality
         if self.num_directions > 1:
-            backward_emb = self._get_reverse_seq(tgt, forward_emb)
+            backward_emb = self._get_reverse_seq(tgt, forward_emb, lengths)
 
         # Pack the embeddings if we know the lengths
         forward_input = forward_emb
@@ -257,7 +254,7 @@ class LanguageModel(nn.Module):
 
         return forward_emb, layers_outputs, final_states
 
-    def _get_reverse_seq(self, tgt, seq):
+    def _get_reverse_seq(self, tgt, seq, lengths):
         """Get the reversed sequence (used for backward LM).
         """
 
@@ -267,9 +264,8 @@ class LanguageModel(nn.Module):
             # already be the character padding token.
             tgt = tgt[:, :, 0]
 
-        lengths = tgt.ne(self.padding_idx).sum(dim=0)[:, 0]
-        sentence_size = int(lengths[0])
-        batch_size = len(lengths)
+        sentence_size = int(tgt.shape[0])
+        batch_size = int(tgt.shape[1])
 
         idx = [0]*(batch_size*sentence_size)
 

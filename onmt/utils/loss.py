@@ -326,12 +326,14 @@ class LMLossCompute(LossComputeBase):
 
     def _make_shard_state(self, batch, output, range_, attns=None):
         target = batch.tgt
-        lengths = target.ne(self.padding_idx).sum(dim=0)
+        lengths = target.ne(-1).sum(dim=0)
         idx = self._get_reverse_idx(lengths)
         target_size = int(lengths[0])
+
         reversed_tgt = target.view(batch.batch_size*target_size,
-                                   -1)[idx, :].view(target_size,
-                                                    batch.batch_size)
+                                   -1)[idx, :]
+
+        reversed_tgt = target.view(target_size, batch.batch_size)
 
         if self.bidirectional:
             return {
@@ -391,7 +393,7 @@ class LMLossCompute(LossComputeBase):
 
         stats = self._stats(loss_data,
                             scores.data,
-                            target.view(-1).data)
+                            gtruth.data)
 
         return loss, stats
 

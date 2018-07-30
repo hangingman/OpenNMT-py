@@ -265,9 +265,6 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
     # Make Embeddings
     word_dict = fields[side].vocab
     feature_dicts = inputters.collect_feature_vocabs(fields, side)
-    # Get Padding idx in case bidirectional language model is necessary
-    # (padding symbol is needed to reverse sequences correctly)
-    padding_idx = word_dict.stoi[inputters.PAD_WORD]
 
     if model_opt.use_char_input:
         if "char_"+side not in fields.keys():
@@ -288,7 +285,7 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
                                       feature_dicts, for_encoder=False)
 
     # Make LanguageModel.
-    model = onmt.models.LanguageModel(model_opt, embeddings, gpu, padding_idx)
+    model = onmt.models.LanguageModel(model_opt, embeddings)
     model.model_type = model_opt.model_type
 
     # Save model options as a boolean in the model

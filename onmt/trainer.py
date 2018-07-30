@@ -402,11 +402,11 @@ class LanguageModelTrainer(Trainer):
                 if self.model.char_convs:
                     tgt_input = inputters.make_features(batch, 'char_tgt')
                     # (target_size, batch_size, max_char_tgt, n_feat)
-                    tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+                    tgt_input = tgt_input.permute(0, 1, 3, 2).contiguous()
                 else:
                     tgt_input = inputters.make_features(batch, 'tgt')
 
-                lengths = batch.tgt.ne(self.train_loss.padding_idx).sum(0)
+                lengths = batch.tgt.ne(-1).sum(0)
 
                 # F-prop through the model.
                 _, outputs, _ = self.model(tgt_input, lengths,
@@ -450,11 +450,11 @@ class LanguageModelTrainer(Trainer):
             if self.model.char_convs:
                 tgt_input = inputters.make_features(batch, 'char_tgt')
                 # (target_size, batch_size, max_char_tgt, n_feat)
-                tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+                tgt_input = tgt_input.permute(0, 1, 3, 2).contiguous()
             else:
                 tgt_input = inputters.make_features(batch, 'tgt')
 
-            lengths = batch.tgt.ne(self.train_loss.padding_idx).sum(0)
+            lengths = batch.tgt.ne(-1).sum(0)
 
             for j in range(0, target_size-1, trunc_size):
 
@@ -480,9 +480,6 @@ class LanguageModelTrainer(Trainer):
                         trunc_size, self.shard_size, normalization)
                 total_stats.update(batch_stats)
                 report_stats.update(batch_stats)
-
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(),
-                                               1.0)
 
         # 4. Multi GPU gradient gather
         if self.n_gpu > 1:

@@ -175,6 +175,9 @@ def model_opts(parser):
     group.add_argument('-lm_n_samples_softmax', type=int, default=8192,
                        help='The number of samples that are sampled'
                             ' for the softmax.')
+    group.add_argument('-lm_bptt_len', type=int, default=-1,
+                       help='The number of unroll steps that will be BPTT\'d '
+                            'in each example')
 
 
 def filters(s):
