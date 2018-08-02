@@ -157,7 +157,7 @@ def build_save_in_shards_mono(tgt_corpus, fields,
     index = 0
     while not tgt_iter.hit_end():
         index += 1
-        dataset = inputters.MonotextDataset(fields, tgt_iter)
+        dataset = inputters.MonotextDataset(fields, tgt_iter, opt.lm_bptt_len)
 
         # We save fields in vocab.pt separately, so make it empty.
         dataset.fields = []

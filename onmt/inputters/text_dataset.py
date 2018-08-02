@@ -345,11 +345,9 @@ class MonotextDataset(DatasetBase):
             tgt_examples_iter (dict iter): preprocessed target example
                 dictionary iterator.
             tgt_seq_length (int): maximum target sequence length.
-            use_filter_pred (bool): use a custom filter predicate to filter
-                out examples?
     """
 
-    def __init__(self, fields, tgt_examples_iter):
+    def __init__(self, fields, tgt_examples_iter, bptt_len):
 
         self.data_type = 'monotext'
 
@@ -365,15 +363,29 @@ class MonotextDataset(DatasetBase):
                       for k in keys]
         example_values = ([ex[k] for k in keys] for ex in examples_iter)
 
-        example, n_tokens = self._construct_example_fromlist(
-                example_values, out_fields)
-        out_examples = [example]
+        out_examples = []
+        rollover_tokens = dict()
+        n_tokens = 0
 
+        for ex_values in example_values:
+            examples, rollover_tokens = self._construct_example_fromlist(
+                ex_values, out_fields, bptt_len, rollover_tokens)
+            if len(examples) > 0:
+                for example in examples:
+                    n_tokens += len(example.tgt)
+                    out_examples.append(example)
+
+        out_examples_with_indices = []
+        for i, example in enumerate(out_examples):
+            setattr(example, 'indices', i)
+            out_examples_with_indices.append(example)
+        out_examples = out_examples_with_indices
         print("Number of tokens in shard: ", n_tokens)
 
         super(MonotextDataset, self).__init__(out_examples, out_fields)
 
-    def _construct_example_fromlist(self, data, fields):
+    def _construct_example_fromlist(self, data, fields,
+                                    bptt_len, rollover_tokens=None):
         """
         Args:
             data: the data to be set as the value of the attributes of
@@ -385,37 +397,64 @@ class MonotextDataset(DatasetBase):
         Returns:
             the created `Example` object.
         """
+
         ex = torchtext.data.Example()
-        char_tgt = []
-        text = tuple()
-        idx_val = None
+        rollover_exs = []
 
-        for line_tgt in data:
-            for (name, field), val in zip(fields, line_tgt):
-                if field is None:
-                    continue
-                elif 'char' in name:
-                    char_tgt += self._construct_char_line(val, field)
-                elif name == 'indices':
-                    if idx_val is None:
-                        idx_val = field.preprocess(val)
-                    continue
-                else:
-                    preprocessed = tuple([field.init_token]) +\
-                        field.preprocess(val) +\
-                        tuple([field.eos_token])
-                    text += preprocessed
+        for (name, field), val in zip(fields, data):
+            if field is None:
+                setattr(ex, name, val)
+                continue
+            elif 'char' in name:
+                preprocessed = self._construct_char_line(val, field)
+            elif name == 'indices':
+                continue
+            else:
+                preprocessed = tuple([field.init_token]) +\
+                    field.preprocess(val) +\
+                    tuple([field.eos_token])
 
-        for name, field in fields:
-            if field is not None:
-                if 'char' in name:
-                    setattr(ex, name, char_tgt)
-                elif name == 'indices':
-                    setattr(ex, name, idx_val)
-                else:
-                    setattr(ex, name, text)
+            if name in rollover_tokens.keys() and \
+                    len(rollover_tokens[name]) > 0:
+                preprocessed = rollover_tokens[name] + preprocessed
 
-        return ex, len(text)
+            new_text = preprocessed[:bptt_len]
+
+            if len(new_text) == bptt_len:
+                setattr(ex, name, new_text)
+                rollover_tokens[name] = preprocessed[bptt_len:]
+            else:
+                rollover_tokens[name] = preprocessed
+
+            i = 0
+            while len(rollover_tokens[name]) >= bptt_len:
+
+                if len(rollover_exs) == i:
+                    rollover_exs.append(torchtext.data.Example())
+
+                rollover_ex = rollover_exs[i]
+
+                new_text = rollover_tokens[name][:bptt_len]
+
+                if len(new_text) == bptt_len:
+                    setattr(rollover_ex, name, new_text)
+                    rollover_tokens[name] = rollover_tokens[name][bptt_len:]
+                    rollover_exs[i] = rollover_ex
+                    i += 1
+
+            if len(rollover_tokens[name]) == 0:
+                rollover_tokens[name] = []
+
+        if not hasattr(ex, 'tgt'):
+            exs = []
+        else:
+            exs = [ex]
+
+        for rollover_ex in rollover_exs:
+            if hasattr(rollover_ex, 'tgt'):
+                exs.append(rollover_ex)
+
+        return exs, rollover_tokens
 
     def _construct_char_line(self, val, field):
         preprocessed = field.preprocess(val)

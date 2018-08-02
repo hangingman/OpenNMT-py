@@ -402,7 +402,7 @@ class LanguageModelTrainer(Trainer):
                 if self.model.char_convs:
                     tgt_input = inputters.make_features(batch, 'char_tgt')
                     # (target_size, batch_size, max_char_tgt, n_feat)
-                    tgt_input = tgt_input.permute(0, 1, 3, 2).contiguous()
+                    tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
                 else:
                     tgt_input = inputters.make_features(batch, 'tgt')
 
@@ -450,7 +450,7 @@ class LanguageModelTrainer(Trainer):
             if self.model.char_convs:
                 tgt_input = inputters.make_features(batch, 'char_tgt')
                 # (target_size, batch_size, max_char_tgt, n_feat)
-                tgt_input = tgt_input.permute(0, 1, 3, 2).contiguous()
+                tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
             else:
                 tgt_input = inputters.make_features(batch, 'tgt')
 

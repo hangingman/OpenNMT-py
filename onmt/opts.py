@@ -199,6 +199,9 @@ def preprocess_opts(parser):
     group.add_argument('-use_char', action="store_true",
                        help="""Create character vocabulary fields as well,
                         to use in character based word embeddings""")
+    group.add_argument('-lm_bptt_len', type=int, default=20,
+                       help="""Number of tokens in each example.
+                        Used in monotext preprocessing.""")
 
     group.add_argument('-train_src',
                        help="Path to the training source data")

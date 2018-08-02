@@ -608,80 +608,32 @@ class OrderedIterator(torchtext.data.Iterator):
                 self.batches.append(sorted(b, key=self.sort_key))
 
 
-class LMIterator(torchtext.data.Iterator):
-    """Defines an iterator for language modeling tasks that use BPTT.
-
-    Provides contiguous streams of examples together with targets that are
-    one timestep further forward, for language modeling training with
-    backpropagation through time (BPTT). Expects a Dataset with a single
-    example and a single field called 'text' and produces Batches with text and
-    target attributes.
-
-    Attributes:
-        dataset: The Dataset object to load Examples from.
-        batch_size: Batch size.
-        bptt_len: Length of sequences for backpropagation through time.
-        sort_key: A key to use for sorting examples in order to batch together
-            examples with similar lengths and minimize padding. The sort_key
-            provided to the Iterator constructor overrides the sort_key
-            attribute of the Dataset, or defers to it if None.
-        train: Whether the iterator represents a train set.
-        repeat: Whether to repeat the iterator for multiple epochs.
-        shuffle: Whether to shuffle examples between epochs.
-        sort: Whether to sort examples according to self.sort_key.
-            Note that repeat, shuffle, and sort default to train, train, and
-            (not train).
-        device (str or torch.device): A string or instance of `torch.device`
-            specifying which device the Variables are going to be created on.
-            If left as default, the tensors will be created on cpu.
-            Default: None.
-    """
-
-    def __init__(self, dataset, batch_size, bptt_len, **kwargs):
-        self.bptt_len = bptt_len
-        super(LMIterator, self).__init__(dataset, batch_size, **kwargs)
-
-    def __len__(self):
-        return math.ceil((len(self.dataset[0].text) / self.batch_size - 1) /
-                         self.bptt_len)
+class LMIterator(OrderedIterator):
 
     def __iter__(self):
-        text = self.dataset[0].tgt
-        TEXT = self.dataset.fields['tgt']
-        n_examples = int(len(text)/self.bptt_len)
-        text = text[:n_examples*self.bptt_len]
-        data = TEXT.numericalize(
-            [text], device=self.device)
-        data = data.view(n_examples, self.bptt_len).t().contiguous()
-        if hasattr(self.dataset[0], 'char_tgt'):
-            char_text = self.dataset[0].char_tgt
-            char_text = char_text[:n_examples*self.bptt_len]
-            CHR_TEXT = self.dataset.fields['char_tgt']
-            padded_char_text = CHR_TEXT.nesting_field.pad(char_text)
-            char_data = CHR_TEXT.numericalize(
-                [padded_char_text], device=self.device)[0]
-            char_data = char_data.view(
-                self.bptt_len, n_examples, -1).contiguous()
-            dataset = torchtext.data.Dataset(examples=self.dataset.examples,
-                                             fields=[('tgt', TEXT),
-                                                     ('char_tgt', CHR_TEXT)])
-        else:
-            dataset = torchtext.data.Dataset(
-                        examples=self.dataset.examples,
-                        fields=[('tgt', TEXT)])
         while True:
-            for i in range(0, data.shape[1], self.batch_size):
+            self.init_epoch()
+            for idx, minibatch in enumerate(self.batches):
+                # fast-forward if loaded from state
+                if self._iterations_this_epoch > idx:
+                    continue
                 self.iterations += 1
-                tgt = data[:, i:i + self.batch_size].contiguous()
-                if hasattr(dataset, 'char_tgt'):
-                    yield torchtext.data.Batch.fromvars(
-                        dataset, batch_size=tgt.shape[1],
-                        tgt=tgt,
-                        char_tgt=char_data[:, i:i + self.batch_size])
-                else:
-                    yield torchtext.data.Batch.fromvars(
-                        dataset, batch_size=tgt.shape[1],
-                        tgt=tgt)
+                self._iterations_this_epoch += 1
+                if self.sort_within_batch:
+                    # NOTE: `rnn.pack_padded_sequence` requires that a
+                    # minibatch be sorted by decreasing order, which
+                    # requires reversing relative to typical sort keys
+                    if self.sort:
+                        minibatch.reverse()
+                    else:
+                        minibatch.sort(key=self.sort_key, reverse=True)
+                batch = torchtext.data.Batch(minibatch, self.dataset,
+                                             self.device)
+                batch.tgt = batch.tgt[1:-1].contiguous()
+                if hasattr(batch, 'char_tgt'):
+                    batch.char_tgt = batch.char_tgt[
+                        :, 1:-1].contiguous()
+                yield batch
             if not self.repeat:
                 return
 
@@ -700,20 +652,14 @@ class DatasetLazyIter(object):
     """
 
     def __init__(self, datasets, fields, batch_size, batch_size_fn,
-                 device, is_train, lm_bptt_len=None):
+                 device, is_train, lm_iter=False):
         self.datasets = datasets
         self.fields = fields
         self.batch_size = batch_size
         self.batch_size_fn = batch_size_fn
         self.device = device
         self.is_train = is_train
-
-        if lm_bptt_len != -1:
-            self.bptt_len = lm_bptt_len
-            self.use_lm_iterator = True
-        else:
-            self.use_lm_iterator = False
-
+        self.use_lm_iterator = lm_iter
         self.cur_iter = self._next_dataset_iterator(datasets)
         # We have at least one dataset.
         assert self.cur_iter is not None
@@ -753,7 +699,7 @@ class DatasetLazyIter(object):
                 batch_size_fn=self.batch_size_fn,
                 device=self.device, train=self.is_train,
                 sort=False, sort_within_batch=True,
-                repeat=False, bptt_len=self.bptt_len)
+                repeat=False)
         else:
             return OrderedIterator(
                 dataset=self.cur_dataset, batch_size=self.batch_size,
@@ -800,7 +746,7 @@ def build_dataset_iter(datasets, fields, opt, is_train=True):
         device = "cpu"
 
     return DatasetLazyIter(datasets, fields, batch_size, batch_size_fn,
-                           device, is_train, opt.lm_bptt_len)
+                           device, is_train, opt.lm)
 
 
 def lazily_load_dataset(corpus_type, opt):
