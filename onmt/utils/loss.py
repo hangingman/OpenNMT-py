@@ -314,15 +314,15 @@ class LMLossCompute(LossComputeBase):
                  bidirectional=False, use_sampled_softmax=False):
         super(LMLossCompute, self).__init__(generator, tgt_vocab)
 
+        # no padding when language modelling
+        self.padding_idx = -1
         self.bidirectional = bidirectional
         if use_sampled_softmax:
             self.use_sampled_softmax = True
             self.criterion = nn.NLLLoss(size_average=False)
         else:
             self.use_sampled_softmax = False
-            weight = torch.ones(len(tgt_vocab))
-            weight[self.padding_idx] = 0
-            self.criterion = nn.NLLLoss(weight, size_average=False)
+            self.criterion = nn.NLLLoss(size_average=False)
 
     def _make_shard_state(self, batch, output, range_, attns=None):
 
