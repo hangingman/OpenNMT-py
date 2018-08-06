@@ -19,10 +19,14 @@ def build_optim(model, opt, checkpoint):
         # optim.optimizer.state_dict()
         saved_optimizer_state_dict = optim.optimizer.state_dict()
     else:
+        if opt.start_decay_steps == -1:
+            start_decay_steps = None
+        else:
+            start_decay_steps = opt.start_decay_steps
         optim = Optimizer(
             opt.optim, opt.learning_rate, opt.max_grad_norm,
             lr_decay=opt.learning_rate_decay,
-            start_decay_steps=opt.start_decay_steps,
+            start_decay_steps=start_decay_steps,
             decay_steps=opt.decay_steps,
             beta1=opt.adam_beta1,
             beta2=opt.adam_beta2,
