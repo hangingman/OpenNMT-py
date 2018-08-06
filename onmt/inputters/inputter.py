@@ -782,7 +782,7 @@ def _load_fields(dataset, data_type, opt, checkpoint, use_char=False):
     if checkpoint is not None:
         logger.info('Loading vocab from checkpoint at %s.' % opt.train_from)
         fields = load_fields_from_vocab(
-            checkpoint['vocab'], data_type)
+            checkpoint['vocab'], data_type, use_char)
     else:
         fields = load_fields_from_vocab(
             torch.load(opt.data + '.vocab.pt'), data_type, use_char)
