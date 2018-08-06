@@ -165,9 +165,14 @@ class LanguageModel(nn.Module):
         # Go through the embedding layer
         forward_emb = self.embeddings(tgt)
 
-        # Reverse the embeddings in the case of bidirectionality
         if self.num_directions > 1:
-            backward_emb = self._get_reverse_seq(tgt, forward_emb, lengths)
+            inv_idx = torch.arange(forward_emb.size(0)-1, -1, -1).long()
+            backward_emb = forward_emb.index_select(0, inv_idx)
+            embs = torch.cat(
+                    [forward_emb,
+                     forward_emb], dim=-1)
+        else:
+            embs = forward_emb
 
         # Pack the embeddings if we know the lengths
         forward_input = forward_emb
@@ -178,7 +183,7 @@ class LanguageModel(nn.Module):
             if self.num_directions > 1:
                 backward_input = pack(backward_emb, lengths)
 
-        layers_outputs = []
+        layers_outputs = [embs]
         forward_final_states = []
         backward_final_states = []
 
@@ -235,9 +240,13 @@ class LanguageModel(nn.Module):
                 if self.num_directions > 1:
                     backward_output_cache = backward_input
 
-            layers_outputs.append(forward_input)
             if self.num_directions > 1:
-                layers_outputs.append(backward_input)
+                layer_output = torch.cat(
+                    [forward_input,
+                     backward_input.index_select(0, inv_idx)], dim=-1)
+                layers_outputs.append(layer_output)
+            else:
+                layers_outputs.append(forward_input)
 
             forward_final_states.append(forward_layer_final_state)
             if self.num_directions > 1:

@@ -399,24 +399,22 @@ class LanguageModelTrainer(Trainer):
                 cur_dataset = valid_iter.get_cur_dataset()
                 self.valid_loss.cur_dataset = cur_dataset
 
+                # 1. Create input
                 if self.model.char_convs:
-                    tgt_input = inputters.make_features(batch, 'char_tgt')
+                    tgt = inputters.make_features(batch, 'char_tgt')
                     # (target_size, batch_size, max_char_tgt, n_feat)
-                    tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+                    tgt = tgt.permute(1, 0, 3, 2).contiguous()
                 else:
-                    tgt_input = inputters.make_features(batch, 'tgt')
+                    tgt = inputters.make_features(batch, 'tgt')
 
                 lengths = batch.tgt.ne(-1).sum(0)
 
                 # F-prop through the model.
-                _, outputs, _ = self.model(tgt_input, lengths,
+                _, outputs, _ = self.model(tgt, lengths,
                                            hidden_state)
 
-                # Remove EOS output and get last layer
-                if self.model.num_directions > 1:
-                    outputs = outputs[-2:, :-1, :, :].contiguous()
-                else:
-                    outputs = outputs[-1, :-1, :, :].contiguous()
+                # Get last layer
+                outputs = outputs[-1].contiguous()
 
                 # Compute loss.
                 batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -446,40 +444,34 @@ class LanguageModelTrainer(Trainer):
 
             hidden_state = None
             attns = None
+            j = 0
 
+            # 1. Create input
             if self.model.char_convs:
-                tgt_input = inputters.make_features(batch, 'char_tgt')
+                tgt = inputters.make_features(batch, 'char_tgt')
                 # (target_size, batch_size, max_char_tgt, n_feat)
-                tgt_input = tgt_input.permute(1, 0, 3, 2).contiguous()
+                tgt = tgt.permute(1, 0, 3, 2).contiguous()
             else:
-                tgt_input = inputters.make_features(batch, 'tgt')
+                tgt = inputters.make_features(batch, 'tgt')
 
             lengths = batch.tgt.ne(-1).sum(0)
 
-            for j in range(0, target_size-1, trunc_size):
+            # 2. F-prop all but generator.
+            if self.grad_accum_count == 1:
+                self.model.zero_grad()
 
-                # 1. Create truncated target.
-                tgt = tgt_input[j: j + trunc_size]
+            _, outputs, hidden_state = self.model(tgt, lengths,
+                                                  hidden_state)
 
-                # 2. F-prop all but generator.
-                if self.grad_accum_count == 1:
-                    self.model.zero_grad()
+            # Get last layer
+            outputs = outputs[-1].contiguous()
 
-                _, outputs, hidden_state = self.model(tgt, lengths,
-                                                      hidden_state)
-
-                # Remove EOS output and get last layer
-                if self.model.num_directions > 1:
-                    outputs = outputs[-2:, :-1, :, :].contiguous()
-                else:
-                    outputs = outputs[-1, :-1, :, :].contiguous()
-
-                # 3. Compute loss in shards for memory efficiency.
-                batch_stats = self.train_loss.sharded_compute_loss(
-                        batch, outputs, attns, j,
-                        trunc_size, self.shard_size, normalization)
-                total_stats.update(batch_stats)
-                report_stats.update(batch_stats)
+            # 3. Compute loss in shards for memory efficiency.
+            batch_stats = self.train_loss.sharded_compute_loss(
+                    batch, outputs, attns, j,
+                    trunc_size, self.shard_size, normalization)
+            total_stats.update(batch_stats)
+            report_stats.update(batch_stats)
 
         # 4. Multi GPU gradient gather
         if self.n_gpu > 1:

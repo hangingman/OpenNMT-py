@@ -325,65 +325,68 @@ class LMLossCompute(LossComputeBase):
             self.criterion = nn.NLLLoss(weight, size_average=False)
 
     def _make_shard_state(self, batch, output, range_, attns=None):
+
         target = batch.tgt
-        lengths = target.ne(-1).sum(dim=0)
-        idx = self._get_reverse_idx(lengths)
-        target_size = int(lengths[0])
-
-        reversed_tgt = target.view(batch.batch_size*target_size,
-                                   -1)[idx, :]
-
-        reversed_tgt = target.view(target_size, batch.batch_size)
-
         if self.bidirectional:
+            output = output.view(target.shape[0],
+                                 target.shape[1],
+                                 2,
+                                 -1)
+            forward_tgt = target[1:]
+            backward_tgt = target[:-1]
+            forward_output = output[:-1, :, 0, :].contiguous()
+            backward_output = output[1:, :, 1, :].contiguous()
+
             return {
-                "output": output[0],
-                "reverse_output": output[1],
-                "target": batch.tgt[range_[0] + 1: range_[1]],
-                "reverse_target": reversed_tgt[range_[0] + 1: range_[1]]
+                "forward_output": forward_output,
+                "backward_output": backward_output,
+                "forward_tgt": forward_tgt,
+                "backward_tgt": backward_tgt
             }
         else:
-            # need to put a dummy in reverse_output, even though
-            # it will not be used
+            forward_tgt = target[1:]
+            forward_output = output[:-1].contiguous()
             return {
-                "output": output[0],
-                "reverse_output": output[0],
-                "target": batch.tgt[range_[0] + 1: range_[1]],
-                "reverse_target": reversed_tgt[range_[0] + 1: range_[1]]
+                "forward_output": forward_output,
+                "backward_output": forward_output,
+                "forward_tgt": forward_tgt,
+                "backward_tgt": forward_tgt
             }
 
-    def _compute_loss(self, batch, output, reverse_output,
-                      target, reverse_target):
+    def _compute_loss(self, batch, forward_output, backward_output,
+                      forward_tgt, backward_tgt):
 
-        output = self._bottle(output)
+        forward_output = self._bottle(forward_output)
         if self.bidirectional:
-            reverse_output = self._bottle(reverse_output)
+            backward_output = self._bottle(backward_output)
 
             if self.use_sampled_softmax:
-                scores, new_target = self.generator(output, target.view(-1))
-                backward_scores, new_rev_target = self.generator(
-                                        reverse_output,
-                                        reverse_target.view(-1))
-                rev_gtruth = new_rev_target
+                scores, new_target = self.generator(forward_output,
+                                                    forward_tgt.view(-1))
+                backward_scores, new_bw_target = self.generator(
+                                        backward_output,
+                                        backward_tgt.view(-1))
+                bw_gtruth = new_bw_target
             else:
-                scores = self.generator(output)
-                backward_scores = self.generator(reverse_output)
+                scores = self.generator(forward_output)
+                backward_scores = self.generator(backward_output)
 
-                rev_gtruth = reverse_target.view(-1)
+                bw_gtruth = backward_tgt.view(-1)
         else:
             if self.use_sampled_softmax:
-                scores, new_target = self.generator(output, target.view(-1))
+                scores, new_target = self.generator(forward_output,
+                                                    forward_tgt.view(-1))
             else:
-                scores = self.generator(output)
+                scores = self.generator(forward_output)
 
         if self.use_sampled_softmax:
             gtruth = new_target
         else:
-            gtruth = target.view(-1)
+            gtruth = forward_tgt.view(-1)
 
         if self.bidirectional:
             f_loss = self.criterion(scores, gtruth)
-            b_loss = self.criterion(backward_scores, rev_gtruth)
+            b_loss = self.criterion(backward_scores, bw_gtruth)
             loss = f_loss + b_loss
             stat_loss = loss/2
         else:
@@ -396,22 +399,3 @@ class LMLossCompute(LossComputeBase):
                             gtruth.data)
 
         return loss, stats
-
-    def _get_reverse_idx(self, lengths):
-        """Returns the indices needed to reverse the target sequence.
-        """
-
-        sentence_size = int(lengths[0])
-        batch_size = len(lengths)
-
-        idx = [0]*(batch_size*sentence_size)
-
-        for i in range(batch_size*sentence_size):
-            batch_index = i % batch_size
-            sentence_index = i//batch_size
-            idx[i] = (int(lengths[batch_index])-sentence_index-1)*batch_size \
-                + batch_index
-            if idx[i] < 0:  # Padding symbol, don't change order
-                idx[i] = i
-
-        return idx
