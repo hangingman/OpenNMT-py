@@ -339,8 +339,8 @@ class LMLossCompute(LossComputeBase):
 
             return {
                 "forward_output": forward_output,
-                "backward_output": backward_output,
                 "forward_tgt": forward_tgt,
+                "backward_output": backward_output,
                 "backward_tgt": backward_tgt
             }
         else:
@@ -348,13 +348,11 @@ class LMLossCompute(LossComputeBase):
             forward_output = output[:-1].contiguous()
             return {
                 "forward_output": forward_output,
-                "backward_output": forward_output,
-                "forward_tgt": forward_tgt,
-                "backward_tgt": forward_tgt
+                "forward_tgt": forward_tgt
             }
 
-    def _compute_loss(self, batch, forward_output, backward_output,
-                      forward_tgt, backward_tgt):
+    def _compute_loss(self, batch, forward_output, forward_tgt,
+                      backward_output=None, backward_tgt=None):
 
         forward_output = self._bottle(forward_output)
         if self.bidirectional:
