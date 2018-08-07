@@ -410,8 +410,8 @@ class LanguageModelTrainer(Trainer):
                 lengths = batch.tgt.ne(-1).sum(0)
 
                 # F-prop through the model.
-                _, outputs, _ = self.model(tgt, lengths,
-                                           hidden_state)
+                outputs, _ = self.model(tgt, lengths,
+                                        hidden_state)
 
                 # Get last layer
                 outputs = outputs[-1].contiguous()
@@ -434,17 +434,14 @@ class LanguageModelTrainer(Trainer):
         if self.grad_accum_count > 1:
             self.model.zero_grad()
 
-        for batch in true_batchs:
-            target_size = batch.tgt.size(0)
-            # Truncated BPTT
-            if self.trunc_size:
-                trunc_size = self.trunc_size
-            else:
-                trunc_size = target_size
+        attns = None
+        j = 0
 
+        for batch in true_batchs:
+
+            target_size = batch.tgt.size(0)
+            trunc_size = target_size
             hidden_state = None
-            attns = None
-            j = 0
 
             # 1. Create input
             if self.model.char_convs:
@@ -460,8 +457,8 @@ class LanguageModelTrainer(Trainer):
             if self.grad_accum_count == 1:
                 self.model.zero_grad()
 
-            _, outputs, hidden_state = self.model(tgt, lengths,
-                                                  hidden_state)
+            outputs, _ = self.model(tgt, lengths,
+                                    hidden_state)
 
             # Get last layer
             outputs = outputs[-1].contiguous()

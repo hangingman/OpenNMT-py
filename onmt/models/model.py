@@ -167,6 +167,7 @@ class LanguageModel(nn.Module):
 
         if self.num_directions > 1:
             inv_idx = torch.arange(forward_emb.size(0)-1, -1, -1).long()
+            inv_idx = inv_idx.to(forward_emb.device)
             backward_emb = forward_emb.index_select(0, inv_idx)
             embs = torch.cat(
                     [forward_emb,
@@ -184,16 +185,14 @@ class LanguageModel(nn.Module):
                 backward_input = pack(backward_emb, lengths)
 
         layers_outputs = [embs]
-        forward_final_states = []
-        backward_final_states = []
+        final_states = []
 
         forward_output_cache = None
         backward_output_cache = None
 
         if hidden_state is not None:
-            forward_hidden_state = hidden_state[0]
-            if self.num_directions > 1:
-                backward_hidden_state = hidden_state[1]
+            forward_hidden_state, backward_hidden_state =\
+                    self._split_state_directions(hidden_state)
         else:
             forward_hidden_state = [None for layer in range(self.layers)]
             backward_hidden_state = [None for layer in range(self.layers)]
@@ -248,9 +247,9 @@ class LanguageModel(nn.Module):
             else:
                 layers_outputs.append(forward_input)
 
-            forward_final_states.append(forward_layer_final_state)
+            final_states.append(forward_layer_final_state)
             if self.num_directions > 1:
-                backward_final_states.append(backward_layer_final_state)
+                final_states.append(backward_layer_final_state)
 
             if lengths is not None:
                 forward_input = pack(forward_input, lengths)
@@ -258,38 +257,63 @@ class LanguageModel(nn.Module):
                     backward_input = pack(backward_input, lengths)
 
         layers_outputs = torch.stack(layers_outputs)
-        final_states = [forward_final_states,
-                        backward_final_states]
+        repacked_states = self._repackage_final_states(final_states)
 
-        return forward_emb, layers_outputs, final_states
+        return layers_outputs, repacked_states
 
-    def _get_reverse_seq(self, tgt, seq, lengths):
-        """Get the reversed sequence (used for backward LM).
-        """
+    def _repackage_final_states(self, final_states_list):
+        if type(final_states_list[0]) is tuple:
+            # it's a LSTM
+            h_states = torch.cat(
+                [state[0] for state in final_states_list], dim=0)
+            c_states = torch.cat(
+                [state[1] for state in final_states_list], dim=0)
+            return (h_states, c_states)
+        else:
+            # it's a GRU
+            h_states = torch.cat(
+                [state for state in final_states_list], dim=0)
+            return h_states
 
-        if self.char_embeddings:
-            # Get the first character of each word.
-            # If the word is actually padding, the first character will
-            # already be the character padding token.
-            tgt = tgt[:, :, 0]
+    def _split_state_directions(self, hidden_state):
+        if type(hidden_state) is tuple:
+            # it's a LSTM
+            n_layers = hidden_state[0].shape[0]//self.num_directions
+            batch_size = hidden_state[0].shape[1]
 
-        sentence_size = int(tgt.shape[0])
-        batch_size = int(tgt.shape[1])
+            forward_h_n = hidden_state[0].view(
+                n_layers, self.num_directions, batch_size, -1)[:, 0].split(1)
+            forward_c_n = hidden_state[0].view(
+                n_layers, self.num_directions, batch_size, -1)[:, 0].split(1)
 
-        idx = [0]*(batch_size*sentence_size)
+            forward_states = [(h_n.detach(), c_n.detach()) for h_n, c_n
+                              in zip(forward_h_n, forward_c_n)]
 
-        for i in range(batch_size*sentence_size):
-            batch_index = i % batch_size
-            sentence_index = i//batch_size
-            idx[i] = (int(lengths[batch_index])-sentence_index-1)*batch_size \
-                + batch_index
-            if idx[i] < 0:  # Padding symbol, don't change order
-                idx[i] = i
+            if self.num_directions > 1:
+                backward_h_n = hidden_state[0].view(
+                    n_layers, self.num_directions, batch_size, -1)[
+                        :, 1].split(1)
+                backward_c_n = hidden_state[0].view(
+                    n_layers, self.num_directions, batch_size, -1)[
+                        :, 1].split(1)
+                backward_states = [(h_n.detach(), c_n.detach()) for h_n, c_n
+                                   in zip(backward_h_n, backward_c_n)]
+            else:
+                backward_states = [None for layer in range(n_layers)]
 
-        reversed_seq = seq.view(
-                        batch_size*seq.size(0),
-                        -1)[idx, :].view(seq.size(0),
-                                         batch_size,
-                                         -1)
+        else:
+            n_layers = hidden_state.shape[0]//self.num_directions
+            batch_size = hidden_state.shape[1]
+            forward_h_n = hidden_state.view(
+                n_layers, self.num_directions, batch_size, -1)[:, 0].split(1)
+            forward_states = [h_n.detach() for h_n in forward_h_n]
 
-        return reversed_seq
+            if self.num_directions > 1:
+                backward_h_n = hidden_state.view(
+                    n_layers, self.num_directions, batch_size, -1)[
+                        :, 1].split(1)
+                backward_states = [h_n.detach() for h_n in backward_h_n]
+            else:
+                backward_states = [None for layer in range(n_layers)]
+
+        return forward_states, backward_states
