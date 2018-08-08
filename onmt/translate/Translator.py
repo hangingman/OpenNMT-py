@@ -86,9 +86,9 @@ def make_translator(opt, report_score=True, out_file=None):
         if id_method == 'unk':
             unk_w = model.generator[0].weight[0]
             unk_b = model.generator[0].bias[0]
-            for i in range(added):
-                id_w_mx[i] = unk_w
-                id_b_mx[i] = unk_b
+            
+            id_w_mx = unk_w.repeat([added, 1])
+            id_b_mx = unk_b.repeat([added])
 
         elif id_method == 'pred':
             
@@ -287,7 +287,8 @@ class Translator(object):
         # ADDED --------------------------------------------------------------
         # Load the translation pieces list
         if self.use_guided:
-            translation_pieces = pickle.load(open(self.tp_path, 'rb'))
+            translation_pieces = pickle.load(open(self.tp_path, 'rb'), 
+                                             encoding='latin1')
         tot_time = 0
         # END ----------------------------------------------------------------
 
@@ -411,14 +412,24 @@ class Translator(object):
         # ADDED ----------------------------------------------------
         if self.use_guided:
 
+            # TEST - make things work with gpu
+            if self.cuda:
+                device = torch.device("cuda")
+            else:
+                device = torch.device("cpu")
+
             # List that will have the necessary translation pieces
             t_pieces = [translation_pieces[ix] for ix in batch.indices]
 
             # "Translate" the list into dictionaries indexed by word index
             tp_uni = list()
             tp_multi = list()
-            out_uni = np.zeros((batch.batch_size, len(vocab)))
-           
+            #out_uni = np.zeros((batch.batch_size, len(vocab)))
+            out_uni = torch.zeros(batch.batch_size,
+                                  len(vocab),
+                                  dtype=torch.float,
+                                  device=device)
+
             # To extend the vocab with the translation pieces
             added = 0
             init_index = len(vocab.itos)
@@ -429,14 +440,19 @@ class Translator(object):
                 for tuple_ in list_:
                     key = str(vocab.stoi[tuple_[0][0]])
                     if len(tuple_[0]) == 1:
-                        if self.extend_with_tp:
-                            if key == '0':
-                                vocab.itos.append(tuple_[0][0])
-                                vocab.stoi[tuple_[0][0]] = init_index + added
-                                out_uni = np.concatenate((out_uni, 
-                                                          np.zeros((out_uni.shape[0], 1))),
-                                                         axis=1)
-                                added += 1
+                        # Putted this to ifs together
+                        if self.extend_with_tp and key == '0':
+                            vocab.itos.append(tuple_[0][0])
+                            vocab.stoi[tuple_[0][0]] = init_index + added
+                            out_uni = torch.cat((out_uni,
+                                                 torch.zeros(out_uni.shape[0],
+                                                             1,
+                                                             dtype=torch.float)),
+                                                1)
+                            #out_uni = np.concatenate((out_uni, 
+                            #                          np.zeros((out_uni.shape[0], 1))),
+                            #                         axis=1)
+                            added += 1
                         aux_dict_uni[key] = tuple_[1]
                         out_uni[ix][int(key)] = tuple_[1]
                     else:
@@ -458,14 +474,17 @@ class Translator(object):
             #tp_multi_rep = list(itertools.chain(*tp_multi_))
             
             out_uni_ = tuple([out_uni for _ in range(self.beam_size)])
-            out_uni_rep = np.vstack(out_uni_)            
+            out_uni_rep = torch.cat(out_uni_, 0)
+            #out_uni_rep = np.vstack(out_uni_)            
 
-            if self.extend_with_tp:
+            if self.extend_with_tp and added:
+
+                print("Added {} new words".format(added))
 
                 # Add the extra necessary components
                 unk_w = self.model.generator[0].weight[0]
                 unk_b = self.model.generator[0].bias[0]
-
+                
                 id_w_mx = unk_w.repeat([added, 1])
                 id_b_mx = unk_b.repeat([added])
 
@@ -479,6 +498,10 @@ class Translator(object):
                 self.model.generator[0].bias.data = torch.cat((model_bias,
                                                                id_b_mx),
                                                               0)
+
+                # debug - Using share decoder, updating one, updates the other
+                #print("Generator: ", self.model.generator[0].weight.shape)
+                #print("Decoder:   ", self.model.decoder.embeddings.emb_luts[0].weight.shape)
 
         def _ngrams(n_max, seq):
             """
@@ -598,7 +621,9 @@ class Translator(object):
                     # Deal with n-gram cases
                     bs = batch.batch_size
                     total_size = batch.batch_size * self.beam_size
-                    out_multi = np.zeros((total_size, len(vocab)))
+                    out_multi = torch.zeros(total_size, len(vocab),
+                                            device=device) 
+                    #out_multi = np.zeros((total_size, len(vocab)))
 
                     if i > 0:
                         for j in range(len(beam)): 
@@ -636,14 +661,15 @@ class Translator(object):
                                         value = tp_uni[j][w]
                                         out_multi[k*bs+j][int(w)] -= value
                                     try:
-                                        assert ((out_uni_rep[k*bs+j]+out_multi[k*bs+j] >= 0) == True).all()
+                                        values = out_uni_rep[k*bs+j]+out_multi[k*bs+j]
+                                        assert ((values >= 0.0) == True).all()
                                     except:
+                                        print("ERROR: Problem when correcting 1-grams")
                                         pdb.set_trace()
 
-    
                     # Add the weights of the 1-grams
-                    out = np.add(out, self.guided_1_weight*out_uni_rep)
-                    out = np.add(out, self.guided_n_weight*out_multi)
+                    out = torch.add(out, self.guided_1_weight*out_uni_rep)
+                    out = torch.add(out, self.guided_n_weight*out_multi)
                 # END ------------------------------------------------------
 
                 out = unbottle(out)
