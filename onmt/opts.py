@@ -158,7 +158,7 @@ def model_opts(parser):
                        help='Use projections to smaller size between layers.')
     group.add_argument('-lm_use_residual', action="store_true",
                        help='Use a residual connection between layers.')
-    group.add_argument('-lm_gal_dropout', type=float, default=0.,
+    group.add_argument('-lm_dropout', type=float, default=0.1,
                        help='Dropout probability applied in the LM RNN.')
     group.add_argument('-lm_word_vec_size', type=int, default=500,
                        help='Word embedding size for LM.')

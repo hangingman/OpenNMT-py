@@ -73,7 +73,6 @@ class LanguageModel(nn.Module):
     - https://arxiv.org/abs/1608.05859.pdf
     Several options can be used:
     - Embedding and generator weight tying
-    - Gal Dropout of hidden states (https://arxiv.org/pdf/1512.05287.pdf)
     - Residual/Skip Connections between RNN layers
     - Bidirectional LM option
     - Projection of RNN output into the same space of the embeddings
@@ -82,8 +81,6 @@ class LanguageModel(nn.Module):
     Args:
       embeddings (:obj:`Embeddings` or
                   `CharEmbeddingsCNN`): word or character embeddings
-      gpu (bool): if gpu is being used
-      padding idx (int): the index of the padding symbol
     """
     def __init__(self, opt, embeddings):
 
@@ -98,6 +95,7 @@ class LanguageModel(nn.Module):
         self.use_residual = opt.lm_use_residual
         self.num_directions = 2 if opt.lm_use_bidir else 1
         self.char_embeddings = opt.use_char_input
+        self.dropout = nn.Dropout(opt.lm_dropout)
 
         RNN = getattr(nn, self.rnn_type)
 
@@ -156,15 +154,22 @@ class LanguageModel(nn.Module):
                  a sequence of size `[tgt_len x batch]` or
                  of size `[tgt_len x batch x num_characters]`
                  if we are using a character embedding model
-            hidden_state(:obj:`Variable`) -- the current states of the LM RNNs
+            hidden_state(:obj:`LongTensor`) -- the current states of the
+                 LM RNNs
         Returns:
-            dir_outputs (Variable): the outputs from every RNN layer of the LM
-            emb (Variable): the embeddings of the LM
+            layers_outputs(:obj:`LongTensor`): the outputs from every RNN
+                 layer of the LM and the embeddings
+            final_states(:obj:`LongTensor`): the final hidden states of
+                 all layers
         """
 
         # Go through the embedding layer
         forward_emb = self.embeddings(tgt)
 
+        # Apply dropout
+        forward_emb = self.dropout(forward_emb)
+
+        # Reverse these embeddings to obtain the embeddings of the backward LM
         if self.num_directions > 1:
             inv_idx = torch.arange(forward_emb.size(0)-1, -1, -1).long()
             inv_idx = inv_idx.to(forward_emb.device)
@@ -199,12 +204,14 @@ class LanguageModel(nn.Module):
 
         for layer in range(self.layers):
 
+            # Go through forward direction layer
             forward_outputs, forward_layer_final_state = \
                         self.forward_rnns[layer](forward_input,
                                                  forward_hidden_state[layer])
 
             forward_outputs, _ = unpack(forward_outputs)
 
+            # Go through backward direction layer
             if self.num_directions > 1:
                 backward_outputs, backward_layer_final_state = \
                         self.backward_rnns[layer](backward_input,
@@ -212,6 +219,7 @@ class LanguageModel(nn.Module):
 
                 backward_outputs, _ = unpack(backward_outputs)
 
+            # Project the outputs into the word vector space
             if self.use_projection:
                 forward_input = self.forward_rnn_projections[
                                     layer](
@@ -226,19 +234,26 @@ class LanguageModel(nn.Module):
                 if self.num_directions > 1:
                     backward_input = backward_outputs
 
-            # Residual Connection
+            # Make a Residual Connection
             if layer > 0 and self.use_residual:
                 forward_input += forward_output_cache
                 forward_output_cache = forward_input
                 if self.num_directions > 1:
                     backward_input += backward_output_cache
                     backward_output_cache = backward_input
-            # Cache  the first layer output
+            # Cache  the current layer output
             elif self.use_residual:
                 forward_output_cache = forward_input
                 if self.num_directions > 1:
                     backward_output_cache = backward_input
 
+            # Apply dropout
+            forward_input = self.dropout(forward_input)
+            if self.num_directions > 1:
+                backward_input = self.dropout(backward_input)
+
+            # Reverse backward layer if the LM is bidirectional
+            # Store this layer output in a list
             if self.num_directions > 1:
                 layer_output = torch.cat(
                     [forward_input,
@@ -247,19 +262,26 @@ class LanguageModel(nn.Module):
             else:
                 layers_outputs.append(forward_input)
 
+            # Store the final hidden states of this layer
             final_states.append(forward_layer_final_state)
             if self.num_directions > 1:
                 final_states.append(backward_layer_final_state)
 
+            # Pack the outputs to use them in the next layer
             if lengths is not None:
                 forward_input = pack(forward_input, lengths)
                 if self.num_directions > 1:
                     backward_input = pack(backward_input, lengths)
 
+        # LM output is of shape
+        # (1 + n_layers, seq_len, batch, num_directions * hidden_size)
+        # where the first layer are the embeddings
         layers_outputs = torch.stack(layers_outputs)
-        repacked_states = self._repackage_final_states(final_states)
+        # Repackage the final states to be in the same format as PyTorch's
+        # regular RNN's -> (num_layers * num_directions, batch, hidden_size)
+        final_states = self._repackage_final_states(final_states)
 
-        return layers_outputs, repacked_states
+        return layers_outputs, final_states
 
     def _repackage_final_states(self, final_states_list):
         if type(final_states_list[0]) is tuple:
@@ -302,6 +324,7 @@ class LanguageModel(nn.Module):
                 backward_states = [None for layer in range(n_layers)]
 
         else:
+            # it's a GRU
             n_layers = hidden_state.shape[0]//self.num_directions
             batch_size = hidden_state.shape[1]
             forward_h_n = hidden_state.view(
