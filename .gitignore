@@ -110,3 +110,6 @@ ENV/
 
 # Tensorboard
 runs/
+
+# ADDED
+extra_data

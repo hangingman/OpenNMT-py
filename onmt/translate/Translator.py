@@ -19,7 +19,7 @@ from collections import defaultdict
 import numpy as np
 import time
 import itertools
-from gensim.models import FastText
+#from gensim.models import FastText
 # END ---------------------------------
 
 def make_translator(opt, report_score=True, out_file=None):

@@ -4,7 +4,7 @@ LANGPAIR=${SOURCE}-${TARGET}
 DATA=/mnt/data/${LANGPAIR}-md-shr
 ONMT=/home/ubuntu/OpenNMT-py-un
 
-python -u ${ONMT}/preprocess.py \
+python3 ${ONMT}/preprocess.py \
 	-train_src ${DATA}/train.bpe.sink.${SOURCE} \
 	-train_tgt ${DATA}/train.bpe.${TARGET} \
 	-valid_src ${DATA}/dev.bpe.sink.${SOURCE} \
