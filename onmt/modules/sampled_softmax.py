@@ -72,5 +72,5 @@ class SampledSoftmax(nn.Module):
         new_targets = Variable(torch.zeros(batch_size).long()).cuda(device_id)
         return self.logsoftmax(logits), new_targets
 
-    def full(self, inputs, labels):
+    def full(self, inputs, labels=None):
         return self.logsoftmax(self.params(inputs)), labels

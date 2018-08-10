@@ -209,7 +209,8 @@ class LanguageModel(nn.Module):
                         self.forward_rnns[layer](forward_input,
                                                  forward_hidden_state[layer])
 
-            forward_outputs, _ = unpack(forward_outputs)
+            if lengths is not None:
+                forward_outputs, _ = unpack(forward_outputs)
 
             # Go through backward direction layer
             if self.num_directions > 1:
@@ -217,7 +218,8 @@ class LanguageModel(nn.Module):
                         self.backward_rnns[layer](backward_input,
                                                   backward_hidden_state[layer])
 
-                backward_outputs, _ = unpack(backward_outputs)
+                if lengths is not None:
+                    backward_outputs, _ = unpack(backward_outputs)
 
             # Project the outputs into the word vector space
             if self.use_projection:
