@@ -319,17 +319,18 @@ def _build_field_vocab(field, counter, char_counter=None, **kwargs):
         # a vocabulary for the nested field as well
         char_specials = list(OrderedDict.fromkeys(
             tok for tok in [field.nesting_field.unk_token,
+                            field.nesting_field.pad_token,
                             field.nesting_field.init_token,
                             field.nesting_field.eos_token]
             if tok is not None))
         # Make sure special tokens are not repeated
-        for special in char_specials:
-            if special not in specials:
-                specials.append(special)
+        for special in specials:
+            if special not in char_specials:
+                char_specials.append(special)
         # Create the vocab for the nested field
         field.nesting_field.vocab = field.nesting_field.vocab_cls(
                                 char_counter,
-                                specials=specials,
+                                specials=char_specials,
                                 **kwargs)
 
 
@@ -498,18 +499,19 @@ def _build_field_vocab_mono(field, counter, char_counter=None, **kwargs):
         # a vocabulary for the nested field as well
         char_specials = list(OrderedDict.fromkeys(
             tok for tok in [field.nesting_field.unk_token,
+                            field.nesting_field.pad_token,
                             field.nesting_field.init_token,
-                            field.nesting_field.eos_token,
-                            field.nesting_field.pad_token]
+                            field.nesting_field.eos_token
+                            ]
             if tok is not None))
         # Make sure special tokens are not repeated
-        for special in char_specials:
-            if special not in specials:
-                specials.append(special)
+        for special in specials:
+            if special not in char_specials:
+                char_specials.append(special)
         # Create the vocab for the nested field
         field.nesting_field.vocab = field.nesting_field.vocab_cls(
                                 char_counter,
-                                specials=specials,
+                                specials=char_specials,
                                 **kwargs)
 
 
