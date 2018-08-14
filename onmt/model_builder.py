@@ -21,12 +21,13 @@ from onmt.decoders.transformer import TransformerDecoder
 from onmt.decoders.cnn_decoder import CNNDecoder
 
 from onmt.modules import Embeddings, CopyGenerator, CharEmbeddingsCNN,\
-                         SampledSoftmax
+                         SampledSoftmax, ELMo
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
 
 
-def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
+def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True,
+                     elmo=None):
     """
     Build an Embeddings instance.
     Args:
@@ -34,6 +35,7 @@ def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
         word_dict(Vocab): words dictionary.
         feature_dicts([Vocab], optional): a list of feature dictionary.
         for_encoder(bool): build Embeddings for encoder or decoder?
+        elmo(nn.Module): ELMo embedding extension.
     """
     if for_encoder:
         embedding_dim = opt.src_word_vec_size
@@ -63,7 +65,29 @@ def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
                       feat_padding_idx=feats_padding_idx,
                       word_vocab_size=num_word_embeddings,
                       feat_vocab_sizes=num_feat_embeddings,
-                      sparse=opt.optim == "sparseadam")
+                      sparse=opt.optim == "sparseadam",
+                      elmo=elmo)
+
+
+def build_elmo(opt, word_dict, fields, gpu, side='src'):
+    lm_checkpoint = torch.load(opt.src_bilm_path,
+                               map_location=lambda storage, loc: storage)
+    lm_opt = lm_checkpoint['opt']
+    if not lm_opt.use_char_input:
+        raise NotImplementedError("The Language Model used in ELMo needs "
+                                  "to have character-based input")
+    if not lm_opt.lm_use_bidir:
+        raise NotImplementedError("The Language Model used in ELMo needs "
+                                  "to be bidirectional")
+    language_model = build_language_model(lm_opt, fields, gpu,
+                                          lm_checkpoint,
+                                          side,
+                                          use_generator=False)
+
+    elmo = ELMo(language_model, opt.elmo_dropout,
+                word_dict.stoi[inputters.PAD_WORD])
+
+    return elmo
 
 
 def build_encoder(opt, embeddings):
@@ -170,7 +194,15 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
     if model_opt.model_type == "text":
         src_dict = fields["src"].vocab
         feature_dicts = inputters.collect_feature_vocabs(fields, 'src')
-        src_embeddings = build_embeddings(model_opt, src_dict, feature_dicts)
+
+        if model_opt.use_elmo:
+            elmo = build_elmo(model_opt, src_dict, fields,
+                              gpu, 'src')
+        else:
+            elmo = None
+
+        src_embeddings = build_embeddings(model_opt, src_dict, feature_dicts,
+                                          elmo=elmo)
         encoder = build_encoder(model_opt, src_embeddings)
     elif model_opt.model_type == "img":
         encoder = ImageEncoder(model_opt.enc_layers,
@@ -251,7 +283,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
 
 
 def build_language_model(model_opt, fields, gpu, checkpoint=None,
-                         side='tgt'):
+                         side='tgt', use_generator=True):
     """
     Args:
         model_opt: the option loaded from checkpoint.
@@ -308,14 +340,15 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
     output_size = model_opt.lm_word_vec_size if model_opt.lm_use_projection \
         else model_opt.lm_rnn_size
 
-    if not model_opt.lm_use_sampled_softmax:
-        generator = nn.Sequential(
-            nn.Linear(output_size, len(fields[side].vocab)),
-            nn.LogSoftmax(dim=-1))
-    else:
-        generator = SampledSoftmax(len(fields[side].vocab),
-                                   model_opt.lm_n_samples_softmax,
-                                   output_size)
+    if use_generator:
+        if not model_opt.lm_use_sampled_softmax:
+            generator = nn.Sequential(
+                nn.Linear(output_size, len(fields[side].vocab)),
+                nn.LogSoftmax(dim=-1))
+        else:
+            generator = SampledSoftmax(len(fields[side].vocab),
+                                       model_opt.lm_n_samples_softmax,
+                                       output_size)
 
     if model_opt.lm_tie_weights:
         if model_opt.use_char_input:
@@ -331,24 +364,29 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
     if checkpoint is not None:
         print('Loading model parameters.')
         model.load_state_dict(checkpoint['model'])
-        generator.load_state_dict(checkpoint['generator'])
+        if use_generator:
+            generator.load_state_dict(checkpoint['generator'])
     else:
         if model_opt.param_init != 0.0:
             print('Intializing model parameters.')
             for p in model.parameters():
                 p.data.uniform_(-model_opt.param_init, model_opt.param_init)
-            for p in generator.parameters():
-                p.data.uniform_(-model_opt.param_init, model_opt.param_init)
+            if use_generator:
+                for p in generator.parameters():
+                    p.data.uniform_(-model_opt.param_init,
+                                    model_opt.param_init)
         if model_opt.param_init_glorot:
             for p in model.parameters():
                 if p.dim() > 1:
                     xavier_uniform(p)
-            for p in generator.parameters():
-                if p.dim() > 1:
-                    xavier_uniform(p)
+            if use_generator:
+                for p in generator.parameters():
+                    if p.dim() > 1:
+                        xavier_uniform(p)
 
     # Add generator to model (this registers it as parameter of model).
-    model.generator = generator
+    if use_generator:
+        model.generator = generator
 
     # Make the whole model leverage GPU if indicated to do so.
     if gpu:

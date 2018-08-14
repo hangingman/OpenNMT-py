@@ -23,8 +23,8 @@ class PositionalEncoding(nn.Module):
     def __init__(self, dropout, dim, max_len=5000):
         pe = torch.zeros(max_len, dim)
         position = torch.arange(0, max_len).unsqueeze(1)
-        div_term = torch.exp((torch.arange(0, dim, 2) *
-                             -(math.log(10000.0) / dim)).float())
+        div_term = torch.exp(
+            (torch.arange(0, dim, 2) * -(math.log(10000.0) / dim)).float())
         pe[:, 0::2] = torch.sin(position.float() * div_term)
         pe[:, 1::2] = torch.cos(position.float() * div_term)
         pe = pe.unsqueeze(1)
@@ -92,7 +92,8 @@ class Embeddings(nn.Module):
                  feat_padding_idx=[],
                  feat_vocab_sizes=[],
                  dropout=0,
-                 sparse=False):
+                 sparse=False,
+                 elmo=None):
 
         if feat_padding_idx is None:
             feat_padding_idx = []
@@ -149,6 +150,10 @@ class Embeddings(nn.Module):
             pe = PositionalEncoding(dropout, self.embedding_size)
             self.make_embedding.add_module('pe', pe)
 
+        self.elmo = elmo
+        if elmo is not None:
+            self.embedding_size += elmo.lang_model.input_size
+
     @property
     def word_lut(self):
         """ word look-up table """
@@ -172,7 +177,7 @@ class Embeddings(nn.Module):
             if fixed:
                 self.word_lut.weight.requires_grad = False
 
-    def forward(self, source):
+    def forward(self, source, char_source=None):
         """
         Computes the embeddings for words and features.
 
@@ -182,5 +187,8 @@ class Embeddings(nn.Module):
             `FloatTensor`: word embeddings `[len x batch x embedding_size]`
         """
         emb = self.make_embedding(source)
+        if self.elmo is not None and char_source is not None:
+            out_elmo = self.elmo(char_source)
+            emb = torch.cat([emb, out_elmo], dim=-1)
 
         return emb

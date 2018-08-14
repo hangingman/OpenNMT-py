@@ -60,7 +60,8 @@ def build_trainer(opt, model, fields, optim, data_type, model_saver=None):
             shard_size, data_type, norm_method,
             grad_accum_count, n_gpu, gpu_rank,
             gpu_verbose_level, report_manager,
-            model_saver=model_saver)
+            model_saver=model_saver,
+            use_elmo=opt.use_elmo)
 
     return trainer
 
@@ -93,7 +94,8 @@ class Trainer(object):
     def __init__(self, model, train_loss, valid_loss, optim,
                  trunc_size=0, shard_size=32, data_type='text',
                  norm_method="sents", grad_accum_count=1, n_gpu=1, gpu_rank=1,
-                 gpu_verbose_level=0, report_manager=None, model_saver=None):
+                 gpu_verbose_level=0, report_manager=None, model_saver=None,
+                 use_elmo=False):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -109,6 +111,7 @@ class Trainer(object):
         self.gpu_verbose_level = gpu_verbose_level
         self.report_manager = report_manager
         self.model_saver = model_saver
+        self.use_elmo = use_elmo
 
         assert grad_accum_count > 0
         if grad_accum_count > 1:
@@ -243,10 +246,18 @@ class Trainer(object):
             else:
                 src_lengths = None
 
+            if self.use_elmo:
+                char_src = inputters.make_features(batch, 'char_src')
+                # (target_size, batch_size, max_char_src, n_feat)
+                char_src = char_src.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_src = None
+
             tgt = inputters.make_features(batch, 'tgt')
 
             # F-prop through the model.
-            outputs, attns, _ = self.model(src, tgt, src_lengths)
+            outputs, attns, _ = self.model(src, tgt, src_lengths,
+                                           char_src=char_src)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -281,6 +292,13 @@ class Trainer(object):
             else:
                 src_lengths = None
 
+            if self.use_elmo:
+                char_src = inputters.make_features(batch, 'char_src')
+                # (target_size, batch_size, max_char_src, n_feat)
+                char_src = char_src.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_src = None
+
             tgt_outer = inputters.make_features(batch, 'tgt')
 
             for j in range(0, target_size-1, trunc_size):
@@ -291,7 +309,8 @@ class Trainer(object):
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
                 outputs, attns, dec_state = \
-                    self.model(src, tgt, src_lengths, dec_state)
+                    self.model(src, tgt, src_lengths, dec_state,
+                               char_src=char_src)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(

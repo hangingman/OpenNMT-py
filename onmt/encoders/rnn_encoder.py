@@ -50,11 +50,11 @@ class RNNEncoder(EncoderBase):
                                     hidden_size,
                                     num_layers)
 
-    def forward(self, src, lengths=None):
+    def forward(self, src, lengths=None, char_src=None):
         "See :obj:`EncoderBase.forward()`"
         self._check_args(src, lengths)
 
-        emb = self.embeddings(src)
+        emb = self.embeddings(src, char_src)
         # s_len, batch, emb_dim = emb.size()
 
         packed_emb = emb
