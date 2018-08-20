@@ -69,7 +69,7 @@ def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True,
                       elmo=elmo)
 
 
-def build_elmo(opt, word_dict, fields, gpu, side='src'):
+def build_elmo(opt, fields, gpu, side='src'):
     lm_checkpoint = torch.load(opt.src_bilm_path,
                                map_location=lambda storage, loc: storage)
     lm_opt = lm_checkpoint['opt']
@@ -84,8 +84,7 @@ def build_elmo(opt, word_dict, fields, gpu, side='src'):
                                           side,
                                           use_generator=False)
 
-    elmo = ELMo(language_model, opt.elmo_dropout,
-                word_dict.stoi[inputters.PAD_WORD])
+    elmo = ELMo(language_model, opt.elmo_dropout)
 
     return elmo
 
@@ -196,7 +195,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
         feature_dicts = inputters.collect_feature_vocabs(fields, 'src')
 
         if model_opt.use_elmo:
-            elmo = build_elmo(model_opt, src_dict, fields,
+            elmo = build_elmo(model_opt, fields,
                               gpu, 'src')
         else:
             elmo = None
@@ -204,6 +203,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
         src_embeddings = build_embeddings(model_opt, src_dict, feature_dicts,
                                           elmo=elmo)
         encoder = build_encoder(model_opt, src_embeddings)
+
     elif model_opt.model_type == "img":
         encoder = ImageEncoder(model_opt.enc_layers,
                                model_opt.brnn,

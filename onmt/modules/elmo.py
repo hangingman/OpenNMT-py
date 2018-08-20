@@ -5,11 +5,18 @@ import onmt.io
 
 
 class ELMo(nn.Module):
-    "An Implementation of ..."
-    def __init__(self, language_model, dropout, padding_idx):
+    """An Implementation of "Deep Contextualized Word Representations".
+
+    Arguments:
+        language_model {nn.Module} -- the pretrained biLM
+        dropout {float} -- the ammount of dropout applied to the
+                           contextualized embeddings
+        padding_idx {int} -- the padding symbol index
+    """
+
+    def __init__(self, language_model, dropout):
         super(ELMo, self).__init__()
         self.lang_model = language_model.eval()
-        self.pad_idx = padding_idx
 
         # Remove the language model parameters from the parameters
         # to be optimized
@@ -31,11 +38,10 @@ class ELMo(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, char_input):
+    def forward(self, char_input, mask):
         seq_len, batch_size, _, _ = char_input.size()
 
-        # Mask of the actual sequences without padding
-        mask = char_input[:, :, 0, :].ne(self.pad_idx).sum(-1)
+        # Get the sequence lengths
         lengths = mask.sum(dim=0)
 
         # Set lang_model.training to false so the LM does not

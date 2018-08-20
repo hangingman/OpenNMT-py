@@ -188,7 +188,8 @@ class Embeddings(nn.Module):
         """
         emb = self.make_embedding(source)
         if self.elmo is not None and char_source is not None:
-            out_elmo = self.elmo(char_source)
+            mask = char_source[:, :, 0, :].ne(self.word_padding_idx).sum(-1)
+            out_elmo = self.elmo(char_source, mask)
             emb = torch.cat([emb, out_elmo], dim=-1)
 
         return emb
