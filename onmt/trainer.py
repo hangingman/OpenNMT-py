@@ -525,6 +525,13 @@ class LanguageModelTrainer(Trainer):
 
         with torch.no_grad():
             for batch in valid_iter:
+
+                if hidden_state is not None:
+                    # If the previous batch was of a different size,
+                    # reset the hidden state
+                    if hidden_state[0].shape[1] != batch.batch_size:
+                        hidden_state = None
+
                 cur_dataset = valid_iter.get_cur_dataset()
                 self.valid_loss.cur_dataset = cur_dataset
 
