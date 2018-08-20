@@ -399,6 +399,116 @@ class LanguageModelTrainer(Trainer):
                 data_type, norm_method, grad_accum_count, n_gpu, gpu_rank,
                 gpu_verbose_level, report_manager, model_saver)
 
+    def train(self, train_iter_fct, valid_iter_fct, train_steps, valid_steps):
+        """
+        The main training loops.
+        by iterating over training data (i.e. `train_iter_fct`)
+        and running validation (i.e. iterating over `valid_iter_fct`
+
+        Args:
+            train_iter_fct(function): a function that returns the train
+                iterator. e.g. something like
+                train_iter_fct = lambda: generator(*args, **kwargs)
+            valid_iter_fct(function): same as train_iter_fct, for valid data
+            train_steps(int):
+            valid_steps(int):
+            save_checkpoint_steps(int):
+
+        Return:
+            None
+        """
+        logger.info('Start training...')
+
+        step = self.optim._step + 1
+        true_batchs = []
+        accum = 0
+        normalization = 0
+        hidden_state = None
+        train_iter = train_iter_fct()
+
+        total_stats = onmt.utils.Statistics()
+        report_stats = onmt.utils.Statistics()
+        self._start_report_manager(start_time=total_stats.start_time)
+
+        while step <= train_steps:
+
+            reduce_counter = 0
+            for i, batch in enumerate(train_iter):
+                if self.n_gpu == 0 or (i % self.n_gpu == self.gpu_rank):
+                    if self.gpu_verbose_level > 1:
+                        logger.info("GpuRank %d: index: %d accum: %d"
+                                    % (self.gpu_rank, i, accum))
+                    cur_dataset = train_iter.get_cur_dataset()
+                    self.train_loss.cur_dataset = cur_dataset
+
+                    true_batchs.append(batch)
+
+                    if self.norm_method == "tokens":
+                        num_tokens = batch.tgt[1:].data.view(-1) \
+                                     .ne(self.train_loss.padding_idx).sum()
+                        normalization += num_tokens
+                    else:
+                        normalization += batch.batch_size
+
+                    accum += 1
+                    if accum == self.grad_accum_count:
+                        reduce_counter += 1
+                        if self.gpu_verbose_level > 0:
+                            logger.info("GpuRank %d: reduce_counter: %d \
+                                        n_minibatch %d"
+                                        % (self.gpu_rank, reduce_counter,
+                                           len(true_batchs)))
+                        if self.n_gpu > 1:
+                            normalization = sum(onmt.utils.distributed
+                                                .all_gather_list
+                                                (normalization))
+
+                        if hidden_state is not None:
+                            # If the previous batch was of a different size,
+                            # reset the hidden state
+                            if hidden_state[0].shape[1] != batch.batch_size:
+                                hidden_state = None
+
+                        hidden_state = self._gradient_accumulation(
+                            true_batchs, normalization, total_stats,
+                            report_stats, hidden_state)
+
+                        report_stats = self._maybe_report_training(
+                            step, train_steps,
+                            self.optim.learning_rate,
+                            report_stats)
+
+                        true_batchs = []
+                        accum = 0
+                        normalization = 0
+                        if (step % valid_steps == 0):
+                            if self.gpu_verbose_level > 0:
+                                logger.info('GpuRank %d: validate step %d'
+                                            % (self.gpu_rank, step))
+                            valid_iter = valid_iter_fct()
+                            valid_stats = self.validate(valid_iter)
+                            if self.gpu_verbose_level > 0:
+                                logger.info('GpuRank %d: gather valid stat \
+                                            step %d' % (self.gpu_rank, step))
+                            valid_stats = self._maybe_gather_stats(valid_stats)
+                            if self.gpu_verbose_level > 0:
+                                logger.info('GpuRank %d: report stat step %d'
+                                            % (self.gpu_rank, step))
+                            self._report_step(self.optim.learning_rate,
+                                              step, valid_stats=valid_stats)
+
+                        if self.gpu_rank == 0:
+                            self._maybe_save(step)
+                        step += 1
+                        if step > train_steps:
+                            break
+            if self.gpu_verbose_level > 0:
+                logger.info('GpuRank %d: we completed an epoch \
+                            at step %d' % (self.gpu_rank, step))
+            train_iter = train_iter_fct()
+
+        return total_stats
+
     def validate(self, valid_iter):
         """ Validate model.
             valid_iter: validate data iterator
@@ -429,8 +539,8 @@ class LanguageModelTrainer(Trainer):
                 lengths = batch.tgt.ne(-1).sum(0)
 
                 # F-prop through the model.
-                outputs, _ = self.model(tgt, lengths,
-                                        hidden_state)
+                outputs, hidden_state = self.model(tgt, lengths,
+                                                   hidden_state)
 
                 # Get last layer
                 outputs = outputs[-1].contiguous()
@@ -449,7 +559,7 @@ class LanguageModelTrainer(Trainer):
         return stats
 
     def _gradient_accumulation(self, true_batchs, normalization, total_stats,
-                               report_stats):
+                               report_stats, hidden_state):
         if self.grad_accum_count > 1:
             self.model.zero_grad()
 
@@ -460,7 +570,6 @@ class LanguageModelTrainer(Trainer):
 
             target_size = batch.tgt.size(0)
             trunc_size = target_size
-            hidden_state = None
 
             # 1. Create input
             if self.model.char_convs:
@@ -476,8 +585,8 @@ class LanguageModelTrainer(Trainer):
             if self.grad_accum_count == 1:
                 self.model.zero_grad()
 
-            outputs, _ = self.model(tgt, lengths,
-                                    hidden_state)
+            outputs, hidden_state = self.model(tgt, lengths,
+                                               hidden_state)
 
             # Get last layer
             outputs = outputs[-1].contiguous()
@@ -498,3 +607,5 @@ class LanguageModelTrainer(Trainer):
 
         # 4. Update the parameters and statistics.
         self.optim.step()
+
+        return hidden_state
