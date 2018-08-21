@@ -112,4 +112,5 @@ ENV/
 runs/
 
 # ADDED
-extra_data
+extra_data/*
+embeddings/*

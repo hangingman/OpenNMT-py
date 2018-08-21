@@ -1,7 +1,7 @@
 SOURCE=de
 TARGET=en
 LANGPAIR=${SOURCE}-${TARGET}
-DATA=/mnt/data/${LANGPAIR}-md-shr
+DATA=/mnt/data/${LANGPAIR}-shr-big
 ONMT=/home/ubuntu/OpenNMT-py-un
 
 python3 ${ONMT}/preprocess.py \
@@ -9,5 +9,5 @@ python3 ${ONMT}/preprocess.py \
 	-train_tgt ${DATA}/train.bpe.${TARGET} \
 	-valid_src ${DATA}/dev.bpe.sink.${SOURCE} \
 	-valid_tgt ${DATA}/dev.bpe.${TARGET} \
-	-save_data ${DATA}/preprocessed-md-shr
+	-save_data ${DATA}/preprocessed-big-shr
 
