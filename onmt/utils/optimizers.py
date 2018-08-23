@@ -34,7 +34,8 @@ def build_optim(model, opt, checkpoint):
             decay_method=opt.decay_method,
             warmup_steps=opt.warmup_steps,
             model_size=opt.rnn_size,
-            l2_value=opt.l2_value)
+            l2_value=opt.l2_value,
+            l2_modules=opt.l2_modules)
 
     # Stage 1:
     # Essentially optim.set_parameters (re-)creates and optimizer using
@@ -144,7 +145,7 @@ class Optimizer(object):
                  decay_method=None,
                  warmup_steps=4000,
                  model_size=None,
-                 l2_value=None):
+                 l2_value=-1, l2_modules=[]):
         self.last_ppl = None
         self.learning_rate = learning_rate
         self.original_lr = learning_rate
@@ -161,6 +162,7 @@ class Optimizer(object):
         self.warmup_steps = warmup_steps
         self.model_size = model_size
         self.l2_value = l2_value
+        self.l2_modules = l2_modules
 
     def set_parameters(self, params):
         """ ? """
@@ -170,14 +172,19 @@ class Optimizer(object):
         for k, p in params:
             if p.requires_grad:
                 if self.method != 'sparseadam' or "embed" not in k:
-                    if 'scalar_parameters' in k:
-                        decay.append(p)
+                    if self.l2_value != -1:
+                        if any([True if module in k else False
+                                for module in self.l2_modules]):
+                            decay.append(p)
+                        else:
+                            no_decay.append(p)
                     else:
-                        no_decay.append(p)
+                        self.params.append(p)
                 else:
                     self.sparse_params.append(p)
-        self.params = [{'params': no_decay, 'weight_decay': 0.},
-                       {'params': decay, 'weight_decay': self.l2_value}]
+        if self.l2_value != -1:
+            self.params = [{'params': no_decay, 'weight_decay': 0.},
+                           {'params': decay, 'weight_decay': self.l2_value}]
         if self.method == 'sgd':
             self.optimizer = optim.SGD(self.params, lr=self.learning_rate)
         elif self.method == 'adagrad':
@@ -237,6 +244,9 @@ class Optimizer(object):
             self.optimizer.param_groups[0]['lr'] = self.learning_rate
 
         if self.max_grad_norm:
-            clip_grad_norm_(self.params[0]['params'], self.max_grad_norm)
-            clip_grad_norm_(self.params[1]['params'], self.max_grad_norm)
+            if self.l2_value != -1:
+                clip_grad_norm_(self.params[0]['params'], self.max_grad_norm)
+                clip_grad_norm_(self.params[1]['params'], self.max_grad_norm)
+            else:
+                clip_grad_norm_(self.params, self.max_grad_norm)
         self.optimizer.step()
