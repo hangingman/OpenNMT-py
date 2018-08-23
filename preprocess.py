@@ -55,7 +55,7 @@ def parse_args():
 
 
 def build_save_in_shards(src_corpus, tgt_corpus, fields,
-                         corpus_type, opt):
+                         corpus_type, opt, mt_corpus=None):
     """
     Divide the big corpus into shards, and build dataset separately.
     This is currently only for data_type=='text'.
@@ -86,6 +86,10 @@ def build_save_in_shards(src_corpus, tgt_corpus, fields,
     # In case we are dealing with a single text file
     if src_corpus is None:
         return build_save_in_shards_mono(tgt_corpus, fields, corpus_type, opt)
+    elif mt_corpus is not None:
+        return build_save_in_shards_triplet(src_corpus, mt_corpus, tgt_corpus,
+                                            fields, corpus_type, opt
+                                            )
 
     corpus_size = os.path.getsize(src_corpus)
     if corpus_size > 10 * (1024 ** 2) and opt.max_shard_size == 0:
@@ -173,6 +177,62 @@ def build_save_in_shards_mono(tgt_corpus, fields,
     return ret_list
 
 
+def build_save_in_shards_triplet(src_corpus, mt_corpus, tgt_corpus, fields,
+                                 corpus_type, opt):
+    """
+    Same as build_save_in_shards(), but for a
+    triplet (APE) dataset.
+    """
+
+    corpus_size = os.path.getsize(src_corpus)
+    if corpus_size > 10 * (1024 ** 2) and opt.max_shard_size == 0:
+        logger.info("Warning. The corpus %s is larger than 10M bytes, "
+                    "you can set '-max_shard_size' to process it by "
+                    "small shards to use less memory." % src_corpus)
+
+    if opt.max_shard_size != 0:
+        logger.info(' * divide corpus into shards and build dataset '
+                    'separately (shard_size = %d bytes).'
+                    % opt.max_shard_size)
+
+    ret_list = []
+    src_iter = inputters.ShardedTextCorpusIterator(
+        src_corpus, opt.src_seq_length_trunc,
+        "src", opt.max_shard_size)
+    mt_iter = inputters.ShardedTextCorpusIterator(
+        mt_corpus, opt.mt_seq_length_trunc,
+        "mt", opt.max_shard_size,
+        assoc_iter=src_iter)
+    tgt_iter = inputters.ShardedTextCorpusIterator(
+        tgt_corpus, opt.tgt_seq_length_trunc,
+        "tgt", opt.max_shard_size,
+        assoc_iter=src_iter)
+
+    index = 0
+    while not src_iter.hit_end():
+        index += 1
+        dataset = inputters.APETextDataset(
+            fields, src_iter, mt_iter, tgt_iter,
+            src_iter.num_feats, tgt_iter.num_feats,
+            src_seq_length=opt.src_seq_length,
+            mt_seq_length=opt.mt_seq_length,
+            tgt_seq_length=opt.tgt_seq_length,
+            dynamic_dict=opt.dynamic_dict)
+
+        # We save fields in vocab.pt separately, so make it empty.
+        dataset.fields = []
+
+        pt_file = "{:s}.{:s}.{:d}.pt".format(
+            opt.save_data, corpus_type, index)
+        logger.info(" * saving %s data shard to %s."
+                    % (corpus_type, pt_file))
+        torch.save(dataset, pt_file)
+
+        ret_list.append(pt_file)
+
+    return ret_list
+
+
 def build_save_dataset(corpus_type, fields, opt):
     """ Building and saving the dataset """
     assert corpus_type in ['train', 'valid']
@@ -180,16 +240,20 @@ def build_save_dataset(corpus_type, fields, opt):
     if corpus_type == 'train':
         src_corpus = opt.train_src
         tgt_corpus = opt.train_tgt
+        # for APE task purposes
+        mt_corpus = opt.train_mt
     else:
         src_corpus = opt.valid_src
         tgt_corpus = opt.valid_tgt
+        # for APE task purposes
+        mt_corpus = opt.valid_mt
 
     # Currently we only do preprocess sharding for corpus: data_type=='text'
     # or data_type=='monotext'.
     if 'text' in opt.data_type:
         return build_save_in_shards(
             src_corpus, tgt_corpus, fields,
-            corpus_type, opt)
+            corpus_type, opt, mt_corpus)
 
     # For data_type == 'img' or 'audio', currently we don't do
     # preprocess sharding. We only build a monolithic dataset.
@@ -229,7 +293,10 @@ def build_save_vocab(train_dataset, fields, opt):
                                    opt.src_words_min_frequency,
                                    opt.tgt_vocab,
                                    opt.tgt_vocab_size,
-                                   opt.tgt_words_min_frequency)
+                                   opt.tgt_words_min_frequency,
+                                   opt.mt_vocab,
+                                   opt.mt_vocab_size,
+                                   opt.mt_words_min_frequency)
 
     # Can't save fields, so remove/reconstruct at training time.
     vocab_file = opt.save_data + '.vocab.pt'
@@ -248,9 +315,17 @@ def main():
     logger.info(" * number of source features: %d." % src_nfeats)
     logger.info(" * number of target features: %d." % tgt_nfeats)
 
+    # for APE task purposes
+    if opt.train_mt is not None:
+        mt_nfeats = inputters.get_num_features(
+            opt.data_type, opt.train_mt, 'mt')
+        logger.info(" * number of mt features: %d." % mt_nfeats)
+    else:
+        mt_nfeats = None
+
     logger.info("Building `Fields` object...")
     fields = inputters.get_fields(opt.data_type, src_nfeats, tgt_nfeats,
-                                  opt.use_char)
+                                  opt.use_char, mt_nfeats)
 
     logger.info("Building & saving training data...")
     train_dataset_files = build_save_dataset('train', fields, opt)

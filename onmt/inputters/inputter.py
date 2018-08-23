@@ -13,7 +13,8 @@ import torchtext.data
 import torchtext.vocab
 
 from onmt.inputters.dataset_base import UNK_WORD, PAD_WORD, BOS_WORD, EOS_WORD
-from onmt.inputters.text_dataset import TextDataset, MonotextDataset
+from onmt.inputters.text_dataset import TextDataset, MonotextDataset, \
+                                        APETextDataset
 from onmt.inputters.image_dataset import ImageDataset
 from onmt.inputters.audio_dataset import AudioDataset
 from onmt.utils.logging import logger
@@ -32,7 +33,8 @@ torchtext.vocab.Vocab.__getstate__ = _getstate
 torchtext.vocab.Vocab.__setstate__ = _setstate
 
 
-def get_fields(data_type, n_src_features, n_tgt_features, use_char=False):
+def get_fields(data_type, n_src_features, n_tgt_features, use_char=False,
+               n_mt_features=None):
     """
     Args:
         data_type: type of the source input. Options are [text|img|audio].
@@ -46,7 +48,11 @@ def get_fields(data_type, n_src_features, n_tgt_features, use_char=False):
         A dictionary whose keys are strings and whose values are the
         corresponding Field objects.
     """
-    if data_type == 'text':
+    if n_mt_features is not None:
+        # APE task
+        return APETextDataset.get_fields(n_src_features, n_mt_features,
+                                         n_tgt_features, use_char)
+    elif data_type == 'text':
         return TextDataset.get_fields(n_src_features, n_tgt_features, use_char)
     elif data_type == 'monotext':
         return MonotextDataset.get_fields(n_tgt_features, use_char)
@@ -71,9 +77,16 @@ def load_fields_from_vocab(vocab, data_type="text", use_char=False):
         n_src_features = 0
     else:
         n_src_features = len(collect_features(vocab, 'src'))
+
+    # In case we are doing the APE task
+    if 'mt' in vocab.keys():
+        n_mt_features = len(collect_features(vocab, 'mt'))
+    else:
+        n_mt_features = None
+
     n_tgt_features = len(collect_features(vocab, 'tgt'))
     fields = get_fields(data_type, n_src_features, n_tgt_features,
-                        use_char)
+                        use_char, n_mt_features)
     for k, v in vocab.items():
         if "_nested" in k:
             # build the vocabulary for the nested character field.
@@ -147,7 +160,7 @@ def get_num_features(data_type, corpus_file, side):
     Returns:
         number of features on `side`.
     """
-    assert side in ["src", "tgt"]
+    assert side in ["src", "tgt", "mt"]
 
     if data_type == 'text':
         return TextDataset.get_num_features(corpus_file, side)
@@ -173,7 +186,7 @@ def make_features(batch, side, data_type='text'):
         A sequence of src/tgt tensors with optional feature tensors
         of size (len x batch).
     """
-    assert side in ['src', 'tgt', 'char_src', 'char_tgt']
+    assert side in ['src', 'mt', 'tgt', 'char_src', 'char_mt', 'char_tgt']
     if isinstance(batch.__dict__[side], tuple):
         data = batch.__dict__[side][0]
     else:
@@ -194,7 +207,7 @@ def collect_features(fields, side="src"):
     """
     Collect features from Field object.
     """
-    assert side in ["src", "tgt"]
+    assert side in ["src", "mt", "tgt"]
     feats = []
     for j in count():
         key = side + "_feat_" + str(j)
@@ -208,7 +221,7 @@ def collect_feature_vocabs(fields, side):
     """
     Collect feature Vocab objects from Field object.
     """
-    assert side in ['src', 'tgt']
+    assert side in ['src', 'mt', 'tgt']
     feature_vocabs = []
     for j in count():
         key = side + "_feat_" + str(j)
@@ -224,7 +237,9 @@ def build_dataset(fields, data_type, src_data_iter=None, src_path=None,
                   src_seq_length_trunc=0, tgt_seq_length_trunc=0,
                   dynamic_dict=True, sample_rate=0,
                   window_size=0, window_stride=0, window=None,
-                  normalize_audio=True, use_filter_pred=True):
+                  normalize_audio=True, use_filter_pred=True,
+                  mt_data_iter=None, mt_path=None, mt_seq_length=0,
+                  mt_seq_length_trunc=0):
     """
     Build src/tgt examples iterator from corpus files, also extract
     number of features.
@@ -273,12 +288,29 @@ def build_dataset(fields, data_type, src_data_iter=None, src_path=None,
         src_examples_iter = None
         num_src_feats = 0
 
+    if mt_path is not None:
+        mt_examples_iter, num_mt_feats = \
+            APETextDataset.make_text_examples_nfeats_tpl(
+                mt_data_iter, mt_path, mt_seq_length_trunc, "mt")
+    else:
+        mt_examples_iter = num_mt_feats = None
+
     # For all data types, the tgt side corpus is in form of text.
     tgt_examples_iter, num_tgt_feats = \
         TextDataset.make_text_examples_nfeats_tpl(
             tgt_data_iter, tgt_path, tgt_seq_length_trunc, "tgt")
 
-    if 'text' in data_type:
+    if mt_examples_iter is not None:
+        dataset = APETextDataset(fields,
+                                 src_examples_iter, mt_examples_iter,
+                                 tgt_examples_iter,
+                                 num_src_feats, num_mt_feats, num_tgt_feats,
+                                 src_seq_length=src_seq_length,
+                                 mt_seq_length=mt_seq_length,
+                                 tgt_seq_length=tgt_seq_length,
+                                 dynamic_dict=dynamic_dict,
+                                 use_filter_pred=use_filter_pred)
+    elif 'text' in data_type:
         dataset = TextDataset(fields, src_examples_iter, tgt_examples_iter,
                               num_src_feats, num_tgt_feats,
                               src_seq_length=src_seq_length,
@@ -336,7 +368,8 @@ def _build_field_vocab(field, counter, char_counter=None, **kwargs):
 
 def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                 src_vocab_path, src_vocab_size, src_words_min_frequency,
-                tgt_vocab_path, tgt_vocab_size, tgt_words_min_frequency):
+                tgt_vocab_path, tgt_vocab_size, tgt_words_min_frequency,
+                mt_vocab_path, mt_vocab_size, mt_words_min_frequency):
     """
     Args:
         train_dataset_files: a list of train dataset pt file.
@@ -380,6 +413,17 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                 word = line.strip().split()[0]
                 src_vocab.add(word)
 
+    mt_vocab = None
+    if len(mt_vocab_path) > 0:
+        mt_vocab = set([])
+        logger.info('Loading mt vocab from %s' % mt_vocab_path)
+        assert os.path.exists(mt_vocab_path), \
+            'mt vocab %s not found!' % mt_vocab_path
+        with open(mt_vocab_path) as f:
+            for line in f:
+                word = line.strip().split()[0]
+                mt_vocab.add(word)
+
     tgt_vocab = None
     # if len(tgt_vocab_path) > 0:
     if tgt_vocab_path:
@@ -401,6 +445,14 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
             # we are preserving the Unicode order of the characters by
             # giving the frequencies in descending order
             counter["char_src"][chr(idx)] = n_chars - idx
+
+    if "char_mt" in fields.keys():
+        n_chars = 256
+        for idx in range(n_chars):
+            # Create a counter for characters. By doing (n_chars - idx)
+            # we are preserving the Unicode order of the characters by
+            # giving the frequencies in descending order
+            counter["char_mt"][chr(idx)] = n_chars - idx
 
     if "char_tgt" in fields.keys():
         n_chars = 256
@@ -426,11 +478,38 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                     val = [item for item in val if item in src_vocab]
                 elif k == 'tgt' and tgt_vocab:
                     val = [item for item in val if item in tgt_vocab]
+                elif k == 'mt' and mt_vocab:
+                    val = [item for item in val if item in mt_vocab]
                 counter[k].update(val)
 
     _build_field_vocab(fields["tgt"], counter["tgt"],
                        max_size=tgt_vocab_size,
                        min_freq=tgt_words_min_frequency)
+
+    if "mt" in fields.keys():
+        _build_field_vocab(fields["mt"], counter["mt"],
+                           max_size=mt_vocab_size,
+                           min_freq=mt_words_min_frequency)
+
+        # Merge the mt and target vocabularies.
+        # `tgt_vocab_size` is ignored when sharing vocabularies
+        logger.info(" * merging mt and tgt vocab...")
+        merged_vocab = merge_vocabs(
+            [fields["mt"].vocab, fields["tgt"].vocab],
+            vocab_size=mt_vocab_size)
+        fields["mt"].vocab = merged_vocab
+        fields["tgt"].vocab = merged_vocab
+        logger.info(" * mt vocab size: %d." % len(fields["mt"].vocab))
+
+    if "char_mt" in fields.keys():
+        # Add a Character Vocabulary
+        _build_field_vocab(fields["char_mt"], counter["mt"],
+                           counter["char_mt"],
+                           max_size=mt_vocab_size,
+                           min_freq=mt_words_min_frequency)
+        logger.info(" * char mt vocab size: %d." %
+                    len(fields["char_mt"].nesting_field.vocab))
+
     logger.info(" * tgt vocab size: %d." % len(fields["tgt"].vocab))
 
     if "char_tgt" in fields.keys():
@@ -794,9 +873,14 @@ def _load_fields(dataset, data_type, opt, checkpoint, use_char=False):
     if data_type == 'text':
         logger.info(' * vocabulary size. source = %d; target = %d' %
                     (len(fields['src'].vocab), len(fields['tgt'].vocab)))
-    else:
+    elif data_type == 'monotext':
         logger.info(' * vocabulary size. target = %d' %
                     (len(fields['tgt'].vocab)))
+    else:
+        logger.info(' * vocabulary size. source = %d; mt = %d; target = %d' %
+                    (len(fields['src'].vocab),
+                     len(fields['mt'].vocab),
+                     len(fields['tgt'].vocab)))
 
     return fields
 
