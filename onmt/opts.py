@@ -522,6 +522,9 @@ def translate_opts(parser):
                        sequence)""")
     group.add_argument('-src_dir', default="",
                        help='Source directory for image or audio files')
+    group.add_argument('-mt',
+                       help="""MT sequence to decode (one line per
+                       sequence)""")
     group.add_argument('-tgt',
                        help='True target sequence (optional)')
     group.add_argument('-output', default='pred.txt',
