@@ -616,14 +616,14 @@ class Translator(object):
 
                 # ADDED ----------------------------------------------------
                 n_max = self.guided_n_max # n-gram max
-                
+                out_uni_rep[out_uni_rep !=0] = 1                
+ 
                 if self.use_guided:
                     # Deal with n-gram cases
                     bs = batch.batch_size
                     total_size = batch.batch_size * self.beam_size
                     out_multi = torch.zeros(total_size, len(vocab),
                                             device=device) 
-                    #out_multi = np.zeros((total_size, len(vocab)))
 
                     if i > 0:
                         for j in range(len(beam)): 
@@ -647,7 +647,8 @@ class Translator(object):
                                             w = int(key_[-1])
                                             if self.guided_correct_ngrams:
                                                 if key_[-1] not in seq_:
-                                                    out_multi[k*bs+j][w] += value
+                                                    out_multi[k*bs+j][w] += 1
+
                                             else:
                                                 out_multi[k*bs+j][w] += value
 
@@ -659,7 +660,8 @@ class Translator(object):
                                     seq_ = [str(x.item()) for x in seq]
                                     for w in set(seq_):
                                         value = tp_uni[j][w]
-                                        out_multi[k*bs+j][int(w)] -= value
+                                        if value:
+                                            out_multi[k*bs+j][int(w)] -= 1
                                     try:
                                         values = out_uni_rep[k*bs+j]+out_multi[k*bs+j]
                                         assert ((values >= 0.0) == True).all()

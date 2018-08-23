@@ -488,7 +488,7 @@ def translate_opts(parser):
     # Options relevant to guided NMT
     group.add_argument('-use_guided', action='store_true',
                        help="""Uses Guided-NMT with translation pieces to
-                       influence the outtput layer. """)
+                       influence the output layer. """)
     group.add_argument('-tp_path', type=str, default="",
                         help="""Path pohe inting to the translation pieces
                         pickle. TPs should be a dictionary""")
@@ -509,6 +509,12 @@ def translate_opts(parser):
     group.add_argument('-extend_with_tp', action='store_true',
                         help="""Extend the vocabulary with the translation pieces
                         that are not part of the generic vocabulary""")   
+    group.add_argument('-extend_1_weight', type=float, default=1.0,
+                        help="""Weight given to the words added with
+                        extend_with_tp (1-grams)""")
+    group.add_argument('-extend_n_weight', type=float, default=1.0,
+                        help="""Weight given to the words added with
+                        extend_with_tp (n-grams, with n>2)""")
  
     # Options related to logging
     group = parser.add_argument_group('Logging')

@@ -145,7 +145,7 @@ def make_translator(opt, report_score=True, out_file=None):
                         "use_guided", "tp_path", "guided_n_max",
                         "guided_1_weight", "guided_n_weight",
                         "guided_correct_ngrams", "guided_correct_1grams",
-                        "extend_with_tp"]}
+                        "extend_with_tp", "extend_1_weight", "extend_n_weight"]}
 
     translator = Translator(model, model_opt, fields, global_scorer=scorer,
                             out_file=out_file, report_score=report_score,
@@ -209,7 +209,9 @@ class Translator(object):
                  guided_n_weight=1.0,
                  guided_correct_ngrams=False,
                  guided_correct_1grams=False,
-                 extend_with_tp=False):
+                 extend_with_tp=False,
+                 extend_1_weight=1.0,
+                 extend_n_weight=1.0):
 
         self.gpu = gpu
         self.cuda = gpu > -1
@@ -251,6 +253,8 @@ class Translator(object):
         self.guided_correct_ngrams = guided_correct_ngrams
         self.guided_correct_1grams = guided_correct_1grams
         self.extend_with_tp = extend_with_tp
+        self.extend_1_weight = extend_1_weight
+        self.extend_n_weight = extend_n_weight
 
         # for debugging
         self.beam_trace = self.dump_beam != ""
@@ -616,14 +620,14 @@ class Translator(object):
 
                 # ADDED ----------------------------------------------------
                 n_max = self.guided_n_max # n-gram max
-                out_uni_rep[out_uni_rep !=0] = 1                
- 
+                
                 if self.use_guided:
                     # Deal with n-gram cases
                     bs = batch.batch_size
                     total_size = batch.batch_size * self.beam_size
                     out_multi = torch.zeros(total_size, len(vocab),
                                             device=device) 
+                    #out_multi = np.zeros((total_size, len(vocab)))
 
                     if i > 0:
                         for j in range(len(beam)): 
@@ -647,8 +651,7 @@ class Translator(object):
                                             w = int(key_[-1])
                                             if self.guided_correct_ngrams:
                                                 if key_[-1] not in seq_:
-                                                    out_multi[k*bs+j][w] += 1
-
+                                                    out_multi[k*bs+j][w] += value
                                             else:
                                                 out_multi[k*bs+j][w] += value
 
@@ -660,8 +663,7 @@ class Translator(object):
                                     seq_ = [str(x.item()) for x in seq]
                                     for w in set(seq_):
                                         value = tp_uni[j][w]
-                                        if value:
-                                            out_multi[k*bs+j][int(w)] -= 1
+                                        out_multi[k*bs+j][int(w)] -= value
                                     try:
                                         values = out_uni_rep[k*bs+j]+out_multi[k*bs+j]
                                         assert ((values >= 0.0) == True).all()
@@ -670,8 +672,24 @@ class Translator(object):
                                         pdb.set_trace()
 
                     # Add the weights of the 1-grams
-                    out = torch.add(out, self.guided_1_weight*out_uni_rep)
-                    out = torch.add(out, self.guided_n_weight*out_multi)
+                    #out = torch.add(out, self.guided_1_weight*out_uni_rep)
+                    #out = torch.add(out, self.guided_n_weight*out_multi)
+
+                    if self.extend_with_tp:
+                        ldg1 = self.guided_1_weight
+                        ldgn = self.guided_n_weight
+                        lde1 = self.extend_1_weight
+                        lden = self.extend_n_weight
+                        out = torch.add(out,
+                                        torch.cat((ldg1*out_uni_rep[:, :added],
+                                                   lde1*out_uni_rep[:, added:]),
+                                                  dim=1))
+                        
+                        out = torch.add(out,
+                                        torch.cat((ldgn*out_multi[:, :added],
+                                                   lden*out_multi[:, added:]),
+                                                  dim=1))
+
                 # END ------------------------------------------------------
 
                 out = unbottle(out)
