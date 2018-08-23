@@ -187,14 +187,30 @@ class CopyGeneratorLossCompute(loss.LossComputeBase):
         """
         target = target.view(-1)
         align = align.view(-1)
+
+        if hasattr(batch, 'src_map'):
+            inp_map = batch.src_map
+        elif hasattr(batch, 'mt_map'):
+            inp_map = batch.mt_map
+        else:
+            inp_map = None
+
         scores = self.generator(self._bottle(output),
                                 self._bottle(copy_attn),
-                                batch.src_map)
+                                inp_map)
         loss = self.criterion(scores, align, target)
         scores_data = scores.data.clone()
-        scores_data = inputters.TextDataset.collapse_copy_scores(
+
+        if hasattr(batch, 'src_map'):
+            dataset = inputters.TextDataset
+            vocabs = self.cur_dataset.src_vocabs
+        elif hasattr(batch, 'mt_map'):
+            dataset = inputters.APETextDataset
+            vocabs = self.cur_dataset.mt_vocabs
+
+        scores_data = dataset.collapse_copy_scores(
             self._unbottle(scores_data, batch.batch_size),
-            batch, self.tgt_vocab, self.cur_dataset.src_vocabs)
+            batch, self.tgt_vocab, vocabs)
         scores_data = self._bottle(scores_data)
 
         # Correct target copy token instead of <unk>

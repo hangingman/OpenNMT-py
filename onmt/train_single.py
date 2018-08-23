@@ -88,6 +88,8 @@ def main(opt):
     data_type = first_dataset.data_type
     if model_opt.lm:
         data_type = 'monotext'
+    elif model_opt.ape:
+        data_type = 'apetext'
 
     use_char = True if model_opt.use_char_input or \
         model_opt.use_elmo else False

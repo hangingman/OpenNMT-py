@@ -2,8 +2,6 @@
 import torch
 import torch.nn as nn
 
-from torch.autograd import Variable
-
 from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 
@@ -342,3 +340,99 @@ class LanguageModel(nn.Module):
                 backward_states = [None for layer in range(n_layers)]
 
         return forward_states, backward_states
+
+
+class APEModel(nn.Module):
+    """
+    Core trainable object in OpenNMT. Implements a trainable interface
+    for a simple, generic encoder + decoder model for the APE task.
+
+    Args:
+      encoder (:obj:`EncoderBase`): an encoder object
+      decoder (:obj:`RNNDecoderBase`): a decoder object
+      multi<gpu (bool): setup for multigpu support
+    """
+
+    def __init__(self, encoder_src, encoder_mt, decoder, multigpu=False):
+        self.multigpu = multigpu
+        super(APEModel, self).__init__()
+        self.encoder_src = encoder_src
+        self.encoder_mt = encoder_mt
+        self.decoder = decoder
+
+    def forward(self, src, mt, tgt, lengths_src, lengths_mt, dec_state=None,
+                char_src=None, char_mt=None):
+        """Forward propagate a `src` and `tgt` pair for training.
+        Possible initialized with a beginning decoder state.
+
+        Args:
+            src (:obj:`Tensor`):
+                a source sequence passed to encoder.
+                typically for inputs this will be a padded :obj:`LongTensor`
+                of size `[len x batch x features]`. however, may be an
+                image or other generic input depending on encoder.
+            tgt (:obj:`LongTensor`):
+                 a target sequence of size `[tgt_len x batch]`.
+            lengths(:obj:`LongTensor`): the src lengths, pre-padding `[batch]`.
+            dec_state (:obj:`DecoderState`, optional): initial decoder state
+        Returns:
+            (:obj:`FloatTensor`, `dict`, :obj:`onmt.Models.DecoderState`):
+
+                 * decoder output `[tgt_len x batch x hidden]`
+                 * dictionary attention dists of `[tgt_len x batch x src_len]`
+                 * final decoder state
+        """
+        tgt = tgt[:-1]  # exclude last target from inputs
+
+        enc_final_src, memory_bank_src = self.encoder_src(src, lengths_src,
+                                                          char_src=char_src)
+
+        # Need to temporarily sort mt sentences because torch needs
+        # them sorted by length when feeding a RNN
+        sorted_mt, sorted_mt_lengths, mt_idx = self.sort_sentences(
+                                                        mt, lengths_mt)
+        if char_mt is not None:
+            sorted_char_mt, _, _ = self.sort_sentences(char_mt, lengths_mt)
+        else:
+            sorted_char_mt = None
+
+        # Get the MT contexts
+        sorted_enc_final_mt, sorted_memory_bank_mt = self.encoder_mt(
+                                                    sorted_mt,
+                                                    sorted_mt_lengths,
+                                                    char_src=sorted_char_mt)
+
+        # Return the examples in the batch to the original order,
+        # before sorting
+        if isinstance(sorted_enc_final_mt, tuple):  # LSTM
+            enc_final_mt = (sorted_enc_final_mt[0][:, mt_idx],
+                            sorted_enc_final_mt[1][:, mt_idx])
+        else:  # GRU
+            enc_final_mt = sorted_enc_final_mt[:, mt_idx]
+
+        memory_bank_mt = sorted_memory_bank_mt[:, mt_idx]
+
+        enc_state = \
+            self.decoder.init_decoder_state(src, mt,
+                                            memory_bank_src, memory_bank_mt,
+                                            enc_final_src, enc_final_mt)
+
+        decoder_outputs, dec_state, attns = \
+            self.decoder(tgt, memory_bank_src, memory_bank_mt,
+                         enc_state if dec_state is None
+                         else dec_state,
+                         memory_lengths_src=lengths_src,
+                         memory_lengths_mt=lengths_mt)
+        if self.multigpu:
+            # Not yet supported on multi-gpu
+            dec_state = None
+            attns = None
+        return decoder_outputs, attns, dec_state
+
+    def sort_sentences(self, sentences, lengths):
+        """Sorts sentences and returns the original indices"""
+        sorted_lens, idx_tensor = torch.sort(lengths, descending=True)
+        sorted_sentences = sentences[:, idx_tensor]
+        _, idx = torch.sort(idx_tensor)
+
+        return sorted_sentences, sorted_lens, idx

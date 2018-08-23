@@ -52,6 +52,8 @@ def model_opts(parser):
                        help="""Whether to use ELMo.""")
     group.add_argument('-src_bilm_path',
                        help="""Path to a trained biLM of the src language.""")
+    group.add_argument('-mt_bilm_path',
+                       help="""Path to a trained biLM of the mt language.""")
     group.add_argument('-elmo_dropout', type=float, default=0.3,
                        help="""The dropout of the ELMo representation.""")
 
@@ -187,6 +189,11 @@ def model_opts(parser):
     group.add_argument('-lm_bptt_len', type=int, default=-1,
                        help='The number of unroll steps that will be BPTT\'d '
                             'in each example')
+
+    group = parser.add_argument_group('APE')
+    group.add_argument('-ape', action="store_true",
+                       help="""Train a double encoder APE model instead
+                            of the standard Seq2Seq models of OpenNMT-py.""")
 
 
 def filters(s):

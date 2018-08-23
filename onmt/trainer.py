@@ -49,11 +49,19 @@ def build_trainer(opt, model, fields, optim, data_type, model_saver=None):
 
     if opt.lm:
         trainer = onmt.LanguageModelTrainer(
-            model, train_loss, valid_loss, optim,
-            trunc_size, shard_size, data_type, norm_method,
+            model, train_loss, valid_loss, optim, trunc_size,
+            shard_size, data_type, norm_method,
             grad_accum_count, n_gpu, gpu_rank,
             gpu_verbose_level, report_manager,
             model_saver=model_saver)
+    elif opt.ape:
+        trainer = onmt.APETrainer(
+            model, train_loss, valid_loss, optim, trunc_size,
+            shard_size, data_type, norm_method,
+            grad_accum_count, n_gpu, gpu_rank,
+            gpu_verbose_level, report_manager,
+            model_saver=model_saver,
+            use_elmo=opt.use_elmo)
     else:
         trainer = onmt.Trainer(
             model, train_loss, valid_loss, optim, trunc_size,
@@ -616,3 +624,139 @@ class LanguageModelTrainer(Trainer):
         self.optim.step()
 
         return hidden_state
+
+
+class APETrainer(Trainer):
+
+    def __init__(self, model, train_loss, valid_loss, optim,
+                 trunc_size=0, shard_size=32, data_type='text',
+                 norm_method="sents", grad_accum_count=1, n_gpu=1, gpu_rank=1,
+                 gpu_verbose_level=0, report_manager=None, model_saver=None,
+                 use_elmo=False):
+        super(APETrainer, self).__init__(
+                model, train_loss, valid_loss, optim, trunc_size, shard_size,
+                data_type, norm_method, grad_accum_count, n_gpu, gpu_rank,
+                gpu_verbose_level, report_manager, model_saver, use_elmo)
+
+    def validate(self, valid_iter):
+        """ Validate model.
+            valid_iter: validate data iterator
+        Returns:
+            :obj:`nmt.Statistics`: validation loss statistics
+        """
+        # Set model in validating mode.
+        self.model.eval()
+
+        stats = onmt.utils.Statistics()
+
+        for batch in valid_iter:
+            cur_dataset = valid_iter.get_cur_dataset()
+            self.valid_loss.cur_dataset = cur_dataset
+
+            src = inputters.make_features(batch, 'src', self.data_type)
+            src = src.unsqueeze(-1)
+            _, src_lengths = batch.src
+
+            mt = inputters.make_features(batch, 'mt', self.data_type)
+            mt = mt.unsqueeze(-1)
+            _, mt_lengths = batch.mt
+
+            if self.use_elmo:
+                char_src = inputters.make_features(batch, 'char_src')
+                # (target_size, batch_size, max_char_src, n_feat)
+                char_src = char_src.permute(1, 0, 3, 2).contiguous()
+
+                char_mt = inputters.make_features(batch, 'char_mt')
+                # (target_size, batch_size, max_char_mt, n_feat)
+                char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_src = char_mt = None
+
+            tgt = inputters.make_features(batch, 'tgt')
+
+            # F-prop through the model.
+            outputs, attns, _ = self.model(src, mt, tgt, src_lengths,
+                                           mt_lengths,
+                                           char_src=char_src,
+                                           char_mt=char_mt)
+
+            # Compute loss.
+            batch_stats = self.valid_loss.monolithic_compute_loss(
+                batch, outputs, attns)
+
+            # Update statistics.
+            stats.update(batch_stats)
+
+        # Set model back to training mode.
+        self.model.train()
+
+        return stats
+
+    def _gradient_accumulation(self, true_batchs, normalization, total_stats,
+                               report_stats):
+        if self.grad_accum_count > 1:
+            self.model.zero_grad()
+
+        for batch in true_batchs:
+            target_size = batch.tgt.size(0)
+            # Truncated BPTT
+            if self.trunc_size:
+                trunc_size = self.trunc_size
+            else:
+                trunc_size = target_size
+
+            dec_state = None
+            src = inputters.make_features(batch, 'src', self.data_type)
+            src = src.unsqueeze(-1)
+            _, src_lengths = batch.src
+            report_stats.n_src_words += src_lengths.sum().item()
+
+            mt = inputters.make_features(batch, 'mt', self.data_type)
+            mt = mt.unsqueeze(-1)
+            _, mt_lengths = batch.mt
+
+            if self.use_elmo:
+                char_src = inputters.make_features(batch, 'char_src')
+                # (target_size, batch_size, max_char_src, n_feat)
+                char_src = char_src.permute(1, 0, 3, 2).contiguous()
+
+                char_mt = inputters.make_features(batch, 'char_mt')
+                # (target_size, batch_size, max_char_mt, n_feat)
+                char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+            else:
+                char_src = char_mt = None
+
+            tgt_outer = inputters.make_features(batch, 'tgt')
+
+            for j in range(0, target_size-1, trunc_size):
+                # 1. Create truncated target.
+                tgt = tgt_outer[j: j + trunc_size]
+
+                # 2. F-prop all but generator.
+                if self.grad_accum_count == 1:
+                    self.model.zero_grad()
+                outputs, attns, dec_state = \
+                    self.model(src, mt, tgt, src_lengths, mt_lengths,
+                               dec_state,
+                               char_src=char_src, char_mt=char_mt)
+
+                # 3. Compute loss in shards for memory efficiency.
+                batch_stats = self.train_loss.sharded_compute_loss(
+                    batch, outputs, attns, j,
+                    trunc_size, self.shard_size, normalization)
+                total_stats.update(batch_stats)
+                report_stats.update(batch_stats)
+
+                # If truncated, don't backprop fully.
+                if dec_state is not None:
+                    dec_state.detach()
+
+        # 3.bis Multi GPU gradient gather
+        if self.n_gpu > 1:
+            grads = [p.grad.data for p in self.model.parameters()
+                     if p.requires_grad and p.grad is not None]
+            onmt.utils.distributed.all_reduce_and_rescale_tensors(
+                grads, float(1))
+
+        # 4. Update the parameters and statistics.
+        self.optim.step()

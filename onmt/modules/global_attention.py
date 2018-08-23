@@ -219,3 +219,178 @@ class GlobalAttention(nn.Module):
             aeq(source_l, source_l_)
 
         return attn_h, align_vectors
+
+
+class APEGlobalAttention(GlobalAttention):
+    """
+    Global attention takes a matrix and a query vector. It
+    then computes a parameterized convex combination of the matrix
+    based on the input query.
+
+    Constructs a unit mapping a query `q` of size `dim`
+    and a source matrix `H` of size `n x dim`, to an output
+    of size `dim`.
+
+
+    .. mermaid::
+
+       graph BT
+          A[Query]
+          subgraph RNN
+            C[H 1]
+            D[H 2]
+            E[H N]
+          end
+          F[Attn]
+          G[Output]
+          A --> F
+          C --> F
+          D --> F
+          E --> F
+          C -.-> G
+          D -.-> G
+          E -.-> G
+          F --> G
+
+    All models compute the output as
+    :math:`c = sum_{j=1}^{SeqLength} a_j H_j` where
+    :math:`a_j` is the softmax of a score function.
+    Then then apply a projection layer to [q, c].
+
+    However they
+    differ on how they compute the attention score.
+
+    * Luong Attention (dot, general):
+       * dot: :math:`score(H_j,q) = H_j^T q`
+       * general: :math:`score(H_j, q) = H_j^T W_a q`
+
+
+    * Bahdanau Attention (mlp):
+       * :math:`score(H_j, q) = v_a^T tanh(W_a q + U_a h_j)`
+
+
+    Args:
+       dim (int): dimensionality of query and key
+       coverage (bool): use coverage term
+       attn_type (str): type of attention to use, options [dot,general,mlp]
+
+    """
+
+    def __init__(self, dim, coverage=False, attn_type="dot"):
+        super(APEGlobalAttention, self).__init__(dim,
+                                                 coverage,
+                                                 attn_type)
+        self.linear_merge = nn.Linear(dim * 2, dim)
+
+    def forward(self, source, memory_bank_src, memory_bank_mt,
+                memory_lengths_src=None, memory_lengths_mt=None,
+                coverage=None):
+        """
+
+        Args:
+          input (`FloatTensor`): query vectors `[batch x tgt_len x dim]`
+          memory_bank (`FloatTensor`): source vectors `[batch x src_len x dim]`
+          memory_lengths (`LongTensor`): the source context lengths `[batch]`
+          coverage (`FloatTensor`): None (not supported yet)
+
+        Returns:
+          (`FloatTensor`, `FloatTensor`):
+
+          * Computed vector `[tgt_len x batch x dim]`
+          * Attention distribtutions for each query
+             `[tgt_len x batch x src_len]`
+        """
+
+        # one step input
+        if source.dim() == 2:
+            one_step = True
+            source = source.unsqueeze(1)
+        else:
+            one_step = False
+
+        batch, source_l_mt, dim = memory_bank_mt.size()
+        batch, source_l_src, dim = memory_bank_src.size()
+        batch_, target_l, dim_ = source.size()
+        aeq(batch, batch_)
+        aeq(dim, dim_)
+        aeq(self.dim, dim)
+        if coverage is not None:
+            batch_, source_l_ = coverage.size()
+            aeq(batch, batch_)
+            aeq(source_l_mt, source_l_)
+
+        if coverage is not None:
+            cover = coverage.view(-1).unsqueeze(1)
+            memory_bank_mt += self.linear_cover(cover).view_as(memory_bank_mt)
+            memory_bank_mt = self.tanh(memory_bank_mt)
+
+        # compute attention scores, as in Luong et al.
+        align_src = self.score(source, memory_bank_src)
+        align_mt = self.score(source, memory_bank_mt)
+
+        if memory_lengths_src is not None:
+            mask = sequence_mask(memory_lengths_src,
+                                 max_len=align_src.size(-1))
+            mask = mask.unsqueeze(1)  # Make it broadcastable.
+            align_src.masked_fill_(1 - mask, -float('inf'))
+
+        if memory_lengths_mt is not None:
+            mask = sequence_mask(memory_lengths_mt,
+                                 max_len=align_mt.size(-1))
+            mask = mask.unsqueeze(1)  # Make it broadcastable.
+            align_mt.masked_fill_(1 - mask, -float('inf'))
+
+        # Softmax to normalize attention weights
+        align_vectors_src = self.softmax(
+                align_src.view(batch*target_l, source_l_src))
+        align_vectors_src = align_vectors_src.view(
+                                batch, target_l, source_l_src)
+
+        align_vectors_mt = self.softmax(
+                align_mt.view(batch*target_l, source_l_mt))
+        align_vectors_mt = align_vectors_mt.view(
+                                batch, target_l, source_l_mt)
+
+        # each context vector c_t is the weighted average
+        # over all the source hidden states
+        c_src = torch.bmm(align_vectors_src, memory_bank_src)
+        c_mt = torch.bmm(align_vectors_mt, memory_bank_mt)
+
+        # Merge the src and mt attentions
+        c_merge = torch.cat([c_src, c_mt], 2).view(batch*target_l, dim*2)
+        c = self.linear_merge(c_merge).view(batch, target_l, dim)
+
+        # concatenate
+        concat_c = torch.cat([c, source], 2).view(batch*target_l, dim*2)
+        attn_h = self.linear_out(concat_c).view(batch, target_l, dim)
+        if self.attn_type in ["general", "dot"]:
+            attn_h = self.tanh(attn_h)
+
+        if one_step:
+            attn_h = attn_h.squeeze(1)
+            align_vectors_src = align_vectors_src.squeeze(1)
+            align_vectors_mt = align_vectors_mt.squeeze(1)
+
+            # Check output sizes
+            batch_, dim_ = attn_h.size()
+            aeq(batch, batch_)
+            aeq(dim, dim_)
+            batch_, source_l_ = align_vectors_mt.size()
+            aeq(batch, batch_)
+            aeq(source_l_mt, source_l_)
+
+        else:
+            attn_h = attn_h.transpose(0, 1).contiguous()
+            align_vectors_src = align_vectors_src.transpose(0, 1).contiguous()
+            align_vectors_mt = align_vectors_mt.transpose(0, 1).contiguous()
+            # Check output sizes
+            target_l_, batch_, dim_ = attn_h.size()
+            aeq(target_l, target_l_)
+            aeq(batch, batch_)
+            aeq(dim, dim_)
+            target_l_, batch_, source_l_ = align_vectors_mt.size()
+            aeq(target_l, target_l_)
+            aeq(batch, batch_)
+            aeq(source_l_mt, source_l_)
+
+        return attn_h, align_vectors_src, align_vectors_mt

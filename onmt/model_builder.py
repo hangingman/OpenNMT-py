@@ -16,7 +16,8 @@ from onmt.encoders.mean_encoder import MeanEncoder
 from onmt.encoders.audio_encoder import AudioEncoder
 from onmt.encoders.image_encoder import ImageEncoder
 
-from onmt.decoders.decoder import InputFeedRNNDecoder, StdRNNDecoder
+from onmt.decoders.decoder import InputFeedRNNDecoder, StdRNNDecoder,\
+                                  APEInputFeedRNNDecoder
 from onmt.decoders.transformer import TransformerDecoder
 from onmt.decoders.cnn_decoder import CNNDecoder
 
@@ -70,7 +71,12 @@ def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True,
 
 
 def build_elmo(opt, fields, gpu, side='src'):
-    lm_checkpoint = torch.load(opt.src_bilm_path,
+    if side == 'src':
+        bilm_path = opt.src_bilm_path
+    elif side == 'mt':
+        bilm_path = opt.mt_bilm_path
+
+    lm_checkpoint = torch.load(bilm_path,
                                map_location=lambda storage, loc: storage)
     lm_opt = lm_checkpoint['opt']
     if not lm_opt.use_char_input:
@@ -120,6 +126,16 @@ def build_decoder(opt, embeddings):
         opt: the option in current environment.
         embeddings (Embeddings): vocab embeddings for this decoder.
     """
+    if opt.ape:
+        return APEInputFeedRNNDecoder(opt.rnn_type, opt.brnn,
+                                      opt.dec_layers, opt.rnn_size,
+                                      opt.global_attention,
+                                      opt.coverage_attn,
+                                      opt.context_gate,
+                                      opt.copy_attn,
+                                      opt.dropout,
+                                      embeddings,
+                                      opt.reuse_copy_attn)
     if opt.decoder_type == "transformer":
         return TransformerDecoder(opt.dec_layers, opt.rnn_size,
                                   opt.heads, opt.transformer_ff,
@@ -194,15 +210,25 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
         src_dict = fields["src"].vocab
         feature_dicts = inputters.collect_feature_vocabs(fields, 'src')
 
-        if model_opt.use_elmo:
-            elmo = build_elmo(model_opt, fields,
-                              gpu, 'src')
-        else:
-            elmo = None
+        elmo = build_elmo(model_opt, fields,
+                          gpu, 'src') if model_opt.use_elmo else None
 
         src_embeddings = build_embeddings(model_opt, src_dict, feature_dicts,
                                           elmo=elmo)
         encoder = build_encoder(model_opt, src_embeddings)
+
+        if model_opt.ape:
+            encoder_src = encoder
+            del encoder
+
+            mt_dict = fields["mt"].vocab
+            feature_dicts = inputters.collect_feature_vocabs(fields, 'mt')
+            elmo = build_elmo(model_opt, fields,
+                              gpu, 'mt') if model_opt.use_elmo else None
+            mt_embeddings = build_embeddings(model_opt, mt_dict,
+                                             feature_dicts,
+                                             elmo=elmo)
+            encoder_mt = build_encoder(model_opt, mt_embeddings)
 
     elif model_opt.model_type == "img":
         encoder = ImageEncoder(model_opt.enc_layers,
@@ -232,11 +258,18 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
 
         tgt_embeddings.word_lut.weight = src_embeddings.word_lut.weight
 
+    # Share the embedding matrix of mt and tgt for ape models
+    if model_opt.ape:
+        tgt_embeddings.word_lut.weight = mt_embeddings.word_lut.weight
+
     decoder = build_decoder(model_opt, tgt_embeddings)
 
     # Build NMTModel(= encoder + decoder).
     device = torch.device("cuda" if gpu else "cpu")
-    model = onmt.models.NMTModel(encoder, decoder)
+    if model_opt.ape:
+        model = onmt.models.APEModel(encoder_src, encoder_mt, decoder)
+    else:
+        model = onmt.models.NMTModel(encoder, decoder)
     model.model_type = model_opt.model_type
 
     # Build Generator.
@@ -268,7 +301,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
                 if p.dim() > 1:
                     xavier_uniform_(p)
 
-        if hasattr(model.encoder, 'embeddings'):
+        if not model_opt.ape and hasattr(model.encoder, 'embeddings'):
             model.encoder.embeddings.load_pretrained_vectors(
                 model_opt.pre_word_vecs_enc, model_opt.fix_word_vecs_enc)
         if hasattr(model.decoder, 'embeddings'):
