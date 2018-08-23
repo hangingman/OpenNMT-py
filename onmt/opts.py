@@ -432,7 +432,9 @@ def train_opts(parser):
                        Set to zero to turn off label smoothing.
                        For more detailed information, see:
                        https://arxiv.org/abs/1512.00567""")
-    group.add_argument('-l2_value', type=float, default=0.001,
+    group.add_argument('-l2_value', type=float, default=-1,
+                       help="The L2 regularization parameter.")
+    group.add_argument('-l2_modules', default=[], nargs='+', type=str,
                        help="The L2 regularization parameter.")
     # learning rate
     group = parser.add_argument_group('Optimization- Rate')
