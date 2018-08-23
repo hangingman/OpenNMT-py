@@ -4,7 +4,10 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import math
 
-from log_uniform import LogUniformSampler
+try:
+    from log_uniform import LogUniformSampler
+except ImportError:
+    pass
 
 
 class SampledSoftmax(nn.Module):
@@ -15,7 +18,14 @@ class SampledSoftmax(nn.Module):
         self.vocab_size = vocab_size
         self.nsampled = nsampled
 
-        self.sampler = LogUniformSampler(self.vocab_size)
+        try:
+            self.sampler = LogUniformSampler(self.vocab_size)
+        except NameError:
+            raise ImportError("To use the Sampled Softmax module, "
+                              "please install cython (pip install cython) "
+                              "and then install the log_uniform package by "
+                              "running \"python setup.py\" from the "
+                              "onmt/modules/log_uniform directory.")
         self.params = nn.Linear(hidden_size, vocab_size)
         self.logsoftmax = nn.LogSoftmax(-1)
 
