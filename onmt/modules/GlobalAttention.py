@@ -213,6 +213,8 @@ class GlobalAttention(nn.Module):
                 (uu, torch.zeros(upper_bounds.size(0)).cuda()), 1))
 
         # Softmax to normalize attention weights
+        if upper_bounds is not None: print("There are upper bounds")
+
         if self.attn_transform == 'constrained_softmax':
             if upper_bounds is None:
                 align_vectors = nn.Softmax()(attn)

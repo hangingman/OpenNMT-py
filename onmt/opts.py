@@ -515,6 +515,10 @@ def translate_opts(parser):
     group.add_argument('-extend_n_weight', type=float, default=1.0,
                         help="""Weight given to the words added with
                         extend_with_tp (n-grams, with n>2)""")
+    group.add_argument('-extend_pred', type=str, default=None,
+                        choices=['ls', 'mlp'],
+                        help="""Define as true if you want to use the 
+                        prediction for the initialization of the vector""")
  
     # Options related to logging
     group = parser.add_argument_group('Logging')

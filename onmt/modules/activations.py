@@ -110,6 +110,7 @@ class Sparsemax(Module):
 
 class ConstrainedSoftmaxFunction(Function):
     def forward(self, input1, input2):
+        print("Using csft 1")
         z = input1.cpu().numpy()
         u = input2.cpu().numpy()
         probs = np.zeros_like(z)
@@ -151,6 +152,7 @@ class ConstrainedSoftmax(Module):
 
 class ConstrainedSparsemaxFunction(Function):
     def forward(self, input1, input2):
+        print("Using csp")
         z = input1.cpu().numpy()
         u = input2.cpu().numpy()
         probs = np.zeros_like(z)

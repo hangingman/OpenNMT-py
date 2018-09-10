@@ -1,0 +1,249 @@
+Lambda1: 1.0
+Lambda2: 1.0
+Extrald1: 1.0
+Extrald2: 1.0
+Could not override option window_size
+Could not override option sample_rate
+Could not override option batch_size
+Loading model parameters.
+NMTModel(
+  (encoder): RNNEncoder(
+    (embeddings): Embeddings(
+      (make_embedding): Sequential(
+        (emb_luts): Elementwise(
+          (0): Embedding(32069, 500, padding_idx=1)
+        )
+      )
+    )
+    (rnn): LSTM(500, 250, num_layers=2, dropout=0.3, bidirectional=True)
+  )
+  (decoder): InputFeedRNNDecoder(
+    (embeddings): Embeddings(
+      (make_embedding): Sequential(
+        (emb_luts): Elementwise(
+          (0): Embedding(30943, 500, padding_idx=1)
+        )
+      )
+    )
+    (dropout): Dropout(p=0.3)
+    (rnn): StackedLSTM(
+      (dropout): Dropout(p=0.3)
+      (layers): ModuleList(
+        (0): LSTMCell(1000, 500)
+        (1): LSTMCell(500, 500)
+      )
+    )
+    (attn): GlobalAttention(
+      (linear_in): Linear(in_features=500, out_features=500, bias=False)
+      (linear_out): Linear(in_features=1000, out_features=500, bias=False)
+      (sm): Softmax()
+      (tanh): Tanh()
+    )
+  )
+  (generator): Sequential(
+    (0): Linear(in_features=500, out_features=30943, bias=True)
+    (1): LogSoftmax()
+  )
+)
+average src size 41.481 3000
+Added 244 new words
+Batch 0 - Duration: 21.86 - Total: 00:00:21
+Added 210 new words
+Batch 1 - Duration: 22.28 - Total: 00:00:44
+Added 247 new words
+Batch 2 - Duration: 21.76 - Total: 00:01:05
+Added 78 new words
+Batch 3 - Duration: 20.09 - Total: 00:01:25
+Added 236 new words
+Batch 4 - Duration: 21.31 - Total: 00:01:47
+Added 129 new words
+Batch 5 - Duration: 21.69 - Total: 00:02:08
+Added 347 new words
+Batch 6 - Duration: 22.26 - Total: 00:02:31
+Added 147 new words
+Batch 7 - Duration: 19.28 - Total: 00:02:50
+Added 181 new words
+Batch 8 - Duration: 22.57 - Total: 00:03:13
+Added 154 new words
+Batch 9 - Duration: 17.75 - Total: 00:03:30
+Added 195 new words
+Batch 10 - Duration: 19.34 - Total: 00:03:50
+Added 135 new words
+Batch 11 - Duration: 20.57 - Total: 00:04:10
+Added 154 new words
+Batch 12 - Duration: 23.15 - Total: 00:04:33
+Added 166 new words
+Batch 13 - Duration: 19.34 - Total: 00:04:53
+Added 145 new words
+Batch 14 - Duration: 22.14 - Total: 00:05:15
+Added 144 new words
+Batch 15 - Duration: 22.39 - Total: 00:05:37
+Added 158 new words
+Batch 16 - Duration: 23.17 - Total: 00:06:00
+Added 181 new words
+Batch 17 - Duration: 23.22 - Total: 00:06:24
+Added 132 new words
+Batch 18 - Duration: 23.00 - Total: 00:06:47
+Added 315 new words
+Batch 19 - Duration: 23.47 - Total: 00:07:10
+Added 138 new words
+Batch 20 - Duration: 19.51 - Total: 00:07:30
+Added 121 new words
+Batch 21 - Duration: 23.36 - Total: 00:07:53
+Added 152 new words
+Batch 22 - Duration: 22.84 - Total: 00:08:16
+Added 91 new words
+Batch 23 - Duration: 21.12 - Total: 00:08:37
+Added 155 new words
+Batch 24 - Duration: 18.57 - Total: 00:08:56
+Added 138 new words
+Batch 25 - Duration: 23.20 - Total: 00:09:19
+Added 61 new words
+Batch 26 - Duration: 19.84 - Total: 00:09:39
+Added 129 new words
+Batch 27 - Duration: 22.11 - Total: 00:10:01
+Added 157 new words
+Batch 28 - Duration: 21.96 - Total: 00:10:23
+Added 82 new words
+Batch 29 - Duration: 21.77 - Total: 00:10:44
+Added 113 new words
+Batch 30 - Duration: 22.97 - Total: 00:11:07
+Added 111 new words
+Batch 31 - Duration: 18.60 - Total: 00:11:26
+Added 163 new words
+Batch 32 - Duration: 23.62 - Total: 00:11:50
+Added 79 new words
+Batch 33 - Duration: 23.01 - Total: 00:12:13
+Added 74 new words
+Batch 34 - Duration: 23.38 - Total: 00:12:36
+Added 76 new words
+Batch 35 - Duration: 23.08 - Total: 00:12:59
+Added 79 new words
+Batch 36 - Duration: 23.43 - Total: 00:13:22
+Added 95 new words
+Batch 37 - Duration: 22.72 - Total: 00:13:45
+Added 125 new words
+Batch 38 - Duration: 21.18 - Total: 00:14:06
+Added 92 new words
+Batch 39 - Duration: 21.70 - Total: 00:14:28
+Added 68 new words
+Batch 40 - Duration: 18.22 - Total: 00:14:46
+Added 86 new words
+Batch 41 - Duration: 14.81 - Total: 00:15:01
+Added 54 new words
+Batch 42 - Duration: 23.42 - Total: 00:15:25
+Added 95 new words
+Batch 43 - Duration: 23.31 - Total: 00:15:48
+Added 100 new words
+Batch 44 - Duration: 23.23 - Total: 00:16:11
+Added 152 new words
+Batch 45 - Duration: 23.79 - Total: 00:16:35
+Added 123 new words
+Batch 46 - Duration: 22.58 - Total: 00:16:57
+Added 110 new words
+Batch 47 - Duration: 24.55 - Total: 00:17:22
+Added 70 new words
+Batch 48 - Duration: 23.95 - Total: 00:17:46
+Added 67 new words
+Batch 49 - Duration: 23.00 - Total: 00:18:09
+Added 105 new words
+Batch 50 - Duration: 19.60 - Total: 00:18:29
+Added 107 new words
+Batch 51 - Duration: 23.94 - Total: 00:18:52
+Added 71 new words
+Batch 52 - Duration: 23.69 - Total: 00:19:16
+Added 127 new words
+Batch 53 - Duration: 24.16 - Total: 00:19:40
+Added 35 new words
+Batch 54 - Duration: 20.64 - Total: 00:20:01
+Added 81 new words
+Batch 55 - Duration: 24.20 - Total: 00:20:25
+Added 64 new words
+Batch 56 - Duration: 20.85 - Total: 00:20:46
+Added 65 new words
+Batch 57 - Duration: 24.14 - Total: 00:21:10
+Added 136 new words
+Batch 58 - Duration: 24.45 - Total: 00:21:35
+Added 74 new words
+Batch 59 - Duration: 22.49 - Total: 00:21:57
+Added 54 new words
+Batch 60 - Duration: 18.77 - Total: 00:22:16
+Added 43 new words
+Batch 61 - Duration: 22.68 - Total: 00:22:39
+Added 59 new words
+Batch 62 - Duration: 22.78 - Total: 00:23:01
+Added 71 new words
+Batch 63 - Duration: 23.60 - Total: 00:23:25
+Added 79 new words
+Batch 64 - Duration: 22.95 - Total: 00:23:48
+Added 59 new words
+Batch 65 - Duration: 23.44 - Total: 00:24:11
+Added 66 new words
+Batch 66 - Duration: 21.69 - Total: 00:24:33
+Added 124 new words
+Batch 67 - Duration: 13.74 - Total: 00:24:47
+Added 54 new words
+Batch 68 - Duration: 23.12 - Total: 00:25:10
+Added 71 new words
+Batch 69 - Duration: 24.33 - Total: 00:25:34
+Added 62 new words
+Batch 70 - Duration: 22.23 - Total: 00:25:56
+Added 46 new words
+Batch 71 - Duration: 23.19 - Total: 00:26:20
+Added 46 new words
+Batch 72 - Duration: 23.18 - Total: 00:26:43
+Added 84 new words
+Batch 73 - Duration: 22.93 - Total: 00:27:06
+Added 37 new words
+Batch 74 - Duration: 22.02 - Total: 00:27:28
+Added 44 new words
+Batch 75 - Duration: 23.34 - Total: 00:27:51
+Added 57 new words
+Batch 76 - Duration: 26.60 - Total: 00:28:18
+Added 57 new words
+Batch 77 - Duration: 20.95 - Total: 00:28:39
+Added 69 new words
+Batch 78 - Duration: 23.93 - Total: 00:29:03
+Added 34 new words
+Batch 79 - Duration: 16.96 - Total: 00:29:20
+Added 72 new words
+Batch 80 - Duration: 22.01 - Total: 00:29:42
+Added 42 new words
+Batch 81 - Duration: 21.75 - Total: 00:30:03
+Added 53 new words
+Batch 82 - Duration: 19.00 - Total: 00:30:22
+Added 31 new words
+Batch 83 - Duration: 23.74 - Total: 00:30:46
+Added 54 new words
+Batch 84 - Duration: 24.50 - Total: 00:31:11
+Added 60 new words
+Batch 85 - Duration: 23.99 - Total: 00:31:35
+Added 30 new words
+Batch 86 - Duration: 15.91 - Total: 00:31:50
+Added 66 new words
+Batch 87 - Duration: 24.21 - Total: 00:32:15
+Added 99 new words
+Batch 88 - Duration: 22.65 - Total: 00:32:37
+Added 34 new words
+Batch 89 - Duration: 23.82 - Total: 00:33:01
+Added 60 new words
+Batch 90 - Duration: 24.65 - Total: 00:33:26
+Added 45 new words
+Batch 91 - Duration: 20.48 - Total: 00:33:46
+Added 103 new words
+Batch 92 - Duration: 24.99 - Total: 00:34:11
+Added 67 new words
+Batch 93 - Duration: 22.75 - Total: 00:34:34
+Added 66 new words
+Batch 94 - Duration: 24.53 - Total: 00:34:59
+Added 54 new words
+Batch 95 - Duration: 24.43 - Total: 00:35:23
+Added 52 new words
+Batch 96 - Duration: 19.65 - Total: 00:35:43
+Added 45 new words
+Batch 97 - Duration: 20.96 - Total: 00:36:04
+Added 75 new words
+Batch 98 - Duration: 24.19 - Total: 00:36:28
+Added 36 new words
+Batch 99 - Duration: 16.19 - Total: 00:36:44
+PRED AVG SCORE: -1.0010, PRED PPL: 2.7209

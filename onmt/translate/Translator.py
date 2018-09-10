@@ -54,16 +54,16 @@ def make_translator(opt, report_score=True, out_file=None):
     
     if extend_model:
         # Get the fields for the in-domain model
-        base_path = "/home/ubuntu/OpenNMT-py-un/extra_data/models/"
-        id_model = base_path + "de-en-md-base_acc_79.50_ppl_2.67_e15.pt"
-        id_check = torch.load(id_model, 
+        base_path = "/mnt/data/de-en-md-shr/base/"
+        id_model = base_path + "de-en-md-shr_acc_79.67_ppl_2.58_e15.pt"
+        id_check = torch.load(id_model,
                               map_location=lambda storage, loc: storage)
         id_fields = onmt.io.load_fields_from_vocab(id_check['vocab'],
                                                    data_type='text')
         
         id_vocab = id_fields['tgt'].vocab
         ge_vocab = fields['tgt'].vocab
-    
+   
         init_index = len(ge_vocab.itos)
         added = 0
 
@@ -145,7 +145,8 @@ def make_translator(opt, report_score=True, out_file=None):
                         "use_guided", "tp_path", "guided_n_max",
                         "guided_1_weight", "guided_n_weight",
                         "guided_correct_ngrams", "guided_correct_1grams",
-                        "extend_with_tp", "extend_1_weight", "extend_n_weight"]}
+                        "extend_with_tp", "extend_1_weight", "extend_n_weight",
+                        "extend_pred"]}
 
     translator = Translator(model, model_opt, fields, global_scorer=scorer,
                             out_file=out_file, report_score=report_score,
@@ -211,7 +212,8 @@ class Translator(object):
                  guided_correct_1grams=False,
                  extend_with_tp=False,
                  extend_1_weight=1.0,
-                 extend_n_weight=1.0):
+                 extend_n_weight=1.0,
+                 extend_pred=None):
 
         self.gpu = gpu
         self.cuda = gpu > -1
@@ -255,6 +257,7 @@ class Translator(object):
         self.extend_with_tp = extend_with_tp
         self.extend_1_weight = extend_1_weight
         self.extend_n_weight = extend_n_weight
+        self.extend_pred = extend_pred
 
         # for debugging
         self.beam_trace = self.dump_beam != ""
@@ -293,6 +296,30 @@ class Translator(object):
         if self.use_guided:
             translation_pieces = pickle.load(open(self.tp_path, 'rb'), 
                                              encoding='latin1')
+
+        if self.extend_pred:
+            ft_model_path = '/mnt/ft/wiki.en.bin'
+            base_path = '/home/ubuntu/NMT-Code/attention_comparison/thesis/guided_nmt/embed_map'
+            
+            print("Loading ft model ...")
+            ft_model = FastText.load_fasttext_format(ft_model_path)
+            print("Finished loading the model")
+
+            if self.extend_pred == "ls":
+                weight_model_path = base_path + "/ls_embed_mx.ckpt"
+                bias_model_path = base_path + "/ls_bias_mx.ckpt"
+
+            elif self.extend_pred == "mlp": 
+                weight_model_path = base_path + '/model_weights.ckpt'
+                bias_model_path = base_path + '/model_bias.ckpt'
+                
+            # Load the necessary models
+            w_model = torch.load(weight_model_path)
+            b_model = torch.load(bias_model_path)
+
+            # Build the list that is passed to translation_batch
+            models = [ft_model, w_model, b_model]
+
         tot_time = 0
         # END ----------------------------------------------------------------
 
@@ -309,10 +336,16 @@ class Translator(object):
             # ADDED --------------------------------------------------------------
             start_time = time.time()
 
-            if not self.use_guided:
-                batch_data = self.translate_batch(batch, data, dict())
+            if self.use_guided:
+                if self.extend_pred:
+                    batch_data = self.translate_batch(batch, data, 
+                                                      translation_pieces, models)
+                else:
+                    batch_data = self.translate_batch(batch, data, 
+                                                      translation_pieces, list())
+    
             else:
-                batch_data = self.translate_batch(batch, data, translation_pieces)
+                batch_data = self.translate_batch(batch, data, dict(), list())
             
             # END ----------------------------------------------------------------
             attn_matrices.append(batch_data['attention'])
@@ -390,7 +423,7 @@ class Translator(object):
 
         return all_scores
 
-    def translate_batch(self, batch, data, translation_pieces):
+    def translate_batch(self, batch, data, translation_pieces, models):
         """
         Translate a batch of sentences.
 
@@ -400,7 +433,7 @@ class Translator(object):
            batch (:obj:`Batch`): a batch from a dataset object
            data (:obj:`Dataset`): the dataset object
            translation_pieces (dict): dictionary with the translation pieces
-
+           models (list): list with the [ft, weights, bias] models/matrices
 
         Todo:
            Shouldn't need the original dataset.
@@ -484,13 +517,54 @@ class Translator(object):
             if self.extend_with_tp and added:
 
                 print("Added {} new words".format(added))
-
+ 
                 # Add the extra necessary components
                 unk_w = self.model.generator[0].weight[0]
                 unk_b = self.model.generator[0].bias[0]
-                
-                id_w_mx = unk_w.repeat([added, 1])
-                id_b_mx = unk_b.repeat([added])
+
+                if self.extend_pred:
+
+                    id_w_mx = torch.empty(added, 
+                                          self.model.generator[0].weight.shape[1],
+                                          dtype=torch.float)
+
+                    id_b_mx = torch.empty(added,
+                                          dtype=torch.float)
+
+                    if self.extend_pred == 'mlp': 
+                     
+                        def _predict(x, model_dict):
+                            nr_layers = len(model_dict)//2
+                            for i in range(1, nr_layers+1):
+                                w = model_dict['fc'+str(i)+'.weight']
+                                b = model_dict['fc'+str(i)+'.bias']
+                                x = torch.matmul(w, x) + b
+                            return x
+        
+                        for i in range(added):
+                            try:
+                                wv_ = torch.from_numpy(models[0].wv[self.fields['tgt'].vocab.itos[init_index+i]])
+                                id_w_mx[i] = _predict(wv_, models[1])
+                                id_b_mx[i] = _predict(wv_, models[2])
+                            except:
+                                id_w_mx[i] = unk_w
+                                id_b_mx[i] = unk_b
+
+                    elif self.extend_pred == 'ls':
+
+                        for i in range(added):
+                            try:
+                                wv_ = torch.from_numpy(models[0].wv[self.fields['tgt'].vocab.itos[init_index+i]])
+                                id_w_mx[i] = torch.matmul(wv_, models[1].float())
+                                id_b_mx[i] = torch.matmul(wv_, models[2].float())
+                            except:
+                                id_w_mx[i] = unk_w
+                                id_b_mx[i] = unk_b                                            
+
+                else:
+                    id_w_mx = unk_w.repeat([added, 1])
+                    id_b_mx = unk_b.repeat([added])
+
 
                 # Concat to the model
                 model_weight = self.model.generator[0].weight
@@ -561,6 +635,7 @@ class Translator(object):
         src_lengths = None
         if data_type == 'text':
             _, src_lengths = batch.src
+
             if 'fertility' in batch.__dict__:
                 fertility = batch.fertility
             else:
@@ -584,6 +659,7 @@ class Translator(object):
         memory_bank = rvar(memory_bank.data)
         memory_lengths = src_lengths.repeat(beam_size)
         if fertility is not None:
+            print("fertility (translator): ", fertility)
             fertility = var(fertility.data.repeat(1, beam_size))
         dec_states.repeat_beam_size_times(beam_size)
 
@@ -612,6 +688,7 @@ class Translator(object):
                 inp, memory_bank, dec_states, fertility=fertility, 
                 memory_lengths=memory_lengths)
             dec_out = dec_out.squeeze(0)
+
             # dec_out: beam x rnn_size
 
             # (b) Compute a vector of batch x beam word scores.
@@ -671,10 +748,7 @@ class Translator(object):
                                         print("ERROR: Problem when correcting 1-grams")
                                         pdb.set_trace()
 
-                    # Add the weights of the 1-grams
-                    #out = torch.add(out, self.guided_1_weight*out_uni_rep)
-                    #out = torch.add(out, self.guided_n_weight*out_multi)
-
+                    # Modify the output layer
                     if self.extend_with_tp:
                         ldg1 = self.guided_1_weight
                         ldgn = self.guided_n_weight
@@ -689,7 +763,10 @@ class Translator(object):
                                         torch.cat((ldgn*out_multi[:, :added],
                                                    lden*out_multi[:, added:]),
                                                   dim=1))
-
+                    
+                    else:
+                        out = torch.add(out, self.guided_1_weight*out_uni_rep)
+                        out = torch.add(out, self.guided_n_weight*out_multi)
                 # END ------------------------------------------------------
 
                 out = unbottle(out)

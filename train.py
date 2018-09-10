@@ -478,6 +478,15 @@ def show_optimizer_state(optim):
         print("optim.optimizer.state_dict()['param_groups'] element: " + str(
             element))
 
+# ADDED ------------------------------------------------
+def merge_options(check_opt, opt):
+    model_dict = check_opt.__dict__
+    opt_dict = opt.__dict__
+
+    for k, v in opt_dict.items():
+        if model_dict[k] != v:
+            model_dict[k] = v
+
 def main():
     # Load checkpoint if we resume from a previous training.
     if opt.train_from:
@@ -485,6 +494,9 @@ def main():
         checkpoint = torch.load(opt.train_from,
                                 map_location=lambda storage, loc: storage)
         model_opt = checkpoint['opt']
+
+        merge_options(model_opt, opt)        
+
         # I don't like reassigning attributes of opt: it's not clear.
         opt.start_epoch = checkpoint['epoch'] + 1
     else:

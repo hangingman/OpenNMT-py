@@ -500,6 +500,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
 
         # Input feed concatenates hidden state with
         # input at every time step.
+
         for i, emb_t in enumerate(emb.split(1)):
             emb_t = emb_t.squeeze(0)
             decoder_input = torch.cat([emb_t, input_feed], 1)
@@ -507,12 +508,15 @@ class InputFeedRNNDecoder(RNNDecoderBase):
 
             # Compute attention upper bounds.
             if fertility is not None:
+                print("Fertility (models.py): ", fertility)
                 max_word_coverage = Variable(fertility.data.transpose(1, 0))
             elif self.fertility is not None:
+                print("Fertility (self models.py): ", self.fertility)
                 max_word_coverage = Variable(torch.Tensor(
                     [self.fertility]).repeat(source_batch, source_len)).cuda()
             else:
                 max_word_coverage = None
+
             if max_word_coverage is not None:
                 if coverage is None:
                     upper_bounds = max_word_coverage
@@ -523,6 +527,10 @@ class InputFeedRNNDecoder(RNNDecoderBase):
                 # time which are not sorted by sentence length. To fix this,
                 # we need to do torch.sort before packing and then restoring
                 # the previous order.
+              
+                # ADDED: Using this inside this if instead of the original 
+                #memory_lengths_ = memory_lengths.sort(descending=True)[0] 
+
                 packed_upper_bounds = pack(
                     upper_bounds, (memory_lengths - 1).view(-1).tolist(),
                     batch_first=True)
