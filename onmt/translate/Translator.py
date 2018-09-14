@@ -38,8 +38,8 @@ def make_translator(opt, report_score=True, out_file=None):
 
     # ADDED --------------------------------------------------------------
     extend_model = False
-    id_method = 'unk'
-    #id_method = 'pred'
+    #id_method = 'unk'
+    id_method = 'pred'
 
     def _predict(x, model_dict):
 
@@ -332,20 +332,30 @@ class Translator(object):
         gold_attn_matrices = []
 
         all_scores = []
+
+        # ADDED -----------------------------------------------------------------
+        # Target vocab init size to properly weight extend_pred subwords
+        orig_vocab_ix = len(self.fields["tgt"].vocab.itos)
+        print("Initial vocab size: ", orig_vocab_ix) 
+        # END -------------------------------------------------------------------
         for ix, batch in enumerate(data_iter):
             # ADDED --------------------------------------------------------------
             start_time = time.time()
 
             if self.use_guided:
-                if self.extend_pred:
-                    batch_data = self.translate_batch(batch, data, 
-                                                      translation_pieces, models)
+                if self.extend_with_tp:
+                    if self.extend_pred:
+                        batch_data = self.translate_batch(batch, data, 
+                                                          translation_pieces, models, orig_vocab_ix)
+                    else:
+                        batch_data = self.translate_batch(batch, data, 
+                                                          translation_pieces, list(), orig_vocab_ix)
                 else:
                     batch_data = self.translate_batch(batch, data, 
-                                                      translation_pieces, list())
+                                                      translation_pieces, list(), 0)
     
             else:
-                batch_data = self.translate_batch(batch, data, dict(), list())
+                batch_data = self.translate_batch(batch, data, dict(), list(), 0)
             
             # END ----------------------------------------------------------------
             attn_matrices.append(batch_data['attention'])
@@ -396,6 +406,8 @@ class Translator(object):
             print("Batch {} - Duration: {:.2f} - Total: {}".format(ix,
                                                         duration,
                                                         tot_time_print))
+
+        print("Final vocab size: ", len(self.fields["tgt"].vocab.itos))
             # END ----------------------------------------------------------------
 
         if self.report_score:
@@ -423,7 +435,7 @@ class Translator(object):
 
         return all_scores
 
-    def translate_batch(self, batch, data, translation_pieces, models):
+    def translate_batch(self, batch, data, translation_pieces, models, len_orig_vocab):
         """
         Translate a batch of sentences.
 
@@ -434,6 +446,7 @@ class Translator(object):
            data (:obj:`Dataset`): the dataset object
            translation_pieces (dict): dictionary with the translation pieces
            models (list): list with the [ft, weights, bias] models/matrices
+           len_orig_vocab (int): int with the length of the original vocab
 
         Todo:
            Shouldn't need the original dataset.
@@ -461,7 +474,6 @@ class Translator(object):
             # "Translate" the list into dictionaries indexed by word index
             tp_uni = list()
             tp_multi = list()
-            #out_uni = np.zeros((batch.batch_size, len(vocab)))
             out_uni = torch.zeros(batch.batch_size,
                                   len(vocab),
                                   dtype=torch.float,
@@ -474,26 +486,45 @@ class Translator(object):
             for ix, list_ in enumerate(t_pieces):
                 aux_dict_uni = defaultdict(lambda: 0)
                 aux_dict_multi = defaultdict(lambda: 0)
+                # Sort the list_ by length_ of tuple_[0] so that all 1-grams new
+                # subwords are added before being considered for the multi dictionary
+                list_.sort(key=lambda x: len(x[0]))
                 for tuple_ in list_:
+                    # Tuple_ is ([list of words], weight)
                     key = str(vocab.stoi[tuple_[0][0]])
+                    # Len of the list one, because we only want to add the uni-grams
+                    # and all the members of n-grams are present as uni-grams
                     if len(tuple_[0]) == 1:
                         # Putted this to ifs together
                         if self.extend_with_tp and key == '0':
+                            # Since the new uni-gram is not present it is going to
+                            # be added to the itos and the corresponding mapping
+                            # is going to be added to the dictionary stoi
                             vocab.itos.append(tuple_[0][0])
                             vocab.stoi[tuple_[0][0]] = init_index + added
+                            # A new column of ones is added
                             out_uni = torch.cat((out_uni,
                                                  torch.zeros(out_uni.shape[0],
                                                              1,
                                                              dtype=torch.float)),
                                                 1)
-                            #out_uni = np.concatenate((out_uni, 
-                            #                          np.zeros((out_uni.shape[0], 1))),
-                            #                         axis=1)
+                            # Since the key is zero we have to add the new
+                            # proper index instead of the key
+                            aux_dict_uni[init_index+added] = tuple_[1]
+                            out_uni[ix][int(init_index+added)] = tuple_[1]
+                            # In the end, increase added. Just a way of printing this
+                            # in the future, and not thinking about indexing
                             added += 1
-                        aux_dict_uni[key] = tuple_[1]
-                        out_uni[ix][int(key)] = tuple_[1]
+                        
+                        # If the word is already in the dictionary just add it 
+                        else:
+                            aux_dict_uni[key] = tuple_[1]
+                            out_uni[ix][int(key)] = tuple_[1]
+                    # If it is a n-gram, keep adding the new indeces to the key
+                    # and adding them to the aux_dict_multi
                     else:
                         for word in tuple_[0][1:]:
+                            if str(vocab.stoi[word])=='0': pdb.set_trace()
                             key += " " + str(vocab.stoi[word])
                         aux_dict_multi[key] = tuple_[1]
                 tp_uni.append(aux_dict_uni)
@@ -509,10 +540,8 @@ class Translator(object):
             #tp_uni_rep = list(itertools.chain(*tp_uni_))
             #tp_multi_ = [tp_multi for _ in range(self.beam_size)]
             #tp_multi_rep = list(itertools.chain(*tp_multi_))
-            
             out_uni_ = tuple([out_uni for _ in range(self.beam_size)])
             out_uni_rep = torch.cat(out_uni_, 0)
-            #out_uni_rep = np.vstack(out_uni_)            
 
             if self.extend_with_tp and added:
 
@@ -704,7 +733,6 @@ class Translator(object):
                     total_size = batch.batch_size * self.beam_size
                     out_multi = torch.zeros(total_size, len(vocab),
                                             device=device) 
-                    #out_multi = np.zeros((total_size, len(vocab)))
 
                     if i > 0:
                         for j in range(len(beam)): 
@@ -755,13 +783,13 @@ class Translator(object):
                         lde1 = self.extend_1_weight
                         lden = self.extend_n_weight
                         out = torch.add(out,
-                                        torch.cat((ldg1*out_uni_rep[:, :added],
-                                                   lde1*out_uni_rep[:, added:]),
+                                        torch.cat((ldg1*out_uni_rep[:, :len_orig_vocab],
+                                                   lde1*out_uni_rep[:, len_orig_vocab:]),
                                                   dim=1))
                         
                         out = torch.add(out,
-                                        torch.cat((ldgn*out_multi[:, :added],
-                                                   lden*out_multi[:, added:]),
+                                        torch.cat((ldgn*out_multi[:, :len_orig_vocab],
+                                                   lden*out_multi[:, len_orig_vocab:]),
                                                   dim=1))
                     
                     else:
