@@ -271,6 +271,8 @@ class Translator(object):
 
     def translate(self, src_dir, src_path, tgt_path,
                   batch_size, attn_debug=False):
+       
+        #KEY: Added fertility_type and fertility_value
         data = onmt.io.build_dataset(self.fields,
                                      self.data_type,
                                      src_path,
@@ -280,7 +282,9 @@ class Translator(object):
                                      window_size=self.window_size,
                                      window_stride=self.window_stride,
                                      window=self.window,
-                                     use_filter_pred=self.use_filter_pred)
+                                     use_filter_pred=self.use_filter_pred,
+                                     fertility_type=self.model_opt.fertility_type,
+                                     fertility_value=self.model_opt.fertility)
 
         data_iter = onmt.io.OrderedIterator(
             dataset=data, device=self.gpu,
@@ -688,7 +692,6 @@ class Translator(object):
         memory_bank = rvar(memory_bank.data)
         memory_lengths = src_lengths.repeat(beam_size)
         if fertility is not None:
-            print("fertility (translator): ", fertility)
             fertility = var(fertility.data.repeat(1, beam_size))
         dec_states.repeat_beam_size_times(beam_size)
 
@@ -726,7 +729,8 @@ class Translator(object):
 
                 # ADDED ----------------------------------------------------
                 n_max = self.guided_n_max # n-gram max
-                
+                #out_uni_rep[out_uni_rep !=0] = 1 # ONLY TO TEST 1/0
+ 
                 if self.use_guided:
                     # Deal with n-gram cases
                     bs = batch.batch_size
@@ -768,7 +772,8 @@ class Translator(object):
                                     seq_ = [str(x.item()) for x in seq]
                                     for w in set(seq_):
                                         value = tp_uni[j][w]
-                                        out_multi[k*bs+j][int(w)] -= value
+                                        if value:
+                                            out_multi[k*bs+j][int(w)] -= value
                                     try:
                                         values = out_uni_rep[k*bs+j]+out_multi[k*bs+j]
                                         assert ((values >= 0.0) == True).all()
@@ -782,7 +787,7 @@ class Translator(object):
                         ldgn = self.guided_n_weight
                         lde1 = self.extend_1_weight
                         lden = self.extend_n_weight
-                        out = torch.add(out,
+                        """out = torch.add(out,
                                         torch.cat((ldg1*out_uni_rep[:, :len_orig_vocab],
                                                    lde1*out_uni_rep[:, len_orig_vocab:]),
                                                   dim=1))
@@ -790,8 +795,18 @@ class Translator(object):
                         out = torch.add(out,
                                         torch.cat((ldgn*out_multi[:, :len_orig_vocab],
                                                    lden*out_multi[:, len_orig_vocab:]),
+                                                  dim=1))"""
+                        out = torch.add(out,
+                                        torch.cat((1.0*out_uni_rep[:, :45],
+                                                   ldg1*out_uni_rep[:, 45:len_orig_vocab],
+                                                   lde1*out_uni_rep[:, len_orig_vocab:]),
                                                   dim=1))
-                    
+                        
+                        out = torch.add(out,
+                                        torch.cat((1.0*out_multi[:, :45],
+                                                   ldgn*out_multi[:, 45:len_orig_vocab],
+                                                   lden*out_multi[:, len_orig_vocab:]),
+                                                  dim=1))
                     else:
                         out = torch.add(out, self.guided_1_weight*out_uni_rep)
                         out = torch.add(out, self.guided_n_weight*out_multi)

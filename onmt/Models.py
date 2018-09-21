@@ -500,7 +500,6 @@ class InputFeedRNNDecoder(RNNDecoderBase):
 
         # Input feed concatenates hidden state with
         # input at every time step.
-
         for i, emb_t in enumerate(emb.split(1)):
             emb_t = emb_t.squeeze(0)
             decoder_input = torch.cat([emb_t, input_feed], 1)
@@ -508,10 +507,10 @@ class InputFeedRNNDecoder(RNNDecoderBase):
 
             # Compute attention upper bounds.
             if fertility is not None:
-                print("Fertility (models.py): ", fertility)
+                #print("Fertility (models.py): ", fertility)
                 max_word_coverage = Variable(fertility.data.transpose(1, 0))
             elif self.fertility is not None:
-                print("Fertility (self models.py): ", self.fertility)
+                #print("Fertility (self models.py): ", self.fertility)
                 max_word_coverage = Variable(torch.Tensor(
                     [self.fertility]).repeat(source_batch, source_len)).cuda()
             else:
@@ -530,10 +529,19 @@ class InputFeedRNNDecoder(RNNDecoderBase):
               
                 # ADDED: Using this inside this if instead of the original 
                 #memory_lengths_ = memory_lengths.sort(descending=True)[0] 
+                
+                # new --- pack individually and then repeat
+                #batch_size = 30
+                #beam_size = 5
+                #upper_bounds_ = upper_bounds[:batch_size, :]
+                #memory_lengths_ = memory_lengths[:batch_size]
 
-                packed_upper_bounds = pack(
+                packed_upper_bounds_ = pack(
                     upper_bounds, (memory_lengths - 1).view(-1).tolist(),
                     batch_first=True)
+
+                #packed_upper_bounds = packed_upper_bounds_.repeat(beam_size)
+
                 upper_bounds[:, :-1] = unpack(
                     packed_upper_bounds, batch_first=True, padding_value=1)[0]
                 upper_bounds[:, -1] = 1
@@ -640,7 +648,6 @@ class NMTModel(nn.Module):
                  * final decoder state
         """
         tgt = tgt[:-1]  # exclude last target from inputs
-
         enc_final, memory_bank = self.encoder(src, lengths)
         enc_state = \
             self.decoder.init_decoder_state(src, memory_bank, enc_final)
