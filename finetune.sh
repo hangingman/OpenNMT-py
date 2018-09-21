@@ -1,5 +1,7 @@
 PREFIX=$1
-FOLDER=/mnt/data/de-en-md-shr-small-da
+FOLDER=/mnt/data/de-en-md-shr-small-da-genvocab
+
+# ./finetune.sh 5k
 
 # 1. Preprocess the new temporary data
 rm ${FOLDER}/gen_indomain.*
@@ -18,7 +20,7 @@ python train.py -data ${FOLDER}/gen_indomain \
                 -encoder_type brnn \
                 -dropout 0.3 \
                 -share_decoder_embeddings \
-                -epochs 20 \
+                -epochs 30 \
                 -seed 42 \
                 -gpu 0 \
                 > ${FOLDER}/${PREFIX}/gen_indomain_${PREFIX}.log \
