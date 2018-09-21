@@ -361,6 +361,8 @@ def load_fields(dataset, data_type, checkpoint):
     else:
         fields = onmt.io.load_fields_from_vocab(
             torch.load(opt.data + '.vocab.pt'), data_type)
+   
+    # I guess this is basicly updating the fields with the dataset information 
     fields = dict([(k, f) for (k, f) in fields.items()
                    if k in dataset.examples[0].__dict__])
 

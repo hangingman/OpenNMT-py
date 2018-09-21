@@ -160,6 +160,7 @@ class Trainer(object):
             num_batches = -1
 
         for i, batch in enumerate(train_iter):
+            # Each of these batches has the fertilities
             cur_dataset = train_iter.get_cur_dataset()
             self.train_loss.cur_dataset = cur_dataset
 
@@ -173,6 +174,7 @@ class Trainer(object):
                 normalization += batch.batch_size
 
             if accum == self.grad_accum_count:
+                # KEY: Where the model is called
                 self._gradient_accumulation(
                         true_batchs, total_stats,
                         report_stats, normalization)
@@ -222,7 +224,9 @@ class Trainer(object):
             tgt = onmt.io.make_features(batch, 'tgt')
 
             # F-prop through the model.
-            outputs, attns, _ = self.model(src, tgt, src_lengths)
+            # KEY: Added fertilities to the call
+            outputs, attns, _ = self.model(src, tgt, src_lengths,
+                                           batch.fertility)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -302,8 +306,12 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
+                # KEY: Forward pass - Check NMTModel()
+                #outputs, attns, dec_state = \
+                #    self.model(src, tgt, src_lengths, dec_state)
                 outputs, attns, dec_state = \
-                    self.model(src, tgt, src_lengths, dec_state)
+                    self.model(src, tgt, src_lengths, batch.fertility,
+                               dec_state)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(

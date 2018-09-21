@@ -25,6 +25,7 @@ def project_onto_simplex(a, radius=1.0):
     return x, tau, .5*np.dot(x-a, x-a)
 
 def constrained_softmax(z, u):
+    #print("Using CSFT")
     assert round(np.sum(u), 5) >= 1.0
     assert (u>=0).all(), "Invalid: u[i]<0 for some i"
     p = np.zeros_like(z)
@@ -110,7 +111,6 @@ class Sparsemax(Module):
 
 class ConstrainedSoftmaxFunction(Function):
     def forward(self, input1, input2):
-        print("Using csft 1")
         z = input1.cpu().numpy()
         u = input2.cpu().numpy()
         probs = np.zeros_like(z)
@@ -152,7 +152,7 @@ class ConstrainedSoftmax(Module):
 
 class ConstrainedSparsemaxFunction(Function):
     def forward(self, input1, input2):
-        print("Using csp")
+        #print("Using csp")
         z = input1.cpu().numpy()
         u = input2.cpu().numpy()
         probs = np.zeros_like(z)
