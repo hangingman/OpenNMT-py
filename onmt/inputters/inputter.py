@@ -6,7 +6,7 @@ import glob
 import os
 from collections import Counter, defaultdict, OrderedDict
 from itertools import count
-import math
+import sys
 
 import torch
 import torchtext.data
@@ -18,6 +18,8 @@ from onmt.inputters.text_dataset import TextDataset, MonotextDataset, \
 from onmt.inputters.image_dataset import ImageDataset
 from onmt.inputters.audio_dataset import AudioDataset
 from onmt.utils.logging import logger
+
+import gc
 
 
 def _getstate(self):
@@ -238,16 +240,19 @@ def build_dataset(fields, data_type, src_data_iter=None, src_path=None,
                   dynamic_dict=True, sample_rate=0,
                   window_size=0, window_stride=0, window=None,
                   normalize_audio=True, use_filter_pred=True,
+                  image_channel_size=3,
                   mt_data_iter=None, mt_path=None, mt_seq_length=0,
                   mt_seq_length_trunc=0):
     """
     Build src/tgt examples iterator from corpus files, also extract
     number of features.
     """
+
     def _make_examples_nfeats_tpl(data_type, src_data_iter, src_path, src_dir,
                                   src_seq_length_trunc, sample_rate,
                                   window_size, window_stride,
-                                  window, normalize_audio):
+                                  window, normalize_audio,
+                                  image_channel_size=3):
         """
         Process the corpus into (example_dict iterator, num_feats) tuple
         on source side for different 'data_type'.
@@ -261,7 +266,7 @@ def build_dataset(fields, data_type, src_data_iter=None, src_path=None,
         elif data_type == 'img':
             src_examples_iter, num_src_feats = \
                 ImageDataset.make_image_examples_nfeats_tpl(
-                    src_data_iter, src_path, src_dir)
+                    src_data_iter, src_path, src_dir, image_channel_size)
 
         elif data_type == 'audio':
             if src_data_iter:
@@ -283,7 +288,8 @@ def build_dataset(fields, data_type, src_data_iter=None, src_path=None,
             _make_examples_nfeats_tpl(data_type, src_data_iter, src_path,
                                       src_dir, src_seq_length_trunc,
                                       sample_rate, window_size, window_stride,
-                                      window, normalize_audio)
+                                      window, normalize_audio,
+                                      image_channel_size=image_channel_size)
     else:
         src_examples_iter = None
         num_src_feats = 0
@@ -322,7 +328,8 @@ def build_dataset(fields, data_type, src_data_iter=None, src_path=None,
         dataset = ImageDataset(fields, src_examples_iter, tgt_examples_iter,
                                num_src_feats, num_tgt_feats,
                                tgt_seq_length=tgt_seq_length,
-                               use_filter_pred=use_filter_pred)
+                               use_filter_pred=use_filter_pred,
+                               image_channel_size=image_channel_size)
 
     elif data_type == 'audio':
         dataset = AudioDataset(fields, src_examples_iter, tgt_examples_iter,
@@ -394,49 +401,18 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                                 tgt_vocab_path, tgt_vocab_size,
                                 tgt_words_min_frequency)
     counter = {}
+
+    # Prop src from field to get lower memory using when training with image
+    if data_type == 'img':
+        fields.pop("src")
+
     for k in fields:
         counter[k] = Counter()
 
     # Load vocabulary
-    src_vocab = None
-    # if len(src_vocab_path) > 0:
-    if src_vocab_path:
-        src_vocab = set([])
-        logger.info('Loading source vocab from %s' % src_vocab_path)
-
-        assert os.path.exists(src_vocab_path), \
-            'src vocab %s not found!' % src_vocab_path
-        with open(src_vocab_path) as f:
-            for line in f:
-                if len(line.strip()) == 0:
-                    continue
-                word = line.strip().split()[0]
-                src_vocab.add(word)
-
-    mt_vocab = None
-    if len(mt_vocab_path) > 0:
-        mt_vocab = set([])
-        logger.info('Loading mt vocab from %s' % mt_vocab_path)
-        assert os.path.exists(mt_vocab_path), \
-            'mt vocab %s not found!' % mt_vocab_path
-        with open(mt_vocab_path) as f:
-            for line in f:
-                word = line.strip().split()[0]
-                mt_vocab.add(word)
-
-    tgt_vocab = None
-    # if len(tgt_vocab_path) > 0:
-    if tgt_vocab_path:
-        tgt_vocab = set([])
-        logger.info('Loading target vocab from %s' % tgt_vocab_path)
-        assert os.path.exists(tgt_vocab_path), \
-            'tgt vocab %s not found!' % tgt_vocab_path
-        with open(tgt_vocab_path) as f:
-            for line in f:
-                if len(line.strip()) == 0:
-                    continue
-                word = line.strip().split()[0]
-                tgt_vocab.add(word)
+    src_vocab = load_vocabulary(src_vocab_path, tag="source")
+    mt_vocab = load_vocabulary(mt_vocab_path, tag="mt")
+    tgt_vocab = load_vocabulary(tgt_vocab_path, tag="target")
 
     if "char_src" in fields.keys():
         n_chars = 256
@@ -462,7 +438,7 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
             # giving the frequencies in descending order
             counter["char_tgt"][chr(idx)] = n_chars - idx
 
-    for path in train_dataset_files:
+    for index, path in enumerate(train_dataset_files):
         dataset = torch.load(path)
         logger.info(" * reloading %s." % path)
         for ex in dataset.examples:
@@ -481,6 +457,15 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
                 elif k == 'mt' and mt_vocab:
                     val = [item for item in val if item in mt_vocab]
                 counter[k].update(val)
+
+        # Drop the none-using from memory but keep the last
+        if (index < len(train_dataset_files) - 1):
+            dataset.examples = None
+            gc.collect()
+            del dataset.examples
+            gc.collect()
+            del dataset
+            gc.collect()
 
     _build_field_vocab(fields["tgt"], counter["tgt"],
                        max_size=tgt_vocab_size,
@@ -668,6 +653,32 @@ def build_vocab_mono(train_dataset_files, fields,
     return fields
 
 
+def load_vocabulary(vocabulary_path, tag=""):
+    """
+    Loads a vocabulary from the given path.
+    :param vocabulary_path: path to load vocabulary from
+    :param tag: tag for vocabulary (only used for logging)
+    :return: vocabulary or None if path is null
+    """
+    vocabulary = None
+    if vocabulary_path:
+        vocabulary = set([])
+        logger.info("Loading {} vocabulary from {}".format(tag,
+                                                           vocabulary_path))
+
+        if not os.path.exists(vocabulary_path):
+            raise RuntimeError(
+                "{} vocabulary not found at {}!".format(tag, vocabulary_path))
+        else:
+            with open(vocabulary_path) as f:
+                for line in f:
+                    if len(line.strip()) == 0:
+                        continue
+                    word = line.strip().split()[0]
+                    vocabulary.add(word)
+    return vocabulary
+
+
 class OrderedIterator(torchtext.data.Iterator):
     """ Ordered Iterator Class """
 
@@ -681,6 +692,7 @@ class OrderedIterator(torchtext.data.Iterator):
                         self.batch_size, self.batch_size_fn)
                     for b in random_shuffler(list(p_batch)):
                         yield b
+
             self.batches = _pool(self.data(), self.random_shuffler)
         else:
             self.batches = []
@@ -759,12 +771,15 @@ class DatasetLazyIter(object):
         assert self.cur_iter is not None
         return len(self.cur_iter)
 
-    def get_cur_dataset(self):
-        """ Return the current dataset settings """
-        return self.cur_dataset
-
     def _next_dataset_iterator(self, dataset_iter):
         try:
+            # Drop the current dataset for decreasing memory
+            if hasattr(self, "cur_dataset"):
+                self.cur_dataset.examples = None
+                gc.collect()
+                del self.cur_dataset
+                gc.collect()
+
             self.cur_dataset = next(dataset_iter)
         except StopIteration:
             return None
@@ -819,9 +834,8 @@ def build_dataset_iter(datasets, fields, opt, is_train=True):
             return max(src_elements, tgt_elements)
     else:
         batch_size_fn = None
-    # device = opt.device_id if opt.gpuid else -1
-    # breaking change torchtext 0.3
-    if opt.gpuid:
+
+    if opt.gpu_ranks:
         device = "cuda"
     else:
         device = "cpu"

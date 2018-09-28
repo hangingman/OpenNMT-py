@@ -153,10 +153,6 @@ class CopyGeneratorLossCompute(loss.LossComputeBase):
                  eps=1e-20):
         super(CopyGeneratorLossCompute, self).__init__(
             generator, tgt_vocab)
-
-        # We lazily load datasets when there are more than one, so postpone
-        # the setting of cur_dataset.
-        self.cur_dataset = None
         self.force_copy = force_copy
         self.normalize_by_length = normalize_by_length
         self.criterion = CopyGeneratorCriterion(len(tgt_vocab), force_copy,
@@ -203,10 +199,10 @@ class CopyGeneratorLossCompute(loss.LossComputeBase):
 
         if hasattr(batch, 'src_map'):
             dataset = inputters.TextDataset
-            vocabs = self.cur_dataset.src_vocabs
+            vocabs = batch.dataset.src_vocabs
         elif hasattr(batch, 'mt_map'):
             dataset = inputters.APETextDataset
-            vocabs = self.cur_dataset.mt_vocabs
+            vocabs = batch.dataset.mt_vocabs
 
         scores_data = dataset.collapse_copy_scores(
             self._unbottle(scores_data, batch.batch_size),
