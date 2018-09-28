@@ -528,7 +528,9 @@ class Translator(object):
                     # and adding them to the aux_dict_multi
                     else:
                         for word in tuple_[0][1:]:
-                            if str(vocab.stoi[word])=='0': pdb.set_trace()
+                            # When the vocab is extended make sure this never happens
+                            if str(vocab.stoi[word])=='0' and self.extend_with_tp: 
+                                pdb.set_trace()
                             key += " " + str(vocab.stoi[word])
                         aux_dict_multi[key] = tuple_[1]
                 tp_uni.append(aux_dict_uni)
@@ -787,7 +789,7 @@ class Translator(object):
                         ldgn = self.guided_n_weight
                         lde1 = self.extend_1_weight
                         lden = self.extend_n_weight
-                        """out = torch.add(out,
+                        out = torch.add(out,
                                         torch.cat((ldg1*out_uni_rep[:, :len_orig_vocab],
                                                    lde1*out_uni_rep[:, len_orig_vocab:]),
                                                   dim=1))
@@ -795,8 +797,8 @@ class Translator(object):
                         out = torch.add(out,
                                         torch.cat((ldgn*out_multi[:, :len_orig_vocab],
                                                    lden*out_multi[:, len_orig_vocab:]),
-                                                  dim=1))"""
-                        out = torch.add(out,
+                                                  dim=1))
+                        """out = torch.add(out,
                                         torch.cat((1.0*out_uni_rep[:, :45],
                                                    ldg1*out_uni_rep[:, 45:len_orig_vocab],
                                                    lde1*out_uni_rep[:, len_orig_vocab:]),
@@ -806,7 +808,7 @@ class Translator(object):
                                         torch.cat((1.0*out_multi[:, :45],
                                                    ldgn*out_multi[:, 45:len_orig_vocab],
                                                    lden*out_multi[:, len_orig_vocab:]),
-                                                  dim=1))
+                                                  dim=1))"""
                     else:
                         out = torch.add(out, self.guided_1_weight*out_uni_rep)
                         out = torch.add(out, self.guided_n_weight*out_multi)

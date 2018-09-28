@@ -530,21 +530,14 @@ class InputFeedRNNDecoder(RNNDecoderBase):
                 # ADDED: Using this inside this if instead of the original 
                 #memory_lengths_ = memory_lengths.sort(descending=True)[0] 
                 
-                # new --- pack individually and then repeat
-                #batch_size = 30
-                #beam_size = 5
-                #upper_bounds_ = upper_bounds[:batch_size, :]
-                #memory_lengths_ = memory_lengths[:batch_size]
-
-                packed_upper_bounds_ = pack(
+                packed_upper_bounds = pack(
                     upper_bounds, (memory_lengths - 1).view(-1).tolist(),
                     batch_first=True)
-
-                #packed_upper_bounds = packed_upper_bounds_.repeat(beam_size)
 
                 upper_bounds[:, :-1] = unpack(
                     packed_upper_bounds, batch_first=True, padding_value=1)[0]
                 upper_bounds[:, -1] = 1
+
                 # Make sure we're >= 0.
                 upper_bounds = torch.max(upper_bounds,
                                          Variable(torch.zeros(
