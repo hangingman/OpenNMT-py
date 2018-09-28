@@ -225,8 +225,11 @@ class Trainer(object):
 
             # F-prop through the model.
             # KEY: Added fertilities to the call
-            outputs, attns, _ = self.model(src, tgt, src_lengths,
-                                           batch.fertility)
+            if "fertility" in batch.__dict__:
+                outputs, attns, _ = self.model(src, tgt, src_lengths,
+                                               fertility=batch.fertility)
+            else:
+                outputs, attns, _ = self.model(src, tgt, src_lengths)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -307,12 +310,14 @@ class Trainer(object):
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
                 # KEY: Forward pass - Check NMTModel()
-                #outputs, attns, dec_state = \
-                #    self.model(src, tgt, src_lengths, dec_state)
-                outputs, attns, dec_state = \
-                    self.model(src, tgt, src_lengths, batch.fertility,
-                               dec_state)
-
+                if "fertility" in batch.__dict__:
+                    outputs, attns, dec_state = \
+                        self.model(src, tgt, src_lengths, 
+                                   fertility=batch.fertility,
+                                   dec_state=dec_state)
+                else:
+                    outputs, attns, dec_state = \
+                        self.model(src, tgt, src_lengths, dec_state=dec_state)
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,
