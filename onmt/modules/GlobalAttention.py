@@ -209,6 +209,7 @@ class GlobalAttention(nn.Module):
         if upper_bounds is not None and self.constrained and self.c_attn != 0.0:
             indices = torch.arange(0, upper_bounds.size(1)-1).cuda().long()
             uu = torch.index_select(upper_bounds.data, 1, indices)
+            #print(self.c_attn)
             attn = attn + self.c_attn * Variable(torch.cat(
                 (uu, torch.zeros(upper_bounds.size(0)).cuda()), 1))
 
@@ -217,13 +218,13 @@ class GlobalAttention(nn.Module):
             if upper_bounds is None:
                 align_vectors = nn.Softmax()(attn)
             else:
-                print("Using ", self.sm)
+                #print("Using ", self.sm)
                 align_vectors = self.sm(attn, upper_bounds)
         elif self.attn_transform == 'constrained_sparsemax':
             if upper_bounds is None:
                 align_vectors = Sparsemax()(attn)
             else:
-                print("Using ", self.sm)
+                #print("Using ", self.sm)
                 align_vectors = self.sm(attn, upper_bounds)
         else:
             align_vectors = self.sm(attn)

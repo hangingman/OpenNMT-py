@@ -1,13 +1,13 @@
-SOURCE=de
+SOURCE=es
 TARGET=en
 LANGPAIR=${SOURCE}-${TARGET}
-DATA=/mnt/data/${LANGPAIR}-shr-big
+DATA=/mnt/data/${LANGPAIR}-md-shr
 ONMT=/home/ubuntu/OpenNMT-py-un
 MODEL_FOLDER=base
-MODEL_NAME=${LANGPAIR}-shr-big
+MODEL_NAME=${LANGPAIR}-md-shr
 
 python -u ${ONMT}/train.py \
-	   -data ${DATA}/preprocessed-big-shr \
+	   -data ${DATA}/preprocessed-es-en-md-shr \
 	   -save_model ${DATA}/${MODEL_FOLDER}/${MODEL_NAME} \
 	   -layers 2 \
 	   -encoder_type brnn \

@@ -407,9 +407,11 @@ class Translator(object):
             duration = time.time()-start_time
             tot_time += duration
             tot_time_print = str(time.strftime("%H:%M:%S", time.gmtime(tot_time)))
-            print("Batch {} - Duration: {:.2f} - Total: {}".format(ix,
-                                                        duration,
-                                                        tot_time_print))
+           
+            if ix%500==0: 
+                print("Batch {} - Duration: {:.2f} - Total: {}".format(ix,
+                                                            duration,
+                                                            tot_time_print))
 
         print("Final vocab size: ", len(self.fields["tgt"].vocab.itos))
             # END ----------------------------------------------------------------
