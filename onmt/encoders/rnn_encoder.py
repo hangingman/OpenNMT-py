@@ -54,7 +54,7 @@ class RNNEncoder(EncoderBase):
         "See :obj:`EncoderBase.forward()`"
         self._check_args(src, lengths)
 
-        emb = self.embeddings(src, char_src)
+        emb = self.embeddings(src, char_source=char_src)
         # s_len, batch, emb_dim = emb.size()
 
         packed_emb = emb

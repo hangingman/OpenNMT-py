@@ -142,11 +142,8 @@ class DatasetBase(torchtext.data.Dataset):
                             new_chr = char.encode('utf-8', 'ignore')
                             # check if character was split into
                             # several characters
-                            if len(new_chr) > 1:
-                                for code in new_chr:
-                                    new_word.append(code)
-                            else:
-                                new_word.append(new_chr)
+                            for code in new_chr:
+                                new_word.append(chr(code))
                         new_prepr.append(new_word)
                     preprocessed = new_prepr
 
