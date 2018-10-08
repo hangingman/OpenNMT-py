@@ -169,6 +169,12 @@ class Optimizer(object):
         self.params = []
         self.sparse_params = []
         decay, no_decay = [], []
+
+        # the optimizer may have not been saved with this parameter
+        if not hasattr(self, 'l2_value') or not hasattr(self, 'l2_modules'):
+            self.l2_value = -1
+            self.l2_modules = None
+
         for k, p in params:
             if p.requires_grad:
                 if self.method != 'sparseadam' or "embed" not in k:
