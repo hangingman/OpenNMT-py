@@ -12,7 +12,7 @@ class ELMo(nn.Module):
         padding_idx {int} -- the padding symbol index
     """
 
-    def __init__(self, language_model, dropout):
+    def __init__(self, language_model, dropout, forward_only=False):
         super(ELMo, self).__init__()
         self.lang_model = language_model.eval()
 
@@ -21,10 +21,13 @@ class ELMo(nn.Module):
         for param in self.lang_model.parameters():
             param.requires_grad = False
 
+        # If this is a decoder ELMo, only forward layers are used
+        self.forward_only = forward_only
         # Start with 1 parameter - the embeddings of the language model
         n_parameters = 1
         n_parameters += len(self.lang_model.forward_rnns)
-        n_parameters += len(self.lang_model.backward_rnns)
+        if not self.forward_only:
+            n_parameters += len(self.lang_model.backward_rnns)
 
         self.softmax = nn.Softmax(dim=0)
         # Initialize to 0. - in the first pass the softmax will
@@ -40,15 +43,22 @@ class ELMo(nn.Module):
         seq_len, batch_size, _, _ = char_input.size()
 
         # Get the sequence lengths
-        lengths = mask.sum(dim=0)
+        if self.forward_only:
+            lengths = None
+        else:
+            lengths = mask.sum(dim=0)
 
         # Set lang_model.training to false so the LM does not
         # use the custom dropout
         self.lang_model.dropout.training = False
+        if self.forward_only:
+            self.lang_model.num_directions = 1
         with torch.no_grad():
             outputs, _ = self.lang_model(char_input, lengths)
 
-        outputs = outputs.view(*outputs.shape[:-1],
+        outputs = outputs.view(outputs.shape[0],
+                               outputs.shape[1],
+                               outputs.shape[2],
                                self.lang_model.num_directions,
                                -1)
 
@@ -69,12 +79,12 @@ class ELMo(nn.Module):
                 forward_layer_output,
                 mask)
             bilm_layers.append(no_bos_eos_fl)
-
-            backward_layer_output = output[0, :, :, 1, :]
-            no_bos_eos_bl, _ = self._remove_bos_eos_tokens(
-                backward_layer_output,
-                mask)
-            bilm_layers.append(no_bos_eos_bl)
+            if not self.forward_only:
+                backward_layer_output = output[0, :, :, 1, :]
+                no_bos_eos_bl, _ = self._remove_bos_eos_tokens(
+                    backward_layer_output,
+                    mask)
+                bilm_layers.append(no_bos_eos_bl)
 
         # Get the normalized weights for each layer of the LM
         normed_weights = self.softmax(torch.cat([parameter for parameter
@@ -84,9 +94,14 @@ class ELMo(nn.Module):
         for weight, tensor in zip(normed_weights.split(1), bilm_layers):
             pieces.append(weight * tensor)
 
+        if self.forward_only:
+            self.lang_model.num_directions = 2
         return self.dropout(self.gamma * sum(pieces))
 
     def _remove_bos_eos_tokens(self, tensor, mask):
+
+        if self.forward_only:
+            return tensor, mask
 
         sequence_lens = mask.sum(0)
         old_tensor_dims = list(tensor.size())

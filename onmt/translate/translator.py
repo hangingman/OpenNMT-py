@@ -1010,6 +1010,37 @@ class APETranslator(Translator):
         for step in range(max_length):
             decoder_input = alive_seq[:, -1].view(1, -1, 1)
 
+            if self.model.decoder.embeddings.elmo is not None:
+
+                input_seq = alive_seq[:, -1].contiguous().view(-1)
+                char_inp = []
+
+                for token_idx in input_seq:
+
+                    if token_idx < 4:
+                        # Specials
+                        token = [
+                            [self.fields['tgt'].vocab.itos[int(token_idx)]]
+                            ]
+                    else:
+                        token = [
+                            self.fields['tgt'].vocab.itos[int(token_idx)]]
+
+                    char_inp.append(
+                        self.fields['char_tgt'].nesting_field.process(
+                            token)[0])
+
+                char_inp = torch.stack(char_inp)
+                char_inp = char_inp.unsqueeze(0).unsqueeze(-1)
+                char_inp = char_inp.to(decoder_input.device)
+
+                if step == 0:
+                    char_alive_seq = char_inp.clone()
+                else:
+                    char_alive_seq = torch.cat([char_alive_seq, char_inp])
+            else:
+                char_alive_seq = None
+
             # Decoder forward.
             dec_out, dec_states, attn = self.model.decoder(
                 decoder_input,
@@ -1017,7 +1048,7 @@ class APETranslator(Translator):
                 dec_states,
                 memory_lengths_src=memory_lengths_src,
                 memory_lengths_mt=memory_lengths_mt,
-                step=step)
+                step=step, char_tgt=char_alive_seq)
 
             # Generator forward.
             log_probs = self.model.generator.forward(dec_out.squeeze(0))
@@ -1095,6 +1126,8 @@ class APETranslator(Translator):
                                             0, select_indices)
             dec_states.map_batch_fn(
                 lambda state, dim: state.index_select(dim, select_indices))
+            if char_alive_seq in locals():
+                char_alive_seq = char_alive_seq.index_select(1, select_indices)
 
             # Append last prediction.
             alive_seq = torch.cat([alive_seq, topk_ids.view(-1, 1)], -1)

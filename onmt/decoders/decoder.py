@@ -506,7 +506,8 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
                                               self.hidden_size)
 
     def forward(self, tgt, memory_bank_src, memory_bank_mt, state,
-                memory_lengths_src=None, memory_lengths_mt=None, step=None):
+                memory_lengths_src=None, memory_lengths_mt=None, step=None,
+                char_tgt=None):
         """
         Args:
             tgt (`LongTensor`): sequences of padded tokens
@@ -537,7 +538,8 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
         decoder_final, decoder_outputs, attns = self._run_forward_pass(
             tgt, memory_bank_src, memory_bank_mt, state,
             memory_lengths_src=memory_lengths_src,
-            memory_lengths_mt=memory_lengths_mt)
+            memory_lengths_mt=memory_lengths_mt,
+            char_tgt=char_tgt)
 
         # Update the state with the result.
         final_output = decoder_outputs[-1]
@@ -561,7 +563,8 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
         return decoder_outputs, state, attns
 
     def _run_forward_pass(self, tgt, memory_bank_src, memory_bank_mt, state,
-                          memory_lengths_src=None, memory_lengths_mt=None):
+                          memory_lengths_src=None, memory_lengths_mt=None,
+                          char_tgt=None):
         """
         See StdRNNDecoder._run_forward_pass() for description
         of arguments and return values.
@@ -581,7 +584,7 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
         if self._coverage:
             attns["coverage"] = []
 
-        emb = self.embeddings(tgt)
+        emb = self.embeddings(tgt, char_source=char_tgt)
         assert emb.dim() == 3  # len x batch x embedding_dim
 
         hidden = state.hidden

@@ -213,6 +213,12 @@ class Embeddings(nn.Module):
         if self.elmo is not None and char_source is not None:
             mask = char_source[:, :, 0, :].ne(self.word_padding_idx).sum(-1)
             out_elmo = self.elmo(char_source, mask)
+
+            if source.shape[0] == 1 and out_elmo.shape[0] > 1:
+                # When decoding, we need the whole sequence for
+                # ELMo but we only need to output the last token representation
+                out_elmo = out_elmo[-1].unsqueeze(0)
+
             source = torch.cat([source, out_elmo], dim=-1)
 
         return source

@@ -361,7 +361,7 @@ class APEModel(nn.Module):
         self.decoder = decoder
 
     def forward(self, src, mt, tgt, lengths_src, lengths_mt, dec_state=None,
-                char_src=None, char_mt=None):
+                char_src=None, char_mt=None, char_tgt=None):
         """Forward propagate a `src` and `tgt` pair for training.
         Possible initialized with a beginning decoder state.
 
@@ -383,6 +383,8 @@ class APEModel(nn.Module):
                  * final decoder state
         """
         tgt = tgt[:-1]  # exclude last target from inputs
+        if char_tgt is not None:
+            char_tgt = char_tgt[:-1]  # exclude last target from inputs
 
         enc_final_src, memory_bank_src = self.encoder_src(src, lengths_src,
                                                           char_src=char_src)
@@ -422,7 +424,8 @@ class APEModel(nn.Module):
                          enc_state if dec_state is None
                          else dec_state,
                          memory_lengths_src=lengths_src,
-                         memory_lengths_mt=lengths_mt)
+                         memory_lengths_mt=lengths_mt,
+                         char_tgt=char_tgt)
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None

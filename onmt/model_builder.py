@@ -70,12 +70,14 @@ def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True,
                       elmo=elmo)
 
 
-def build_elmo(opt, fields, gpu, side='src'):
+def build_elmo(opt, fields, gpu, side='src',
+               forward_only=False, reused_bilm=None):
     if side == 'src':
         bilm_path = opt.src_bilm_path
     elif side == 'mt':
         bilm_path = opt.mt_bilm_path
 
+    if reused_bilm is None:
     lm_checkpoint = torch.load(bilm_path,
                                map_location=lambda storage, loc: storage)
     lm_opt = lm_checkpoint['opt']
@@ -89,8 +91,10 @@ def build_elmo(opt, fields, gpu, side='src'):
                                           lm_checkpoint,
                                           side,
                                           use_generator=False)
+    else:
+        language_model = reused_bilm
 
-    elmo = ELMo(language_model, opt.elmo_dropout)
+    elmo = ELMo(language_model, opt.elmo_dropout, forward_only)
 
     return elmo
 
@@ -256,8 +260,15 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
     # Build decoder.
     tgt_dict = fields["tgt"].vocab
     feature_dicts = inputters.collect_feature_vocabs(fields, 'tgt')
+    dec_elmo = build_elmo(
+        model_opt, fields,
+        gpu, 'tgt',
+        forward_only=True,
+        reused_bilm=elmo.lang_model) if model_opt.use_decoder_elmo else None
+
     tgt_embeddings = build_embeddings(model_opt, tgt_dict,
-                                      feature_dicts, for_encoder=False)
+                                      feature_dicts, for_encoder=False,
+                                      elmo=dec_elmo)
 
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
@@ -426,21 +437,17 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
         if model_opt.param_init_glorot:
             for p in model.parameters():
                 if p.dim() > 1:
-                    xavier_uniform(p)
+                    xavier_uniform_(p)
             if use_generator:
                 for p in generator.parameters():
                     if p.dim() > 1:
-                        xavier_uniform(p)
+                        xavier_uniform_(p)
 
     # Add generator to model (this registers it as parameter of model).
     if use_generator:
         model.generator = generator
 
-    # Make the whole model leverage GPU if indicated to do so.
-    if gpu:
-        model.cuda()
-    else:
-        model.cpu()
+    model.to(device)
 
     return model
 

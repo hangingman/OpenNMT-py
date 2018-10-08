@@ -674,8 +674,12 @@ class APETrainer(Trainer):
                 char_mt = inputters.make_features(batch, 'char_mt')
                 # (target_size, batch_size, max_char_mt, n_feat)
                 char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+
+                char_tgt = inputters.make_features(batch, 'char_tgt')
+                # (target_size, batch_size, max_char_tgt, n_feat)
+                char_tgt = char_tgt.permute(1, 0, 3, 2).contiguous()
             else:
-                char_src = char_mt = None
+                char_src = char_mt = char_tgt = None
 
             tgt = inputters.make_features(batch, 'tgt')
 
@@ -683,7 +687,8 @@ class APETrainer(Trainer):
             outputs, attns, _ = self.model(src, mt, tgt, src_lengths,
                                            mt_lengths,
                                            char_src=char_src,
-                                           char_mt=char_mt)
+                                           char_mt=char_mt,
+                                           char_tgt=char_tgt)
 
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
@@ -728,8 +733,12 @@ class APETrainer(Trainer):
                 char_mt = inputters.make_features(batch, 'char_mt')
                 # (target_size, batch_size, max_char_mt, n_feat)
                 char_mt = char_mt.permute(1, 0, 3, 2).contiguous()
+
+                char_tgt = inputters.make_features(batch, 'char_tgt')
+                # (target_size, batch_size, max_char_tgt, n_feat)
+                char_tgt = char_tgt.permute(1, 0, 3, 2).contiguous()
             else:
-                char_src = char_mt = None
+                char_src = char_mt = char_tgt = None
 
             tgt_outer = inputters.make_features(batch, 'tgt')
 
@@ -743,7 +752,8 @@ class APETrainer(Trainer):
                 outputs, attns, dec_state = \
                     self.model(src, mt, tgt, src_lengths, mt_lengths,
                                dec_state,
-                               char_src=char_src, char_mt=char_mt)
+                               char_src=char_src, char_mt=char_mt,
+                               char_tgt=char_tgt)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
