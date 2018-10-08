@@ -99,9 +99,11 @@ def main(opt, device_id):
 
     use_char = True if model_opt.use_char_input or \
         model_opt.use_elmo else False
+
     # Load fields generated from preprocess phase.
-    fields = _load_fields(first_dataset, data_type, opt, checkpoint,
-                          use_char)
+    fields, ext_fields = _load_fields(first_dataset, data_type, opt,
+                                      checkpoint, use_char,
+                                      opt.use_extended_embeddings)
 
     # Report src/tgt features.
     src_features, tgt_features = _collect_report_features(fields)
@@ -113,7 +115,7 @@ def main(opt, device_id):
                     % (j, len(fields[feat].vocab)))
 
     # Build model.
-    model = build_model(model_opt, opt, fields, checkpoint)
+    model = build_model(model_opt, opt, fields, ext_fields, checkpoint)
     n_params, enc, dec = _tally_parameters(model)
     logger.info('encoder: %d' % enc)
     logger.info('decoder: %d' % dec)

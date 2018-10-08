@@ -222,3 +222,71 @@ class Embeddings(nn.Module):
             source = torch.cat([source, out_elmo], dim=-1)
 
         return source
+
+
+class ExtendedEmbeddings(Embeddings):
+    """
+    Words embeddings for encoder/decoder.
+    Extending previous defined Embeddings.
+    Additionally includes ability to add sparse input features
+    based on "Linguistic Input Features Improve Neural Machine Translation"
+    :cite:`sennrich2016linguistic`.
+    .. mermaid::
+       graph LR
+          A[Input]
+          C[Feature 1 Lookup]
+          A-->B[Word Lookup]
+          A-->C
+          A-->D[Feature N Lookup]
+          B-->E[MLP/Concat]
+          C-->E
+          D-->E
+          E-->F[Output]
+    Args:
+        word_vec_size (int): size of the dictionary of embeddings.
+        word_padding_idx (int): padding index for words in the embeddings.
+        feats_padding_idx (list of int): padding index for a list of features
+                                   in the embeddings.
+        word_vocab_size (int): size of dictionary of embeddings for words.
+        feat_vocab_sizes ([int], optional): list of size of dictionary
+                                    of embeddings for each feature.
+        position_encoding (bool): see :obj:`onmt.modules.PositionalEncoding`
+        feat_merge (string): merge action for the features embeddings:
+                    concat, sum or mlp.
+        feat_vec_exponent (float): when using `-feat_merge concat`, feature
+                    embedding size is N^feat_dim_exponent, where N is the
+                    number of values of feature takes.
+        feat_vec_size (int): embedding dimension for features when using
+                    `-feat_merge mlp`
+        dropout (float): dropout probability.
+    """
+    def __init__(self, base_embds, word_vec_size,
+                 word_vocab_size,
+                 word_padding_idx,
+                 position_encoding=False,
+                 feat_merge="concat",
+                 feat_vec_exponent=0.7, feat_vec_size=-1,
+                 feat_padding_idx=[],
+                 feat_vocab_sizes=[],
+                 dropout=0,
+                 sparse=False,
+                 elmo=None):
+        super(ExtendedEmbeddings,
+              self).__init__(word_vec_size, word_vocab_size,
+                             word_padding_idx,
+                             position_encoding=position_encoding,
+                             feat_merge=feat_merge,
+                             feat_vec_exponent=feat_vec_exponent,
+                             feat_vec_size=feat_vec_size,
+                             feat_padding_idx=feat_padding_idx,
+                             feat_vocab_sizes=feat_vocab_sizes,
+                             dropout=dropout,
+                             sparse=sparse,
+                             elmo=elmo)
+        # This extends the vocabulary with the base model. Note the
+        # weights are just copied and then the new words are initialized with
+        # a user defined function
+        self.word_lut.weight.data[
+            0:base_embds.word_lut.num_embeddings].copy_(
+                    base_embds.word_lut.weight.data)
+        # TODO: user defined function of how to initialize new embeddings

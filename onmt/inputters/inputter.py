@@ -873,11 +873,15 @@ def lazily_load_dataset(corpus_type, opt):
         yield _lazy_dataset_loader(pt, corpus_type)
 
 
-def _load_fields(dataset, data_type, opt, checkpoint, use_char=False):
+def _load_fields(dataset, data_type, opt, checkpoint, use_char=False,
+                 get_ext_fields=False):
     if checkpoint is not None:
         logger.info('Loading vocab from checkpoint at %s.' % opt.train_from)
         fields = load_fields_from_vocab(
             checkpoint['vocab'], data_type, use_char)
+        if get_ext_fields:
+            ext_fields = load_fields_from_vocab(
+                torch.load(opt.data + '.vocab.pt'), data_type, use_char)
     else:
         fields = load_fields_from_vocab(
             torch.load(opt.data + '.vocab.pt'), data_type, use_char)
@@ -918,7 +922,10 @@ def _load_fields(dataset, data_type, opt, checkpoint, use_char=False):
                      len(fields['mt'].vocab),
                      len(fields['tgt'].vocab)))
 
-    return fields
+    if not get_ext_fields:
+        ext_fields = None
+
+    return fields, ext_fields
 
 
 def _collect_report_features(fields):

@@ -22,7 +22,7 @@ from onmt.decoders.transformer import TransformerDecoder
 from onmt.decoders.cnn_decoder import CNNDecoder
 
 from onmt.modules import Embeddings, CopyGenerator, CharEmbeddingsCNN,\
-                         SampledSoftmax, ELMo
+                         SampledSoftmax, ELMo, ExtendedEmbeddings
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
 
@@ -78,25 +78,62 @@ def build_elmo(opt, fields, gpu, side='src',
         bilm_path = opt.mt_bilm_path
 
     if reused_bilm is None:
-    lm_checkpoint = torch.load(bilm_path,
-                               map_location=lambda storage, loc: storage)
-    lm_opt = lm_checkpoint['opt']
-    if not lm_opt.use_char_input:
-        raise NotImplementedError("The Language Model used in ELMo needs "
-                                  "to have character-based input")
-    if not lm_opt.lm_use_bidir:
-        raise NotImplementedError("The Language Model used in ELMo needs "
-                                  "to be bidirectional")
-    language_model = build_language_model(lm_opt, fields, gpu,
-                                          lm_checkpoint,
-                                          side,
-                                          use_generator=False)
+        lm_checkpoint = torch.load(bilm_path,
+                                   map_location=lambda storage, loc: storage)
+        lm_opt = lm_checkpoint['opt']
+        if not lm_opt.use_char_input:
+            raise NotImplementedError("The Language Model used in ELMo needs "
+                                      "to have character-based input")
+        if not lm_opt.lm_use_bidir:
+            raise NotImplementedError("The Language Model used in ELMo needs "
+                                      "to be bidirectional")
+        language_model = build_language_model(lm_opt, fields, gpu,
+                                              lm_checkpoint,
+                                              side,
+                                              use_generator=False)
     else:
         language_model = reused_bilm
 
     elmo = ELMo(language_model, opt.elmo_dropout, forward_only)
 
     return elmo
+
+
+def build_ext_embeddings(opt, word_dict, feature_dicts, base_embds,
+                         for_encoder=True):
+    """
+    build an Embeddings instance.
+    Args:
+        opt: the option in current environment.
+        word_dict(Vocab): words dictionary.
+        feature_dicts([Vocab], optional): a list of feature dictionary.
+        for_encoder(bool): build Embeddings for encoder or decoder?
+    """
+    if for_encoder:
+        embedding_dim = opt.src_word_vec_size
+    else:
+        embedding_dim = opt.tgt_word_vec_size
+
+    word_padding_idx = word_dict.stoi[inputters.PAD_WORD]
+    num_word_embeddings = len(word_dict)
+
+    feats_padding_idx = [feat_dict.stoi[inputters.PAD_WORD]
+                         for feat_dict in feature_dicts]
+    num_feat_embeddings = [len(feat_dict) for feat_dict in
+                           feature_dicts]
+
+    return ExtendedEmbeddings(base_embds, word_vec_size=embedding_dim,
+                              position_encoding=opt.position_encoding,
+                              feat_merge=opt.feat_merge,
+                              feat_vec_exponent=opt.feat_vec_exponent,
+                              feat_vec_size=opt.feat_vec_size,
+                              dropout=opt.dropout,
+                              word_padding_idx=word_padding_idx,
+                              feat_padding_idx=feats_padding_idx,
+                              word_vocab_size=num_word_embeddings,
+                              feat_vocab_sizes=num_feat_embeddings,
+                              sparse=opt.optim == "sparseadam",
+                              elmo=base_embds.elmo)
 
 
 def build_encoder(opt, embeddings):
@@ -176,6 +213,60 @@ def build_decoder(opt, embeddings):
                              opt.reuse_copy_attn)
 
 
+def build_affine_proj(tgt_dict, linear_layer):
+    affine_proj = linear_layer
+    # FIXME initialization!
+    new_proj = nn.Linear(affine_proj.in_features, len(tgt_dict))
+    new_proj.weight.data[0:affine_proj.out_features] = affine_proj.weight.data
+    new_proj.bias.data[:affine_proj.out_features] = affine_proj.bias.data
+    return new_proj
+
+
+def extend_vocabulary(model, fields, ext_fields, model_opt):
+    # Source side extension
+    # Extend src vocabulary
+    if not model_opt.lm:
+        fields["src"].vocab.extend(ext_fields["src"].vocab)
+        # Collect vocab and features
+        src_dict = fields["src"].vocab
+        feature_dicts = inputters.collect_feature_vocabs(fields, 'src')
+        # Retrieve the previous embeddings layer and create an extension
+        src_embs = model.encoder.embeddings
+        src_embs_ext = build_ext_embeddings(model_opt, src_dict, feature_dicts,
+                                            src_embs)
+        # Set the new embeddings layer
+        model.encoder.embeddings = src_embs_ext
+    # Target side extension
+    # Extend tgt vocabulary
+    fields["tgt"].vocab.extend(ext_fields["tgt"].vocab)
+    logger.info('Vocabulary extended to ' + str(len(fields["tgt"].vocab)))
+    # Collect vocab and features
+    tgt_dict = fields["tgt"].vocab
+    feature_dicts = inputters.collect_feature_vocabs(fields, 'tgt')
+    if hasattr(model, "decoder"):
+        # Retrieve the previous embeddings layer and create an extension
+        tgt_embs = model.decoder.embeddings
+        tgt_embs_ext = build_ext_embeddings(model_opt, tgt_dict, feature_dicts,
+                                            tgt_embs)
+        # Set the new embeddings layer
+        model.decoder.embeddings = tgt_embs_ext
+    # Set the generator softmax size
+    if not model_opt.lm_use_sampled_softmax:
+        affine_proj = build_affine_proj(tgt_dict, model.generator[0])
+        model.generator = nn.Sequential(affine_proj,
+                                        nn.LogSoftmax())
+    else:
+        output_size = model_opt.lm_word_vec_size if \
+                            model_opt.lm_use_projection \
+                            else model_opt.lm_rnn_size
+        model.generator = SampledSoftmax(len(fields["tgt"].vocab),
+                                         model_opt.lm_n_samples_softmax,
+                                         output_size)
+
+        affine_proj = build_affine_proj(tgt_dict, model.generator.params)
+        model.generator.params = affine_proj
+
+
 def load_test_model(opt, dummy_opt, model_path=None):
     if model_path is None:
         model_path = opt.models[0]
@@ -199,7 +290,7 @@ def load_test_model(opt, dummy_opt, model_path=None):
     return fields, model, model_opt
 
 
-def build_base_model(model_opt, fields, gpu, checkpoint=None):
+def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
     """
     Args:
         model_opt: the option loaded from checkpoint.
@@ -355,13 +446,16 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
 
     # Add generator to model (this registers it as parameter of model).
     model.generator = generator
+    if ext_fields is not None:
+        extend_vocabulary(model, fields, ext_fields, model_opt)
     model.to(device)
 
     return model
 
 
-def build_language_model(model_opt, fields, gpu, checkpoint=None,
-                         side='tgt', use_generator=True):
+def build_language_model(model_opt, fields, gpu,
+                         checkpoint=None, side='tgt', use_generator=True,
+                         ext_fields=None):
     """
     Args:
         model_opt: the option loaded from checkpoint.
@@ -466,20 +560,24 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
     # Add generator to model (this registers it as parameter of model).
     if use_generator:
         model.generator = generator
+        if ext_fields is not None:
+            extend_vocabulary(model, fields, ext_fields, model_opt)
 
     model.to(device)
 
     return model
 
 
-def build_model(model_opt, opt, fields, checkpoint):
+def build_model(model_opt, opt, fields, ext_fields=None, checkpoint=None):
     """ Build the Model """
     logger.info('Building model...')
     if model_opt.lm:
         model = build_language_model(model_opt, fields,
-                                     use_gpu(opt), checkpoint)
+                                     use_gpu(opt), checkpoint,
+                                     ext_fields=ext_fields)
     else:
         model = build_base_model(model_opt, fields,
-                                 use_gpu(opt), checkpoint)
+                                 use_gpu(opt), checkpoint,
+                                 ext_fields=ext_fields)
     logger.info(model)
     return model

@@ -31,6 +31,12 @@ def model_opts(parser):
                        help="""Use a sin to mark relative words positions.
                        Necessary for non-RNN style models.
                        """)
+    group.add_argument('-use_extended_embeddings', action='store_true',
+                       help="""Extend the embeddings vocabulary of a previously
+                       trained model with randomly initialized embeddings of
+                       the indomain tokens not present in the general model.
+                       Used for finetuning.
+                       """)
 
     group = parser.add_argument_group('Model-Embedding Features')
     group.add_argument('-feat_merge', type=str, default='concat',

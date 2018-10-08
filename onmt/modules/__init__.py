@@ -5,7 +5,8 @@ from onmt.modules.global_attention import GlobalAttention, APEGlobalAttention
 from onmt.modules.conv_multi_step_attention import ConvMultiStepAttention
 from onmt.modules.copy_generator import CopyGenerator, CopyGeneratorLossCompute
 from onmt.modules.multi_headed_attn import MultiHeadedAttention
-from onmt.modules.embeddings import Embeddings, PositionalEncoding
+from onmt.modules.embeddings import Embeddings, PositionalEncoding, \
+                                    ExtendedEmbeddings
 from onmt.modules.weight_norm import WeightNormConv2d
 from onmt.modules.average_attn import AverageAttention
 from onmt.modules.char_cnn import CharEmbeddingsCNN
@@ -16,6 +17,7 @@ from onmt.modules.elmo import ELMo
 __all__ = ["LayerNorm", "Elementwise", "context_gate_factory", "ContextGate",
            "GlobalAttention", "APEGlobalAttention", "ConvMultiStepAttention",
            "CopyGenerator", "CopyGeneratorLossCompute", "MultiHeadedAttention",
-           "Embeddings", "PositionalEncoding", "WeightNormConv2d",
+           "Embeddings", "PositionalEncoding", "ExtendedEmbeddings",
+           "WeightNormConv2d",
            "AverageAttention", "CharEmbeddingsCNN", "HighwayLayer",
            "SampledSoftmax", "ELMo"]
