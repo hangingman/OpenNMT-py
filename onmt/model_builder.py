@@ -130,6 +130,7 @@ def build_decoder(opt, embeddings):
         return APEInputFeedRNNDecoder(opt.rnn_type, opt.brnn,
                                       opt.dec_layers, opt.rnn_size,
                                       opt.global_attention,
+                                      opt.global_attention_function,
                                       opt.coverage_attn,
                                       opt.context_gate,
                                       opt.copy_attn,
@@ -368,6 +369,7 @@ def build_language_model(model_opt, fields, gpu, checkpoint=None,
                                       feature_dicts, for_encoder=False)
 
     # Make LanguageModel.
+    device = torch.device("cuda" if gpu else "cpu")
     model = onmt.models.LanguageModel(model_opt, embeddings)
     model.model_type = model_opt.model_type
 

@@ -38,6 +38,6 @@ class HighwayLayer(nn.Module):
             nonlinear_part = projected_input[:, :self._input_dim]
             gate = projected_input[:, self._input_dim:2 * self._input_dim]
             nonlinear_part = F.relu(nonlinear_part)
-            gate = F.sigmoid(gate)
+            gate = torch.sigmoid(gate)
             current_input = gate * linear_part + (1 - gate) * nonlinear_part
         return current_input

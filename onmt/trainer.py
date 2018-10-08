@@ -551,9 +551,6 @@ class LanguageModelTrainer(Trainer):
                     if hidden_state[0].shape[1] != batch.batch_size:
                         hidden_state = None
 
-                cur_dataset = valid_iter.get_cur_dataset()
-                self.valid_loss.cur_dataset = cur_dataset
-
                 # 1. Create input
                 if self.model.char_convs:
                     tgt = inputters.make_features(batch, 'char_tgt')
@@ -661,9 +658,6 @@ class APETrainer(Trainer):
         stats = onmt.utils.Statistics()
 
         for batch in valid_iter:
-            cur_dataset = valid_iter.get_cur_dataset()
-            self.valid_loss.cur_dataset = cur_dataset
-
             src = inputters.make_features(batch, 'src', self.data_type)
             src = src.unsqueeze(-1)
             _, src_lengths = batch.src
