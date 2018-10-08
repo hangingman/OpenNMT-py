@@ -458,7 +458,7 @@ class RNNDecoderState(DecoderState):
         self.input_feed = fn(self.input_feed, 1)
 
 
-class APEInputFeedRNNDecoder(RNNDecoderBase):
+class APEInputFeedRNNDecoder(nn.Module):
     """
     Input feeding based decoder for APE. See :obj:`RNNDecoderBase` for options.
 
@@ -490,20 +490,56 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
                  coverage_attn=False, context_gate=None,
                  copy_attn=False, dropout=0.0, embeddings=None,
                  reuse_copy_attn=False):
-        super(APEInputFeedRNNDecoder, self).__init__(
-                    rnn_type, bidirectional_encoder, num_layers,
-                    hidden_size, attn_type,
-                    coverage_attn, context_gate,
-                    copy_attn, dropout, embeddings,
-                    reuse_copy_attn)
+        super(APEInputFeedRNNDecoder, self).__init__()
 
-        self.attn = onmt.modules.APEGlobalAttention(
-            hidden_size, coverage=coverage_attn,
-            attn_type=attn_type
+        # Basic attributes.
+        self.decoder_type = 'rnn'
+        self.bidirectional_encoder = bidirectional_encoder
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+        self.embeddings = embeddings
+        self.dropout = nn.Dropout(dropout)
+
+        # Build the RNN.
+        self.rnn = self._build_rnn(rnn_type,
+                                   input_size=self._input_size,
+                                   hidden_size=hidden_size,
+                                   num_layers=num_layers,
+                                   dropout=dropout)
+
+        # Set up the context gate.
+        self.context_gate = None
+        if context_gate is not None:
+            self.context_gate = onmt.modules.context_gate_factory(
+                context_gate, self._input_size,
+                hidden_size, hidden_size, hidden_size
             )
-        if rnn_type == 'GRU':
-            self.init_state_layer = nn.Linear(self.hidden_size*2,
-                                              self.hidden_size)
+
+        # Set up the standard attention.
+        self._coverage = coverage_attn
+
+        self.attn_src = onmt.modules.GlobalAttention(
+            hidden_size, coverage=coverage_attn,
+            attn_type=attn_type, attn_func=attn_func
+        )
+
+        self.attn_mt = onmt.modules.GlobalAttention(
+            hidden_size, coverage=coverage_attn,
+            attn_type=attn_type, attn_func=attn_func
+        )
+
+        self.linear_merge = nn.Linear(hidden_size * 2, hidden_size)
+
+        # Set up a separated copy attention layer, if needed.
+        self._copy = False
+        if copy_attn and not reuse_copy_attn:
+            self.copy_attn = onmt.modules.GlobalAttention(
+                hidden_size, attn_type=attn_type, attn_func=attn_func
+            )
+
+        if copy_attn:
+            self._copy = True
+        self._reuse_copy_attn = reuse_copy_attn
 
     def forward(self, tgt, memory_bank_src, memory_bank_mt, state,
                 memory_lengths_src=None, memory_lengths_mt=None, step=None,
@@ -598,19 +634,30 @@ class APEInputFeedRNNDecoder(RNNDecoderBase):
             decoder_input = torch.cat([emb_t, input_feed], 1)
 
             rnn_output, hidden = self.rnn(decoder_input, hidden)
-            decoder_output, p_attn_src, p_attn_mt = self.attn(
+
+            decoder_output_src, p_attn_src = self.attn_src(
                 rnn_output,
                 memory_bank_src.transpose(0, 1),
+                memory_lengths=memory_lengths_src)
+
+            decoder_output_mt, p_attn_mt = self.attn_mt(
+                rnn_output,
                 memory_bank_mt.transpose(0, 1),
-                memory_lengths_src=memory_lengths_src,
-                memory_lengths_mt=memory_lengths_mt)
+                memory_lengths=memory_lengths_mt)
+
+            decoder_output_cat = torch.cat([decoder_output_src,
+                                            decoder_output_mt], dim=1)
+
+            decoder_output = self.linear_merge(decoder_output_cat)
+            decoder_output = torch.tanh(decoder_output)
 
             if self.context_gate is not None:
                 # TODO: context gate should be employed
                 # instead of second RNN transform.
                 decoder_output = self.context_gate(
-                    decoder_input, rnn_output, decoder_output
+                    decoder_input, rnn_output, decoder_output_mt
                 )
+
             decoder_output = self.dropout(decoder_output)
             input_feed = decoder_output
 
