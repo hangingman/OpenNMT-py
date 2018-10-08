@@ -881,6 +881,28 @@ def _load_fields(dataset, data_type, opt, checkpoint, use_char=False):
     else:
         fields = load_fields_from_vocab(
             torch.load(opt.data + '.vocab.pt'), data_type, use_char)
+
+    if opt.pretrained_softmax_path:
+        # if using a previously trained softmax from a LM,
+        # the tgt field needs to be in sync with the pretrained LM
+        lm_checkpoint = torch.load(
+                            opt.pretrained_softmax_path,
+                            map_location=lambda storage, loc: storage)
+        lm_fields = load_fields_from_vocab(
+            lm_checkpoint['vocab'], 'monotext', use_char)
+        # Insert pad token in the LM field since LMs don't use padding
+        lm_fields["tgt"].vocab.itos = [lm_fields["tgt"].vocab.itos[0]] +\
+            [PAD_WORD] + lm_fields["tgt"].vocab.itos[1:]
+        new_stoi = defaultdict(lambda: 0)
+        new_stoi.update(
+            {tok: i for i, tok in enumerate(lm_fields["tgt"].vocab.itos)})
+        lm_fields["tgt"].vocab.stoi = new_stoi
+        lm_fields['tgt'].pad_token = PAD_WORD
+        # Add any token that is left from the current dataset
+        lm_fields['tgt'].vocab.extend(fields['tgt'].vocab)
+        # Replace the tgt field
+        fields['tgt'] = lm_fields['tgt']
+
     fields = dict([(k, f) for (k, f) in fields.items()
                    if k in dataset.examples[0].__dict__])
 

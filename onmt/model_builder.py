@@ -280,7 +280,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
         tgt_embeddings.word_lut.weight = src_embeddings.word_lut.weight
 
     # Share the embedding matrix of mt and tgt for ape models
-    if model_opt.ape:
+    if model_opt.ape and not model_opt.pretrained_softmax_path:
         tgt_embeddings.word_lut.weight = mt_embeddings.word_lut.weight
 
     decoder = build_decoder(model_opt, tgt_embeddings)
@@ -325,6 +325,26 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
             for p in generator.parameters():
                 if p.dim() > 1:
                     xavier_uniform_(p)
+
+        if model_opt.pretrained_softmax_path:
+            lm_checkpoint = torch.load(
+                                model_opt.pretrained_softmax_path,
+                                map_location=lambda storage, loc: storage)
+            lm_generator = lm_checkpoint['generator']
+
+            # UNK symbol
+            generator.state_dict()['0.weight'].data[0:1].copy_(
+                lm_generator['params.weight'][0:1])
+            generator.state_dict()['0.bias'].data[0:1].copy_(
+                lm_generator['params.bias'][0:1])
+            # Skip padding (LM doesn't have padding) and
+            # replace the remaining rows
+            generator.state_dict()['0.weight'].data[
+                2:lm_generator['params.weight'].shape[0]+1].copy_(
+                    lm_generator['params.weight'][1:])
+            generator.state_dict()['0.bias'].data[
+                2:lm_generator['params.bias'].shape[0]+1].copy_(
+                    lm_generator['params.bias'][1:])
 
         if not model_opt.ape and hasattr(model.encoder, 'embeddings'):
             model.encoder.embeddings.load_pretrained_vectors(

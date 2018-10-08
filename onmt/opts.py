@@ -145,6 +145,9 @@ def model_opts(parser):
                        help='Train a coverage attention layer.')
     group.add_argument('-lambda_coverage', type=float, default=1,
                        help='Lambda value for coverage.')
+    group.add_argument('-pretrained_softmax_path',
+                       help="""Path to a trained model to load an initialization
+                            of the generator.""")
 
     # Character input options
     group.add_argument('-use_char_input', action="store_true",
