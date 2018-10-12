@@ -1,7 +1,7 @@
 """  Attention and normalization modules  """
 from onmt.modules.util_class import LayerNorm, Elementwise
 from onmt.modules.gate import context_gate_factory, ContextGate
-from onmt.modules.global_attention import GlobalAttention, APEGlobalAttention
+from onmt.modules.global_attention import GlobalAttention
 from onmt.modules.conv_multi_step_attention import ConvMultiStepAttention
 from onmt.modules.copy_generator import CopyGenerator, CopyGeneratorLossCompute
 from onmt.modules.multi_headed_attn import MultiHeadedAttention
@@ -15,7 +15,7 @@ from onmt.modules.sampled_softmax import SampledSoftmax
 from onmt.modules.elmo import ELMo
 
 __all__ = ["LayerNorm", "Elementwise", "context_gate_factory", "ContextGate",
-           "GlobalAttention", "APEGlobalAttention", "ConvMultiStepAttention",
+           "GlobalAttention", "ConvMultiStepAttention",
            "CopyGenerator", "CopyGeneratorLossCompute", "MultiHeadedAttention",
            "Embeddings", "PositionalEncoding", "ExtendedEmbeddings",
            "WeightNormConv2d",

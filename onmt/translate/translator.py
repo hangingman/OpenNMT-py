@@ -817,6 +817,30 @@ class APETranslator(Translator):
         all_scores = []
         all_predictions = []
 
+        if self.model.decoder.embeddings.elmo is not None:
+
+            vocab_size = len(self.fields['tgt'].vocab.itos)
+            self.vocab_to_char = torch.full(
+                [vocab_size, 50],
+                self.fields['char_tgt'].vocab.stoi[
+                    self.fields['char_tgt'].pad_token],
+                dtype=torch.long,
+                device=torch.device(cur_device, torch.cuda.current_device()))
+
+            for token_idx in range(vocab_size):
+                if token_idx < 4:
+                        # Specials
+                        token = [
+                            [self.fields['tgt'].vocab.itos[int(token_idx)]]
+                            ]
+                else:
+                    token = [
+                        self.fields['tgt'].vocab.itos[int(token_idx)]]
+
+                self.vocab_to_char[token_idx] = \
+                    self.fields['char_tgt'].nesting_field.process(
+                        token)[0]
+
         for batch in data_iter:
             batch_data = self.translate_batch(batch, data, fast=self.fast)
             translations = builder.from_batch(batch_data)
@@ -992,6 +1016,7 @@ class APETranslator(Translator):
             dtype=torch.long,
             device=memory_bank_src.device)
         alive_attn = None
+        select_indices = None
 
         # Give full probability to the first beam on the first step.
         topk_log_probs = (
@@ -1007,39 +1032,36 @@ class APETranslator(Translator):
 
         max_length += 1
 
+        # Reset hidden state at each batch
+        if self.model.decoder.embeddings.elmo is not None:
+            self.model.decoder.embeddings.elmo.hidden_state = None
+        if self.model.decoder.elmo is not None:
+            self.model.decoder.elmo.hidden_state = None
+
         for step in range(max_length):
             decoder_input = alive_seq[:, -1].view(1, -1, 1)
 
             if self.model.decoder.embeddings.elmo is not None:
 
-                input_seq = alive_seq[:, -1].contiguous().view(-1)
-                char_inp = []
+                if alive_seq.shape[1] > 1:
+                    # Remove hidden states from beams that already finished
+                    self.model.decoder.embeddings.elmo.hidden_state = (
+                        self.model.decoder.embeddings.elmo.hidden_state[
+                            0].index_select(1, select_indices),
+                        self.model.decoder.embeddings.elmo.hidden_state[
+                            1].index_select(1, select_indices))
+                    if self.model.decoder.elmo is not None:
+                        self.model.decoder.elmo.hidden_state = (
+                            self.model.decoder.elmo.hidden_state[
+                                0].index_select(1, select_indices),
+                            self.model.decoder.elmo.hidden_state[
+                                1].index_select(1, select_indices))
 
-                for token_idx in input_seq:
-
-                    if token_idx < 4:
-                        # Specials
-                        token = [
-                            [self.fields['tgt'].vocab.itos[int(token_idx)]]
-                            ]
-                    else:
-                        token = [
-                            self.fields['tgt'].vocab.itos[int(token_idx)]]
-
-                    char_inp.append(
-                        self.fields['char_tgt'].nesting_field.process(
-                            token)[0])
-
-                char_inp = torch.stack(char_inp)
+                char_inp = torch.index_select(
+                    self.vocab_to_char, 0, decoder_input[0, :, 0])
                 char_inp = char_inp.unsqueeze(0).unsqueeze(-1)
-                char_inp = char_inp.to(decoder_input.device)
-
-                if step == 0:
-                    char_alive_seq = char_inp.clone()
-                else:
-                    char_alive_seq = torch.cat([char_alive_seq, char_inp])
             else:
-                char_alive_seq = None
+                char_inp = None
 
             # Decoder forward.
             dec_out, dec_states, attn = self.model.decoder(
@@ -1048,7 +1070,7 @@ class APETranslator(Translator):
                 dec_states,
                 memory_lengths_src=memory_lengths_src,
                 memory_lengths_mt=memory_lengths_mt,
-                step=step, char_tgt=char_alive_seq)
+                step=step, char_tgt=char_inp)
 
             # Generator forward.
             log_probs = self.model.generator.forward(dec_out.squeeze(0))
@@ -1126,8 +1148,6 @@ class APETranslator(Translator):
                                             0, select_indices)
             dec_states.map_batch_fn(
                 lambda state, dim: state.index_select(dim, select_indices))
-            if char_alive_seq in locals():
-                char_alive_seq = char_alive_seq.index_select(1, select_indices)
 
             # Append last prediction.
             alive_seq = torch.cat([alive_seq, topk_ids.view(-1, 1)], -1)

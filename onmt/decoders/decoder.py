@@ -489,7 +489,7 @@ class APEInputFeedRNNDecoder(nn.Module):
                  hidden_size, attn_type="general", attn_func="softmax",
                  coverage_attn=False, context_gate=None,
                  copy_attn=False, dropout=0.0, embeddings=None,
-                 reuse_copy_attn=False):
+                 reuse_copy_attn=False, elmo=None):
         super(APEInputFeedRNNDecoder, self).__init__()
 
         # Basic attributes.
@@ -540,6 +540,15 @@ class APEInputFeedRNNDecoder(nn.Module):
         if copy_attn:
             self._copy = True
         self._reuse_copy_attn = reuse_copy_attn
+
+        self.elmo = elmo
+        # if elmo is not None:
+        #     self.elmo_gating = nn.Linear(
+        #         hidden_size + elmo.lang_model.input_size,
+        #         elmo.lang_model.input_size)
+        #     self.elmo_merge = nn.Linear(
+        #         hidden_size + elmo.lang_model.input_size,
+        #         hidden_size)
 
     def forward(self, tgt, memory_bank_src, memory_bank_mt, state,
                 memory_lengths_src=None, memory_lengths_mt=None, step=None,
@@ -595,6 +604,20 @@ class APEInputFeedRNNDecoder(nn.Module):
             for k in attns:
                 if type(attns[k]) == list:
                     attns[k] = torch.stack(attns[k])
+
+        if self.elmo is not None and char_tgt is not None:
+            mask = char_tgt[:, :, 0, :].ne(
+                self.embeddings.word_padding_idx).sum(-1)
+            out_elmo = self.elmo(char_tgt, mask)
+
+            decoder_outputs = torch.cat([decoder_outputs, out_elmo], dim=-1)
+            # elmo_gate = torch.sigmoid(self.elmo_gating(dec_elmo_concat))
+
+            # fused_outputs_concat = torch.cat(
+            #     [decoder_outputs, elmo_gate * out_elmo], dim=-1)
+
+            # decoder_outputs = torch.tanh(self.elmo_merge(
+            #       fused_outputs_concat))
 
         return decoder_outputs, state, attns
 

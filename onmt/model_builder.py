@@ -160,7 +160,7 @@ def build_encoder(opt, embeddings):
                           opt.bridge)
 
 
-def build_decoder(opt, embeddings):
+def build_decoder(opt, embeddings, elmo=None):
     """
     Various decoder dispatcher function.
     Args:
@@ -177,7 +177,8 @@ def build_decoder(opt, embeddings):
                                       opt.copy_attn,
                                       opt.dropout,
                                       embeddings,
-                                      opt.reuse_copy_attn)
+                                      opt.reuse_copy_attn,
+                                      elmo=elmo)
     if opt.decoder_type == "transformer":
         return TransformerDecoder(opt.dec_layers, opt.rnn_size,
                                   opt.heads, opt.transformer_ff,
@@ -351,6 +352,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
     # Build decoder.
     tgt_dict = fields["tgt"].vocab
     feature_dicts = inputters.collect_feature_vocabs(fields, 'tgt')
+
     dec_elmo = build_elmo(
         model_opt, fields,
         gpu, 'tgt',
@@ -374,7 +376,14 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
     if model_opt.ape and not model_opt.pretrained_softmax_path:
         tgt_embeddings.word_lut.weight = mt_embeddings.word_lut.weight
 
-    decoder = build_decoder(model_opt, tgt_embeddings)
+    dec_out_elmo = build_elmo(
+        model_opt, fields,
+        gpu, 'tgt',
+        forward_only=True,
+        reused_bilm=dec_elmo.lang_model)\
+        if model_opt.use_dec_out_elmo else None
+
+    decoder = build_decoder(model_opt, tgt_embeddings, dec_out_elmo)
 
     # Build NMTModel(= encoder + decoder).
     device = torch.device("cuda" if gpu else "cpu")
@@ -384,6 +393,10 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
         model = onmt.models.NMTModel(encoder, decoder)
     model.model_type = model_opt.model_type
 
+    output_size = model_opt.rnn_size
+    if model_opt.use_dec_out_elmo:
+        output_size += dec_out_elmo.lang_model.input_size
+
     # Build Generator.
     if not model_opt.copy_attn:
         if model_opt.generator_function == "sparsemax":
@@ -391,12 +404,12 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
         else:
             gen_func = nn.LogSoftmax(dim=-1)
         generator = nn.Sequential(
-            nn.Linear(model_opt.rnn_size, len(fields["tgt"].vocab)), gen_func
+            nn.Linear(output_size, len(fields["tgt"].vocab)), gen_func
         )
         if model_opt.share_decoder_embeddings:
             generator[0].weight = decoder.embeddings.word_lut.weight
     else:
-        generator = CopyGenerator(model_opt.rnn_size,
+        generator = CopyGenerator(output_size,
                                   fields["tgt"].vocab)
 
     # Load the model states from checkpoint or initialize them.

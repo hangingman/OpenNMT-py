@@ -658,6 +658,13 @@ class APETrainer(Trainer):
         stats = onmt.utils.Statistics()
 
         for batch in valid_iter:
+
+            # Reset hidden state at each batch
+            if self.model.decoder.embeddings.elmo is not None:
+                self.model.decoder.embeddings.elmo.hidden_state = None
+            if self.model.decoder.elmo is not None:
+                self.model.decoder.elmo.hidden_state = None
+
             src = inputters.make_features(batch, 'src', self.data_type)
             src = src.unsqueeze(-1)
             _, src_lengths = batch.src
@@ -708,6 +715,13 @@ class APETrainer(Trainer):
             self.model.zero_grad()
 
         for batch in true_batchs:
+
+            # Reset hidden state at each batch
+            if self.model.decoder.embeddings.elmo is not None:
+                self.model.decoder.embeddings.elmo.hidden_state = None
+            if self.model.decoder.elmo is not None:
+                self.model.decoder.elmo.hidden_state = None
+
             target_size = batch.tgt.size(0)
             # Truncated BPTT
             if self.trunc_size:

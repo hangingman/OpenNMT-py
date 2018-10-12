@@ -9,7 +9,7 @@ class ELMo(nn.Module):
         language_model {nn.Module} -- the pretrained biLM
         dropout {float} -- the ammount of dropout applied to the
                            contextualized embeddings
-        padding_idx {int} -- the padding symbol index
+        forward_only {bool} -- whether to use the backward LM or not
     """
 
     def __init__(self, language_model, dropout, forward_only=False):
@@ -38,6 +38,7 @@ class ELMo(nn.Module):
         self.gamma = nn.Parameter(torch.FloatTensor([1.0]))
 
         self.dropout = nn.Dropout(dropout)
+        self.hidden_state = None
 
     def forward(self, char_input, mask):
         seq_len, batch_size, _, _ = char_input.size()
@@ -51,10 +52,19 @@ class ELMo(nn.Module):
         # Set lang_model.training to false so the LM does not
         # use the custom dropout
         self.lang_model.dropout.training = False
+
         if self.forward_only:
             self.lang_model.num_directions = 1
+        else:
+            # hidden state is only used for decoder elmo when translating.
+            # if forward_only is false, this elmo is in the encoder and thus
+            # we should always make sure a new initial hidden state is
+            # created in the decoder.
+            self.hidden_state = None
+
         with torch.no_grad():
-            outputs, _ = self.lang_model(char_input, lengths)
+            outputs, self.hidden_state = self.lang_model(
+                    char_input, lengths, self.hidden_state)
 
         outputs = outputs.view(outputs.shape[0],
                                outputs.shape[1],
@@ -96,6 +106,7 @@ class ELMo(nn.Module):
 
         if self.forward_only:
             self.lang_model.num_directions = 2
+
         return self.dropout(self.gamma * sum(pieces))
 
     def _remove_bos_eos_tokens(self, tensor, mask):

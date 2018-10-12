@@ -64,6 +64,8 @@ def model_opts(parser):
                        help="""The dropout of the ELMo representation.""")
     group.add_argument('-use_decoder_elmo', action='store_true',
                        help="""Whether to use decoder ELMo.""")
+    group.add_argument('-use_dec_out_elmo', action='store_true',
+                       help="""Whether to use ELMo in the decoder output.""")
 
     # Encoder-Decoder Options
     group = parser.add_argument_group('Model- Encoder-Decoder')
