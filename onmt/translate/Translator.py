@@ -149,7 +149,9 @@ class Translator(object):
                                      window_size=self.window_size,
                                      window_stride=self.window_stride,
                                      window=self.window,
-                                     use_filter_pred=self.use_filter_pred)
+                                     use_filter_pred=self.use_filter_pred,
+                                     fertility_type=self.model_opt.fertility_type,
+                                     fertility_value=self.model_opt.fertility)
 
         data_iter = onmt.io.OrderedIterator(
             dataset=data, device=self.gpu,
