@@ -136,7 +136,7 @@ def build_ext_embeddings(opt, word_dict, feature_dicts, base_embds,
                               elmo=base_embds.elmo)
 
 
-def build_encoder(opt, embeddings):
+def build_encoder(opt, embeddings, elmo=None):
     """
     Various encoder dispatcher function.
     Args:
@@ -157,7 +157,7 @@ def build_encoder(opt, embeddings):
         # "rnn" or "brnn"
         return RNNEncoder(opt.rnn_type, opt.brnn, opt.enc_layers,
                           opt.rnn_size, opt.dropout, embeddings,
-                          opt.bridge)
+                          opt.bridge, elmo=elmo)
 
 
 def build_decoder(opt, embeddings, elmo=None):
@@ -313,9 +313,15 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
         elmo = build_elmo(model_opt, fields,
                           gpu, 'src') if model_opt.use_elmo else None
 
+        enc_elmo = build_elmo(
+            model_opt, fields,
+            gpu, 'src',
+            reused_bilm=elmo.lang_model
+            ) if model_opt.use_elmo else None
+
         src_embeddings = build_embeddings(model_opt, src_dict, feature_dicts,
                                           elmo=elmo)
-        encoder = build_encoder(model_opt, src_embeddings)
+        encoder = build_encoder(model_opt, src_embeddings, enc_elmo)
 
         if model_opt.ape:
             encoder_src = encoder
@@ -325,10 +331,15 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
             feature_dicts = inputters.collect_feature_vocabs(fields, 'mt')
             elmo = build_elmo(model_opt, fields,
                               gpu, 'mt') if model_opt.use_elmo else None
+            enc_elmo = build_elmo(
+                model_opt, fields,
+                gpu, 'mt',
+                reused_bilm=elmo.lang_model
+                ) if model_opt.use_elmo else None
             mt_embeddings = build_embeddings(model_opt, mt_dict,
                                              feature_dicts,
                                              elmo=elmo)
-            encoder_mt = build_encoder(model_opt, mt_embeddings)
+            encoder_mt = build_encoder(model_opt, mt_embeddings, enc_elmo)
 
     elif model_opt.model_type == "img":
         if ("image_channel_size" not in model_opt.__dict__):

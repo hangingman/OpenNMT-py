@@ -1,6 +1,7 @@
 """Define RNN-based encoders."""
 from __future__ import division
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -26,7 +27,7 @@ class RNNEncoder(EncoderBase):
 
     def __init__(self, rnn_type, bidirectional, num_layers,
                  hidden_size, dropout=0.0, embeddings=None,
-                 use_bridge=False):
+                 use_bridge=False, elmo=None):
         super(RNNEncoder, self).__init__()
         assert embeddings is not None
 
@@ -50,6 +51,13 @@ class RNNEncoder(EncoderBase):
                                     hidden_size,
                                     num_layers)
 
+        self.elmo = elmo
+        if elmo is not None:
+            self.elmo_linear = nn.Linear(
+                hidden_size * num_directions + elmo.lang_model.input_size,
+                hidden_size * num_directions
+            )
+
     def forward(self, src, lengths=None, char_src=None):
         "See :obj:`EncoderBase.forward()`"
         self._check_args(src, lengths)
@@ -70,6 +78,14 @@ class RNNEncoder(EncoderBase):
 
         if self.use_bridge:
             encoder_final = self._bridge(encoder_final)
+
+        if self.elmo is not None and char_src is not None:
+            mask = char_src[:, :, 0, :].ne(
+                self.embeddings.word_padding_idx).sum(-1)
+            out_elmo = self.elmo(char_src, mask)
+            memory_bank = torch.cat([memory_bank, out_elmo], dim=-1)
+            memory_bank = self.elmo_linear(memory_bank)
+
         return encoder_final, memory_bank
 
     def _initialize_bridge(self, rnn_type,
