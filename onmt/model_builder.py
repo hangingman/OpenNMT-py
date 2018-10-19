@@ -144,11 +144,11 @@ def build_encoder(opt, embeddings, elmo=None):
         embeddings (Embeddings): vocab embeddings for this encoder.
     """
     if opt.encoder_type == "transformer":
-        return TransformerEncoder(opt.enc_layers, opt.rnn_size,
+        return TransformerEncoder(opt.enc_layers, opt.enc_rnn_size,
                                   opt.heads, opt.transformer_ff,
                                   opt.dropout, embeddings)
     elif opt.encoder_type == "cnn":
-        return CNNEncoder(opt.enc_layers, opt.rnn_size,
+        return CNNEncoder(opt.enc_layers, opt.enc_rnn_size,
                           opt.cnn_kernel_width,
                           opt.dropout, embeddings)
     elif opt.encoder_type == "mean":
@@ -156,7 +156,7 @@ def build_encoder(opt, embeddings, elmo=None):
     else:
         # "rnn" or "brnn"
         return RNNEncoder(opt.rnn_type, opt.brnn, opt.enc_layers,
-                          opt.rnn_size, opt.dropout, embeddings,
+                          opt.enc_rnn_size, opt.dropout, embeddings,
                           opt.bridge, elmo=elmo)
 
 
@@ -180,19 +180,19 @@ def build_decoder(opt, embeddings, elmo=None):
                                       opt.reuse_copy_attn,
                                       elmo=elmo)
     if opt.decoder_type == "transformer":
-        return TransformerDecoder(opt.dec_layers, opt.rnn_size,
+        return TransformerDecoder(opt.dec_layers, opt.dec_rnn_size,
                                   opt.heads, opt.transformer_ff,
                                   opt.global_attention, opt.copy_attn,
                                   opt.self_attn_type,
                                   opt.dropout, embeddings)
     elif opt.decoder_type == "cnn":
-        return CNNDecoder(opt.dec_layers, opt.rnn_size,
+        return CNNDecoder(opt.dec_layers, opt.dec_rnn_size,
                           opt.global_attention, opt.copy_attn,
                           opt.cnn_kernel_width, opt.dropout,
                           embeddings)
     elif opt.input_feed:
         return InputFeedRNNDecoder(opt.rnn_type, opt.brnn,
-                                   opt.dec_layers, opt.rnn_size,
+                                   opt.dec_layers, opt.dec_rnn_size,
                                    opt.global_attention,
                                    opt.global_attention_function,
                                    opt.coverage_attn,
@@ -203,7 +203,7 @@ def build_decoder(opt, embeddings, elmo=None):
                                    opt.reuse_copy_attn)
     else:
         return StdRNNDecoder(opt.rnn_type, opt.brnn,
-                             opt.dec_layers, opt.rnn_size,
+                             opt.dec_layers, opt.dec_rnn_size,
                              opt.global_attention,
                              opt.global_attention_function,
                              opt.coverage_attn,
@@ -278,6 +278,13 @@ def load_test_model(opt, dummy_opt, model_path=None):
         use_char=checkpoint['opt'].use_char_input)
 
     model_opt = checkpoint['opt']
+    if model_opt.rnn_size != -1:
+        model_opt.enc_rnn_size = model_opt.rnn_size
+        model_opt.dec_rnn_size = model_opt.rnn_size
+        if model_opt.model_type == 'text' and \
+           model_opt.enc_rnn_size != model_opt.dec_rnn_size:
+                raise AssertionError("""We do not support different encoder and
+                                     decoder rnn sizes for translation now.""")
     for arg in dummy_opt:
         if arg not in model_opt:
             model_opt.__dict__[arg] = dummy_opt[arg]
@@ -349,13 +356,17 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
 
         encoder = ImageEncoder(model_opt.enc_layers,
                                model_opt.brnn,
-                               model_opt.rnn_size,
+                               model_opt.enc_rnn_size,
                                model_opt.dropout,
                                image_channel_size)
     elif model_opt.model_type == "audio":
-        encoder = AudioEncoder(model_opt.enc_layers,
+        encoder = AudioEncoder(model_opt.rnn_type,
+                               model_opt.enc_layers,
+                               model_opt.dec_layers,
                                model_opt.brnn,
-                               model_opt.rnn_size,
+                               model_opt.enc_rnn_size,
+                               model_opt.dec_rnn_size,
+                               model_opt.audio_enc_pooling,
                                model_opt.dropout,
                                model_opt.sample_rate,
                                model_opt.window_size)
@@ -402,9 +413,8 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
         model = onmt.models.APEModel(encoder_src, encoder_mt, decoder)
     else:
         model = onmt.models.NMTModel(encoder, decoder)
-    model.model_type = model_opt.model_type
 
-    output_size = model_opt.rnn_size
+    output_size = model_opt.dec_rnn_size
     if model_opt.use_dec_out_elmo:
         output_size += dec_out_elmo.lang_model.input_size
 
@@ -425,8 +435,8 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
 
     # Load the model states from checkpoint or initialize them.
     if checkpoint is not None:
-        model.load_state_dict(checkpoint['model'])
-        generator.load_state_dict(checkpoint['generator'])
+        model.load_state_dict(checkpoint['model'], strict=False)
+        generator.load_state_dict(checkpoint['generator'], strict=False)
     else:
         if model_opt.param_init != 0.0:
             for p in model.parameters():

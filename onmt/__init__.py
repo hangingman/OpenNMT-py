@@ -18,4 +18,4 @@ __all__ = [onmt.inputters, onmt.encoders, onmt.decoders, onmt.models,
            onmt.utils, onmt.modules, "Trainer", "LanguageModelTrainer",
            "APETrainer"]
 
-__version__ = "0.2.0"
+__version__ = "0.4.1"

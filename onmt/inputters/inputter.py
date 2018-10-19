@@ -4,6 +4,7 @@
 """
 import glob
 import os
+
 from collections import Counter, defaultdict, OrderedDict
 from itertools import count
 import sys
@@ -333,13 +334,7 @@ def build_dataset(fields, data_type, src_data_iter=None, src_path=None,
 
     elif data_type == 'audio':
         dataset = AudioDataset(fields, src_examples_iter, tgt_examples_iter,
-                               num_src_feats, num_tgt_feats,
                                tgt_seq_length=tgt_seq_length,
-                               sample_rate=sample_rate,
-                               window_size=window_size,
-                               window_stride=window_stride,
-                               window=window,
-                               normalize_audio=normalize_audio,
                                use_filter_pred=use_filter_pred)
 
     return dataset
@@ -403,7 +398,7 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
     counter = {}
 
     # Prop src from field to get lower memory using when training with image
-    if data_type == 'img':
+    if data_type == 'img' or data_type == 'audio':
         fields.pop("src")
 
     for k in fields:
@@ -444,11 +439,7 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
         for ex in dataset.examples:
             for k in fields:
                 val = getattr(ex, k, None)
-                if val is not None and not fields[k].sequential:
-                    val = [val]
-                elif val is not None and 'char' in k:
-                    # ignore character fields, these were already
-                    # initialized to be all unicode characters from 0 to 255.
+                if not fields[k].sequential or 'char' in k:
                     continue
                 elif k == 'src' and src_vocab:
                     val = [item for item in val if item in src_vocab]

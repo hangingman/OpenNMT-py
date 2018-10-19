@@ -68,8 +68,8 @@ class RNNEncoder(EncoderBase):
         packed_emb = emb
         if lengths is not None and not self.no_pack_padded_seq:
             # Lengths data is wrapped inside a Tensor.
-            lengths = lengths.view(-1).tolist()
-            packed_emb = pack(emb, lengths)
+            lengths_list = lengths.view(-1).tolist()
+            packed_emb = pack(emb, lengths_list)
 
         memory_bank, encoder_final = self.rnn(packed_emb)
 
@@ -86,7 +86,7 @@ class RNNEncoder(EncoderBase):
             memory_bank = torch.cat([memory_bank, out_elmo], dim=-1)
             memory_bank = self.elmo_linear(memory_bank)
 
-        return encoder_final, memory_bank
+        return encoder_final, memory_bank, lengths
 
     def _initialize_bridge(self, rnn_type,
                            hidden_size,
