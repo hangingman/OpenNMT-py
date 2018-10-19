@@ -903,7 +903,7 @@ def _load_fields(dataset, data_type, opt, checkpoint, use_char=False,
         lm_fields["tgt"].vocab.stoi = new_stoi
         lm_fields['tgt'].pad_token = PAD_WORD
         # Add any token that is left from the current dataset
-        lm_fields['tgt'].vocab.extend(fields['tgt'].vocab)
+        # lm_fields['tgt'].vocab.extend(fields['tgt'].vocab)
         # Replace the tgt field
         fields['tgt'] = lm_fields['tgt']
 

@@ -562,6 +562,13 @@ def translate_opts(parser):
                        help='Path to model .pt file(s). '
                             'Multiple models can be specified, '
                             'for ensemble decoding.')
+    group.add_argument('-shallow_fusion',
+                       type=str,
+                       help='Path to language model to do shallow fusion.')
+    group.add_argument('-shallow_fusion_beta',
+                       type=float,
+                       help='Beta value of Shallow Fusion. '
+                            'see https://arxiv.org/pdf/1503.03535.pdf')
 
     group = parser.add_argument_group('Data')
     group.add_argument('-data_type', default="text",

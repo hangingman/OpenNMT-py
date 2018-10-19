@@ -42,6 +42,14 @@ def build_translator(opt, report_score=True, logger=None, out_file=None):
                                              opt.coverage_penalty,
                                              opt.length_penalty)
 
+    if opt.shallow_fusion:
+
+        lm_fields, fusion_lm, lm_opt = \
+            onmt.model_builder.load_test_model(opt, dummy_opt.__dict__,
+                                               opt.shallow_fusion)
+    else:
+        fusion_lm = lm_fields = None
+
     kwargs = {k: getattr(opt, k)
               for k in ["beam_size", "n_best", "max_length", "min_length",
                         "stepwise_penalty", "block_ngram_repeat",
@@ -54,12 +62,14 @@ def build_translator(opt, report_score=True, logger=None, out_file=None):
                                    out_file=out_file,
                                    report_score=report_score,
                                    copy_attn=model_opt.copy_attn,
-                                   logger=logger,
+                                   logger=logger, fusion_lm=fusion_lm,
+                                   fusion_fields=lm_fields,
                                    **kwargs)
     else:
         translator = Translator(model, fields, global_scorer=scorer,
                                 out_file=out_file, report_score=report_score,
                                 copy_attn=model_opt.copy_attn, logger=logger,
+                                fusion_lm=fusion_lm, fusion_fields=lm_fields,
                                 **kwargs)
     return translator
 
@@ -112,7 +122,9 @@ class Translator(object):
                  verbose=False,
                  out_file=None,
                  fast=False,
-                 image_channel_size=3):
+                 image_channel_size=3,
+                 fusion_lm=None,
+                 fusion_fields=None):
         self.logger = logger
         self.gpu = gpu
         self.cuda = gpu > -1
@@ -143,6 +155,8 @@ class Translator(object):
         self.report_rouge = report_rouge
         self.fast = fast
         self.image_channel_size = image_channel_size
+        self.fusion_lm = fusion_lm
+        self.fusion_fields = fusion_fields
 
         # for debugging
         self.beam_trace = self.dump_beam != ""
@@ -817,7 +831,8 @@ class APETranslator(Translator):
         all_scores = []
         all_predictions = []
 
-        if self.model.decoder.embeddings.elmo is not None:
+        if self.model.decoder.embeddings.elmo is not None or\
+                self.fusion_lm is not None:
 
             vocab_size = len(self.fields['tgt'].vocab.itos)
             self.vocab_to_char = torch.full(
@@ -840,6 +855,15 @@ class APETranslator(Translator):
                 self.vocab_to_char[token_idx] = \
                     self.fields['char_tgt'].nesting_field.process(
                         token)[0]
+
+            fusion_idx_list = []
+            for idx, token in enumerate(self.fields['tgt'].vocab.itos):
+                if token in self.fusion_fields['tgt'].vocab.itos:
+                    fusion_idx_list.append(idx)
+            self.fusion_idxs = torch.tensor(
+                fusion_idx_list,
+                dtype=torch.long,
+                device=torch.device(cur_device, torch.cuda.current_device()))
 
         for batch in data_iter:
             batch_data = self.translate_batch(batch, data, fast=self.fast)
@@ -1037,24 +1061,35 @@ class APETranslator(Translator):
             self.model.decoder.embeddings.elmo.hidden_state = None
         if self.model.decoder.elmo is not None:
             self.model.decoder.elmo.hidden_state = None
+        if self.fusion_lm:
+            lm_hidden_state = None
+            self.fusion_lm.num_directions = 1
 
         for step in range(max_length):
             decoder_input = alive_seq[:, -1].view(1, -1, 1)
 
-            if self.model.decoder.embeddings.elmo is not None:
+            if self.model.decoder.embeddings.elmo is not None \
+                    or self.fusion_lm is not None:
 
                 if alive_seq.shape[1] > 1:
                     # Remove hidden states from beams that already finished
-                    self.model.decoder.embeddings.elmo.hidden_state = (
-                        self.model.decoder.embeddings.elmo.hidden_state[
-                            0].index_select(1, select_indices),
-                        self.model.decoder.embeddings.elmo.hidden_state[
-                            1].index_select(1, select_indices))
+                    if self.model.decoder.embeddings.elmo is not None:
+                        self.model.decoder.embeddings.elmo.hidden_state = (
+                            self.model.decoder.embeddings.elmo.hidden_state[
+                                0].index_select(1, select_indices),
+                            self.model.decoder.embeddings.elmo.hidden_state[
+                                1].index_select(1, select_indices))
                     if self.model.decoder.elmo is not None:
                         self.model.decoder.elmo.hidden_state = (
                             self.model.decoder.elmo.hidden_state[
                                 0].index_select(1, select_indices),
                             self.model.decoder.elmo.hidden_state[
+                                1].index_select(1, select_indices))
+                    if self.fusion_lm is not None:
+                        lm_hidden_state = (
+                            lm_hidden_state[
+                                0].index_select(1, select_indices),
+                            lm_hidden_state[
                                 1].index_select(1, select_indices))
 
                 char_inp = torch.index_select(
@@ -1074,6 +1109,19 @@ class APETranslator(Translator):
 
             # Generator forward.
             log_probs = self.model.generator.forward(dec_out.squeeze(0))
+
+            if self.fusion_lm:
+                outputs, lm_hidden_state = self.fusion_lm(char_inp, None,
+                                                          lm_hidden_state)
+                outputs = outputs[-1].contiguous()
+                lm_log_probs, _ = self.fusion_lm.generator(outputs,
+                                                           None)
+                fusion_log_probs = log_probs.new_full(
+                        log_probs.shape, 0)
+                fusion_log_probs[:, self.fusion_idxs] = lm_log_probs.squeeze()
+
+                log_probs += 0.01 * fusion_log_probs
+
             vocab_size = log_probs.size(-1)
 
             if step < min_length:
