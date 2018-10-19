@@ -53,7 +53,7 @@ def build_translator(opt, report_score=True, logger=None, out_file=None):
                         "ignore_when_blocking", "dump_beam", "report_bleu",
                         "data_type", "replace_unk", "gpu", "verbose", "fast",
                         "sample_rate", "window_size", "window_stride",
-                        "window", "image_channel_size"]}
+                        "window", "image_channel_size", "shallow_fusion_beta"]}
 
     if opt.mt:
         translator = APETranslator(model, fields, global_scorer=scorer,
@@ -122,7 +122,8 @@ class Translator(object):
                  fast=False,
                  image_channel_size=3,
                  fusion_lm=None,
-                 fusion_fields=None):
+                 fusion_fields=None,
+                 shallow_fusion_beta=None):
         self.logger = logger
         self.gpu = gpu
         self.cuda = gpu > -1
@@ -155,6 +156,7 @@ class Translator(object):
         self.image_channel_size = image_channel_size
         self.fusion_lm = fusion_lm
         self.fusion_fields = fusion_fields
+        self.shallow_fusion_beta = shallow_fusion_beta
 
         # for debugging
         self.beam_trace = self.dump_beam != ""
@@ -994,9 +996,9 @@ class APETranslator(Translator):
         else:
             char_mt = None
 
-        enc_states_src, memory_bank_src = self.model.encoder_src(
-                                                src, src_lengths,
-                                                char_src=char_src)
+        enc_states_src, memory_bank_src, src_lengths = \
+            self.model.encoder_src(src, src_lengths,
+                                   char_src=char_src)
 
         sorted_mt, srt_mt_lens, mt_idx = self.model.sort_sentences(
                                                 mt, mt_lengths)
@@ -1007,10 +1009,10 @@ class APETranslator(Translator):
         else:
             sorted_char_mt = None
 
-        sorted_enc_final_mt, sorted_memory_bank_mt = self.model.encoder_mt(
-                                                    sorted_mt,
-                                                    srt_mt_lens,
-                                                    char_src=sorted_char_mt)
+        sorted_enc_final_mt, sorted_memory_bank_mt, srt_mt_lens = \
+            self.model.encoder_mt(sorted_mt,
+                                  srt_mt_lens,
+                                  char_src=sorted_char_mt)
 
         if isinstance(sorted_enc_final_mt, tuple):  # LSTM
             enc_states_mt = (sorted_enc_final_mt[0][:, mt_idx],
@@ -1019,6 +1021,7 @@ class APETranslator(Translator):
             enc_states_mt = sorted_enc_final_mt[:, mt_idx]
 
         memory_bank_mt = sorted_memory_bank_mt[:, mt_idx]
+        mt_lengths = srt_mt_lens[mt_idx]
 
         dec_states = self.model.decoder.init_decoder_state(
                             src, mt, memory_bank_src, memory_bank_mt,
@@ -1127,7 +1130,7 @@ class APETranslator(Translator):
                         log_probs.shape, 0)
                 fusion_log_probs[:, self.fusion_idxs] = lm_log_probs.squeeze()
 
-                log_probs += 0.01 * fusion_log_probs
+                log_probs += self.shallow_fusion_beta * fusion_log_probs
 
             vocab_size = log_probs.size(-1)
 
@@ -1276,9 +1279,9 @@ class APETranslator(Translator):
         else:
             char_mt = None
 
-        enc_states_src, memory_bank_src = self.model.encoder_src(
-                                                src, src_lengths,
-                                                char_src=char_src)
+        enc_states_src, memory_bank_src, src_lengths = \
+            self.model.encoder_src(src, src_lengths,
+                                   char_src=char_src)
 
         sorted_mt, srt_mt_lens, mt_idx = self.model.sort_sentences(
                                                 mt, mt_lengths)
@@ -1289,10 +1292,9 @@ class APETranslator(Translator):
         else:
             sorted_char_mt = None
 
-        sorted_enc_final_mt, sorted_memory_bank_mt = self.model.encoder_mt(
-                                                    sorted_mt,
-                                                    srt_mt_lens,
-                                                    char_src=sorted_char_mt)
+        sorted_enc_final_mt, sorted_memory_bank_mt, srt_mt_lens = \
+            self.model.encoder_mt(sorted_mt, srt_mt_lens,
+                                  char_src=sorted_char_mt)
 
         if isinstance(sorted_enc_final_mt, tuple):  # LSTM
             enc_states_mt = (sorted_enc_final_mt[0][:, mt_idx],
@@ -1301,6 +1303,7 @@ class APETranslator(Translator):
             enc_states_mt = sorted_enc_final_mt[:, mt_idx]
 
         memory_bank_mt = sorted_memory_bank_mt[:, mt_idx]
+        mt_lengths = srt_mt_lens[mt_idx]
 
         dec_states = self.model.decoder.init_decoder_state(
                             src, mt, memory_bank_src, memory_bank_mt,
