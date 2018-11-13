@@ -865,14 +865,16 @@ class APETranslator(Translator):
                     self.fields['char_tgt'].nesting_field.process(
                         token)[0]
 
-            fusion_idx_list = []
-            for idx, token in enumerate(self.fields['tgt'].vocab.itos):
-                if token in self.fusion_fields['tgt'].vocab.itos:
-                    fusion_idx_list.append(idx)
-            self.fusion_idxs = torch.tensor(
-                fusion_idx_list,
-                dtype=torch.long,
-                device=torch.device(cur_device, torch.cuda.current_device()))
+            if self.fusion_lm is not None:
+                fusion_idx_list = []
+                for idx, token in enumerate(self.fields['tgt'].vocab.itos):
+                    if token in self.fusion_fields['tgt'].vocab.itos:
+                        fusion_idx_list.append(idx)
+                self.fusion_idxs = torch.tensor(
+                    fusion_idx_list,
+                    dtype=torch.long,
+                    device=torch.device(cur_device,
+                                        torch.cuda.current_device()))
 
         for batch in data_iter:
             batch_data = self.translate_batch(batch, data, fast=self.fast)
