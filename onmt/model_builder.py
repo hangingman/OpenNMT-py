@@ -457,17 +457,24 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
                                 map_location=lambda storage, loc: storage)
             lm_generator = lm_checkpoint['generator']
 
+            if not model_opt.copy_attn:
+                weights_name = '0.weight'
+                bias_name = '0.bias'
+            else:
+                weights_name = 'linear.weight'
+                bias_name = 'linear.bias'
+
             # UNK symbol
-            generator.state_dict()['0.weight'].data[0:1].copy_(
+            generator.state_dict()[weights_name].data[0:1].copy_(
                 lm_generator['params.weight'][0:1])
-            generator.state_dict()['0.bias'].data[0:1].copy_(
+            generator.state_dict()[bias_name].data[0:1].copy_(
                 lm_generator['params.bias'][0:1])
             # Skip padding (LM doesn't have padding) and
             # replace the remaining rows
-            generator.state_dict()['0.weight'].data[
+            generator.state_dict()[weights_name].data[
                 2:lm_generator['params.weight'].shape[0]+1].copy_(
                     lm_generator['params.weight'][1:])
-            generator.state_dict()['0.bias'].data[
+            generator.state_dict()[bias_name].data[
                 2:lm_generator['params.bias'].shape[0]+1].copy_(
                     lm_generator['params.bias'][1:])
 
