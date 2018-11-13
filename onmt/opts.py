@@ -62,6 +62,8 @@ def model_opts(parser):
                        help="""Path to a trained biLM of the mt language.""")
     group.add_argument('-elmo_dropout', type=float, default=0.3,
                        help="""The dropout of the ELMo representation.""")
+    group.add_argument('-use_enc_out_elmo', action='store_true',
+                       help="""Whether to use ELMo in the encoder output.""")
     group.add_argument('-use_decoder_elmo', action='store_true',
                        help="""Whether to use decoder ELMo.""")
     group.add_argument('-use_dec_out_elmo', action='store_true',

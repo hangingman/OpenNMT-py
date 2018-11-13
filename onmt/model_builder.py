@@ -324,7 +324,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
             model_opt, fields,
             gpu, 'src',
             reused_bilm=elmo.lang_model
-            ) if model_opt.use_elmo else None
+            ) if model_opt.use_enc_out_elmo else None
 
         src_embeddings = build_embeddings(model_opt, src_dict, feature_dicts,
                                           elmo=elmo)
@@ -342,7 +342,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
                 model_opt, fields,
                 gpu, 'mt',
                 reused_bilm=elmo.lang_model
-                ) if model_opt.use_elmo else None
+                ) if model_opt.use_enc_out_elmo else None
             mt_embeddings = build_embeddings(model_opt, mt_dict,
                                              feature_dicts,
                                              elmo=elmo)
