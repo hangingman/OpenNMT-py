@@ -387,8 +387,9 @@ class APEModel(nn.Module):
         if char_tgt is not None:
             char_tgt = char_tgt[:-1]  # exclude last target from inputs
 
-        enc_final_src, memory_bank_src = self.encoder_src(src, lengths_src,
-                                                          char_src=char_src)
+        enc_final_src, memory_bank_src, lengths_src = \
+            self.encoder_src(src, lengths_src,
+                             char_src=char_src)
 
         # Need to temporarily sort mt sentences because torch needs
         # them sorted by length when feeding a RNN
@@ -400,10 +401,10 @@ class APEModel(nn.Module):
             sorted_char_mt = None
 
         # Get the MT contexts
-        sorted_enc_final_mt, sorted_memory_bank_mt = self.encoder_mt(
-                                                    sorted_mt,
-                                                    sorted_mt_lengths,
-                                                    char_src=sorted_char_mt)
+        sorted_enc_final_mt, sorted_memory_bank_mt, sorted_mt_lengths = \
+            self.encoder_mt(sorted_mt,
+                            sorted_mt_lengths,
+                            char_src=sorted_char_mt)
 
         # Return the examples in the batch to the original order,
         # before sorting
