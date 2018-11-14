@@ -395,7 +395,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
         tgt_embeddings.word_lut.weight = src_embeddings.word_lut.weight
 
     # Share the embedding matrix of mt and tgt for ape models
-    if model_opt.ape and not model_opt.pretrained_softmax_path:
+    if model_opt.ape:
         tgt_embeddings.word_lut.weight = mt_embeddings.word_lut.weight
 
     dec_out_elmo = build_elmo(
