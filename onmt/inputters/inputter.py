@@ -899,7 +899,7 @@ def _load_fields(dataset, data_type, opt, checkpoint, use_char=False,
         fields['tgt'] = lm_fields['tgt']
         # For APE task
         if 'mt' in fields.keys():
-            fields['mt'] = lm_fields['tgt']
+            fields['mt'].vocab = lm_fields['tgt'].vocab
 
     fields = dict([(k, f) for (k, f) in fields.items()
                    if k in dataset.examples[0].__dict__])
