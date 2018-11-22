@@ -1332,6 +1332,15 @@ class APETranslator(Translator):
         memory_lengths_mt = mt_lengths.repeat(beam_size)
         dec_states.repeat_beam_size_times(beam_size)
 
+        # Reset hidden state at each batch
+        if self.model.decoder.embeddings.elmo is not None:
+            self.model.decoder.embeddings.elmo.hidden_state = None
+        if self.model.decoder.elmo is not None:
+            self.model.decoder.elmo.hidden_state = None
+        if self.fusion_lm:
+            self.fusion_lm.num_directions = 1
+            lm_hidden_state = None
+
         # (3) run the decoder to generate sentences, using beam search.
         for i in range(self.max_length):
             if all((b.done() for b in beam)):
@@ -1352,6 +1361,15 @@ class APETranslator(Translator):
             # in the decoder
             inp = inp.unsqueeze(2)
 
+            if self.model.decoder.embeddings.elmo is not None \
+                    or self.fusion_lm is not None:
+
+                char_inp = torch.index_select(
+                    self.vocab_to_char, 0, inp[0, :, 0])
+                char_inp = char_inp.unsqueeze(0).unsqueeze(-1)
+            else:
+                char_inp = None
+
             # Run one step.
             dec_out, dec_states, attn = self.model.decoder(
                 inp,
@@ -1359,7 +1377,7 @@ class APETranslator(Translator):
                 dec_states,
                 memory_lengths_src=memory_lengths_src,
                 memory_lengths_mt=memory_lengths_mt,
-                step=i)
+                step=i, char_tgt=char_inp)
 
             dec_out = dec_out.squeeze(0)
 
@@ -1382,6 +1400,19 @@ class APETranslator(Translator):
                 # beam x tgt_vocab
                 out = out.log()
                 beam_attn = unbottle(attn["copy"])
+
+            if self.fusion_lm:
+                outputs, lm_hidden_state = self.fusion_lm(char_inp, None,
+                                                          lm_hidden_state)
+                outputs = outputs[-1].contiguous()
+                lm_log_probs, _ = self.fusion_lm.generator(outputs,
+                                                           None)
+
+                fusion_log_probs = out.new_full(out.shape, 0)
+                fusion_log_probs[:, :, self.fusion_idxs] =\
+                    unbottle(lm_log_probs)
+
+                out += self.shallow_fusion_beta * fusion_log_probs
 
             # (c) Advance each beam.
             for j, b in enumerate(beam):
