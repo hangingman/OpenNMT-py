@@ -32,9 +32,15 @@ def build_loss_compute(model, tgt_vocab, opt, train=True):
             bidirectional=opt.lm_use_bidir,
             use_sampled_softmax=opt.lm_use_sampled_softmax)
     else:
+        if opt.fusion_type == 'simple':
+            fusion = model.fusion
+        else:
+            fusion = None
+
         compute = NMTLossCompute(
             model.generator, tgt_vocab,
-            label_smoothing=opt.label_smoothing if train else 0.0)
+            label_smoothing=opt.label_smoothing if train else 0.0,
+            simple_fusion=fusion)
     compute.to(device)
 
     return compute
@@ -214,7 +220,7 @@ class NMTLossCompute(LossComputeBase):
     """
 
     def __init__(self, generator, tgt_vocab, normalization="sents",
-                 label_smoothing=0.0):
+                 label_smoothing=0.0, simple_fusion=None):
         super(NMTLossCompute, self).__init__(generator, tgt_vocab)
         self.sparse = not isinstance(generator[1], nn.LogSoftmax)
         if label_smoothing > 0:
@@ -230,13 +236,24 @@ class NMTLossCompute(LossComputeBase):
                 ignore_index=self.padding_idx, reduction='sum'
             )
 
-    def _make_shard_state(self, batch, output, range_, attns=None):
-        return {
-            "output": output,
-            "target": batch.tgt[range_[0] + 1: range_[1]],
-        }
+        if simple_fusion is not None:
+            self.simple_fusion = simple_fusion
 
-    def _compute_loss(self, batch, output, target):
+    def _make_shard_state(self, batch, output, range_, attns=None):
+        if hasattr(batch, 'char_tgt'):
+            return {
+                "output": output,
+                "target": batch.tgt[range_[0] + 1: range_[1]],
+                "char_tgt": batch.char_tgt.permute(1, 0, 2).contiguous()[
+                    range_[0] + 1: range_[1]]
+            }
+        else:
+            return {
+                "output": output,
+                "target": batch.tgt[range_[0] + 1: range_[1]],
+            }
+
+    def _compute_loss(self, batch, output, target, char_tgt=None):
         bottled_output = self._bottle(output)
         if self.sparse:
             # for sparsemax loss, the loss function operates on the raw output
@@ -246,6 +263,9 @@ class NMTLossCompute(LossComputeBase):
         else:
             scores = self.generator(bottled_output)
         gtruth = target.view(-1)
+
+        if self.simple_fusion is not None:
+            scores, _ = self.simple_fusion(char_tgt, scores)
 
         loss = self.criterion(scores, gtruth)
         stats = self._stats(loss.clone(), scores, gtruth)

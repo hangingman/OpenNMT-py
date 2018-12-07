@@ -22,7 +22,7 @@ from onmt.decoders.transformer import TransformerDecoder
 from onmt.decoders.cnn_decoder import CNNDecoder
 
 from onmt.modules import Embeddings, CopyGenerator, CharEmbeddingsCNN,\
-                         SampledSoftmax, ELMo, ExtendedEmbeddings
+                         SampledSoftmax, ELMo, ExtendedEmbeddings, SimpleFusion
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
 
@@ -484,6 +484,23 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, ext_fields=None):
         if hasattr(model.decoder, 'embeddings'):
             model.decoder.embeddings.load_pretrained_vectors(
                 model_opt.pre_word_vecs_dec, model_opt.fix_word_vecs_dec)
+
+    if model_opt.fusion_type != 'none':
+        lm_checkpoint = torch.load(
+                            model_opt.pretrained_softmax_path,
+                            map_location=lambda storage, loc: storage)
+
+        lm_fields = inputters.load_fields_from_vocab(
+            lm_checkpoint['vocab'],
+            use_char=lm_checkpoint['opt'].use_char_input)
+        lm_opt = lm_checkpoint['opt']
+        fusion_lm = build_language_model(lm_opt, lm_fields, gpu,
+                                         lm_checkpoint)
+
+        if model_opt.fusion_type == 'simple':
+            model.fusion = SimpleFusion(fusion_lm,
+                                        tgt_dict,
+                                        lm_fields['tgt'].vocab)
 
     # Add generator to model (this registers it as parameter of model).
     model.generator = generator

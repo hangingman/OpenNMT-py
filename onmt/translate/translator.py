@@ -840,8 +840,9 @@ class APETranslator(Translator):
         all_scores = []
         all_predictions = []
 
-        if self.model.decoder.embeddings.elmo is not None or\
-                self.fusion_lm is not None:
+        if self.model.decoder.embeddings.elmo is not None or \
+                self.fusion_lm is not None or \
+                self.model.fusion is not None:
 
             vocab_size = len(self.fields['tgt'].vocab.itos)
             self.vocab_to_char = torch.full(
@@ -875,6 +876,8 @@ class APETranslator(Translator):
                     dtype=torch.long,
                     device=torch.device(cur_device,
                                         torch.cuda.current_device()))
+            if self.model.fusion is not None:
+                self.fusion_idxs = self.model.fusion.fusion_idxs
 
         for batch in data_iter:
             batch_data = self.translate_batch(batch, data, fast=self.fast)
@@ -1339,7 +1342,7 @@ class APETranslator(Translator):
             self.model.decoder.elmo.hidden_state = None
         if self.fusion_lm:
             self.fusion_lm.num_directions = 1
-            lm_hidden_state = None
+        lm_hidden_state = None
 
         # (3) run the decoder to generate sentences, using beam search.
         for i in range(self.max_length):
@@ -1362,7 +1365,8 @@ class APETranslator(Translator):
             inp = inp.unsqueeze(2)
 
             if self.model.decoder.embeddings.elmo is not None \
-                    or self.fusion_lm is not None:
+                    or self.fusion_lm is not None \
+                    or self.model.fusion is not None:
 
                 char_inp = torch.index_select(
                     self.vocab_to_char, 0, inp[0, :, 0])
@@ -1400,6 +1404,10 @@ class APETranslator(Translator):
                 # beam x tgt_vocab
                 out = out.log()
                 beam_attn = unbottle(attn["copy"])
+
+            if hasattr(self.model, "fusion"):
+                scores, lm_hidden_state = self.model.fusion(
+                    char_inp, out, lm_hidden_state)
 
             if self.fusion_lm:
                 outputs, lm_hidden_state = self.fusion_lm(char_inp, None,

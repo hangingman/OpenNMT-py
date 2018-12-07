@@ -69,6 +69,11 @@ def model_opts(parser):
     group.add_argument('-use_dec_out_elmo', action='store_true',
                        help="""Whether to use ELMo in the decoder output.""")
 
+    group = parser.add_argument_group('Fusion')
+    group.add_argument('-fusion_type', default='none',
+                       choices=['none', 'simple'],
+                       help="""Fusion Strategy.""")
+
     # Encoder-Decoder Options
     group = parser.add_argument_group('Model- Encoder-Decoder')
     group.add_argument('-model_type', default='text',
