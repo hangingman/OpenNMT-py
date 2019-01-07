@@ -428,6 +428,8 @@ def load_fields(dataset, data_type, checkpoint):
         print('Loading vocab from checkpoint at %s.' % opt.train_from)
         fields = onmt.io.load_fields_from_vocab(
             checkpoint['vocab'], data_type)
+        from onmt.ModelConstructor import clean_fields as cf
+        cf(fields, ["src", "tgt"])
     else:
         fields = onmt.io.load_fields_from_vocab(
             torch.load(opt.data + '.vocab.pt'), data_type)

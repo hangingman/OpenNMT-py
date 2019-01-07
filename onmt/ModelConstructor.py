@@ -114,17 +114,40 @@ def make_decoder(opt, embeddings):
                              opt.reuse_copy_attn)
 
 
+def clean_fields(fields, keys):
+
+    for key in keys:
+        field = fields[key]
+        stoi_set = set(field.vocab.stoi.keys())
+        itos_set = set(field.vocab.itos)
+        bad_keys = stoi_set - itos_set
+        for bad_key in bad_keys:
+            del field.vocab.stoi[bad_key]
+
+    import operator as op
+    for key in keys:
+        to_fix = {}
+        for idx, word in enumerate(field.vocab.itos):
+            if (fields[key].vocab.stoi[word] != idx):
+            #if (fields[key].vocab.stoi[word] != idx) and (fields[key].vocab.stoi[word] > idx):
+                to_fix[word]=idx
+
+        for word in to_fix:
+            fields[key].vocab.stoi[word] = to_fix[word]
+
+
 def load_test_model(opt, dummy_opt):
     checkpoint = torch.load(opt.model,
                             map_location=lambda storage, loc: storage)
     fields = onmt.io.load_fields_from_vocab(
         checkpoint['vocab'], data_type=opt.data_type)
 
+    keys = ["src", "tgt"]
+    clean_fields(fields, keys)
     model_opt = checkpoint['opt']
     for arg in dummy_opt:
         if arg not in model_opt:
             model_opt.__dict__[arg] = dummy_opt[arg]
-
     model = make_base_model(model_opt, fields,
                             use_gpu(opt), checkpoint)
     model.eval()
@@ -175,7 +198,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None):
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
         # src/tgt vocab should be the same if `-share_vocab` is specified.
-        if src_dict != tgt_dict:
+        if not (src_dict == tgt_dict):
+            print("{} {}".format(len(src_dict), len(tgt_dict)))
             raise AssertionError('The `-share_vocab` should be set during '
                                  'preprocess if you use share_embeddings!')
 
