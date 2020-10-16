@@ -1,28 +1,31 @@
-import torch
-from torch.autograd import Variable
 import numpy as np
 
-def constrained_sparsemax(z, u):
-    '''Solve the problem:
 
-    min_p 0.5*\|p - z\|^2
-    s.t. p <= u
-         p in simplex
-    '''
+def constrained_sparsemax(z, u):
+    r"""Solve the problem:
+
+    :math:`min_p 0.5*\|p - z\|^2 \\ s.t.\ p <= u \\ p \in \text{simplex}`
+
+    Arguments:
+        z: input vector
+        u: upper bounds
+    """
     l = np.zeros_like(u)
     return double_constrained_sparsemax(z, l, u)
 
+
 def double_constrained_sparsemax(z, l, u):
-    '''Solve the problem:
+    r"""Solve the problem:
 
-    min_p 0.5*\|p - z\|^2
-    s.t. l <= p <= u
-         p in simplex
+    :math:`min_p 0.5*\|p - z\|^2 \\ s.t.\ p <= u \\ p \in \text{simplex}`
 
-    This maps to Pardalos' canonical problem by making the transformations
-    below.
-    '''
-    assert (u>=0).all(), "Invalid: u[i]<0 for some i"
+    This maps to Pardalos' canonical problem by making the transformations below.
+
+    Arguments:
+        z: input vector
+        u: upper bounds
+    """
+    assert (u >= 0).all(), "Invalid: u[i]<0 for some i"
 
     # Look for -inf entries in z, create due to padding and masking.
     ind = np.nonzero(z != -np.inf)[0]
@@ -42,28 +45,33 @@ def double_constrained_sparsemax(z, l, u):
     c = np.ones_like(z)
     d = .5 * (1 - z.sum())
     x, tau, regions = solve_quadratic_problem(a, b, c, d)
-    tau = -2*tau
+    tau = -2 * tau
     p = z - tau
     ind = np.nonzero(regions == 0)[0]
     p[ind] = l[ind]
     ind = np.nonzero(regions == 2)[0]
     p[ind] = u[ind]
     p = p.astype(dtype)
-    return p, regions, tau, .5*np.dot(p-z, p-z)
+    return p, regions, tau, .5 * np.dot(p - z, p - z)
+
 
 def solve_quadratic_problem(a, b, c, d):
-    '''Solve the problem:
+    r"""Solve the problem:
 
-    min_x sum_i c_i x_i^2
-    s.t. sum_i c_i x_i = d
-         a_i <= x_i <= b_i, for all i.
+    :math:`min_x sum_i c_i x_i^2 \\ s.t. sum_i c_i x_i = d \\ a_i <= x_i <= b_i, \forall i.`
 
     by using Pardalos' algorithm:
 
     Pardalos, Panos M., and Naina Kovoor.
     "An algorithm for a singly constrained class of quadratic programs subject
     to upper and lower bounds." Mathematical Programming 46.1 (1990): 321-328.
-    '''
+
+    Arguments:
+        a: vector -z_j / 2
+        b: vector (u_j - z_j) / 2
+        c: vector 1
+        d: scalar (1 - \sigma_{j=1}^{J} z_j) / 2
+    """
     K = np.shape(c)[0]
 
     # Check for tight constraints.
@@ -72,14 +80,14 @@ def solve_quadratic_problem(a, b, c, d):
         x = np.zeros(K)
         regions = np.zeros(K, dtype=int)
         x[ind] = a[ind]
-        regions[ind] = 0 # By convention.
+        regions[ind] = 0  # By convention.
         dd = d - c[ind].dot(x[ind])
         ind = np.nonzero(a < b)[0]
         if len(ind):
             x[ind], tau, regions[ind] = \
                 solve_quadratic_problem(a[ind], b[ind], c[ind], dd)
         else:
-            tau = 0. # By convention.
+            tau = 0.  # By convention.
         return x, tau, regions
 
     # Sort lower and upper bounds and keep the sorted indices.
@@ -137,7 +145,7 @@ def solve_quadratic_problem(a, b, c, d):
         right = np.inf
 
     regions = -np.ones(K, dtype=int)
-    for i in xrange(K):
+    for i in range(K):
         if a[i] >= right:
             x[i] = a[i]
             regions[i] = 0
@@ -151,10 +159,11 @@ def solve_quadratic_problem(a, b, c, d):
 
     return x, tau, regions
 
+
 if __name__ == "__main__":
     n = 6
-    lower = 1./n * np.random.rand(n) # Uniform in [0, 1/n].
-    upper = 1./n + 1./n * np.random.rand(n) # Uniform in [1/n, 2/n].
+    lower = 1. / n * np.random.rand(n)  # Uniform in [0, 1/n].
+    upper = 1. / n + 1. / n * np.random.rand(n)  # Uniform in [1/n, 2/n].
     z = np.random.randn(n)
     print('z:', z)
     print('Lower:', lower)
@@ -165,5 +174,4 @@ if __name__ == "__main__":
     print('value:', value)
     tol = 1e-12
     assert np.all(lower <= p) and np.all(p <= upper) \
-        and 1-tol <= sum(p) <= 1+tol
-
+           and 1 - tol <= sum(p) <= 1 + tol
