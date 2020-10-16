@@ -1,10 +1,14 @@
+import sys
+
 import torch
 from torch.autograd import Function
 from torch.nn import Module
 from .constrained_sparsemax import constrained_sparsemax
 import numpy as np
 
-np.set_printoptions(threshold=np.nan)
+# Set sys.maxsize to see numpy.array, numpy.nan is not supported
+# https://stackoverflow.com/a/1988024/2565527
+np.set_printoptions(threshold=sys.maxsize)
 
 
 def project_onto_simplex(a, radius=1.0):
