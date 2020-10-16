@@ -385,7 +385,7 @@ class Translator(object):
             for c, f in zip(cum_attn, fert):
                 print('%f (%f)' % (c, f))
         else:
-            print ret['attention'][0][0].sum(0)
+            print(ret['attention'][0][0].sum(0))
 
         return ret
 
