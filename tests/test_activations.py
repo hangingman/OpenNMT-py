@@ -49,13 +49,8 @@ def test_active_fns():
     # input = (Variable(torch.randn(20,20).double().cuda(), requires_grad=True),)
     # test = gradcheck(Sparsemax(), input, eps=1e-6, atol=1e-4)
     # print(test)
-
     from torch.autograd import Variable
 
-    print(torch.__version__)
-    import sys
-    from pprint import pprint
-    pprint(sys.path)
     cuda = torch.cuda.is_available()
     device = torch.device('cuda' if cuda else 'cpu')
 
